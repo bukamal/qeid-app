@@ -54,16 +54,18 @@ async function loadDashboard() {
   try {
     const entries = await apiCall('/entries', 'GET');
     const items = await apiCall('/items', 'GET');
+    const customers = await apiCall('/customers', 'GET');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">📊 عدد القيود: ${entries.length}</div>
       <div class="card">📦 عدد المواد: ${items.length}</div>
+      <div class="card">👥 عدد العملاء: ${customers.length}</div>
     `;
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
 
-// عرض القيود (مع إظهار المادة إن وجدت)
+// عرض القيود
 async function loadJournal() {
   try {
     const entries = await apiCall('/entries', 'GET');
@@ -78,12 +80,8 @@ async function loadJournal() {
           <div style="font-size:0.9em; margin-top:5px;">`;
         e.journal_lines.forEach(line => {
           let detail = `${line.account?.name || 'حساب ' + line.account_id}: ${line.debit > 0 ? 'مدين ' + line.debit : 'دائن ' + line.credit}`;
-          if (line.item) {
-            detail += ` | المادة: ${line.item.name}`;
-            if (line.quantity_change && line.quantity_change != 0) {
-              detail += ` (${line.quantity_change > 0 ? '+' : ''}${line.quantity_change})`;
-            }
-          }
+          if (line.item) detail += ` | ${line.item.name}`;
+          if (line.customer) detail += ` | العميل: ${line.customer.name}`;
           html += detail + '<br>';
         });
         html += `</div></div>`;
@@ -95,20 +93,89 @@ async function loadJournal() {
   }
 }
 
-// --- نموذج إضافة قيد مع دعم المواد ---
+// --- العملاء ---
+let customersCache = [];
+
+async function loadCustomers() {
+  try {
+    const customers = await apiCall('/customers', 'GET');
+    customersCache = customers;
+    let html = `
+      <div class="card">
+        <h2>العملاء</h2>
+        <button id="btn-add-customer" class="btn-primary">+ إضافة عميل</button>
+      </div>
+      <div id="customer-form" class="card" style="display:none;">
+        <h3>إضافة عميل جديد</h3>
+        <input id="customer-name" placeholder="الاسم" class="input-field" />
+        <input id="customer-phone" placeholder="الهاتف" class="input-field" />
+        <input id="customer-address" placeholder="العنوان" class="input-field" />
+        <button id="btn-save-customer" class="btn-primary">حفظ</button>
+        <button id="btn-cancel-customer" class="btn-secondary">إلغاء</button>
+      </div>
+    `;
+
+    if (customers.length === 0) {
+      html += '<div class="card">لا يوجد عملاء</div>';
+    } else {
+      html += customers.map(c => `
+        <div class="card">
+          <strong>${c.name}</strong>
+          <span style="float:left; font-weight:bold; color:${c.balance >= 0 ? 'green' : 'red'};">الرصيد: ${c.balance}</span>
+          <br>📞 ${c.phone || '-'} | 🏠 ${c.address || '-'}
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    attachCustomersEvents();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
+function attachCustomersEvents() {
+  document.getElementById('btn-add-customer')?.addEventListener('click', () => {
+    document.getElementById('customer-form').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-customer')?.addEventListener('click', () => {
+    document.getElementById('customer-form').style.display = 'none';
+  });
+  document.getElementById('btn-save-customer')?.addEventListener('click', async () => {
+    const name = document.getElementById('customer-name').value.trim();
+    if (!name) return alert('الاسم مطلوب');
+    const payload = {
+      name,
+      phone: document.getElementById('customer-phone').value.trim(),
+      address: document.getElementById('customer-address').value.trim()
+    };
+    try {
+      await apiCall('/customers', 'POST', payload);
+      document.getElementById('customer-form').style.display = 'none';
+      loadCustomers();
+    } catch (err) {
+      alert('خطأ: ' + err.message);
+    }
+  });
+}
+
+// --- نموذج إضافة قيد مع العملاء ---
 let accountsCache = [];
 let itemsCache = [];
 
 async function loadAddEntryForm() {
   try {
-    const [accounts, items] = await Promise.all([
+    const [accounts, items, customers] = await Promise.all([
       apiCall('/accounts', 'GET'),
-      apiCall('/items', 'GET')
+      apiCall('/items', 'GET'),
+      apiCall('/customers', 'GET')
     ]);
     accountsCache = accounts;
     itemsCache = items;
+    customersCache = customers;
+
     let accountOptions = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    let itemOptions = '<option value="">بدون مادة</option>' + items.map(i => `<option value="${i.id}">${i.name} (المخزون: ${i.quantity})</option>`).join('');
+    let itemOptions = '<option value="">بدون مادة</option>' + items.map(i => `<option value="${i.id}">${i.name} (${i.quantity})</option>`).join('');
+    let customerOptions = '<option value="">بدون عميل</option>' + customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
     const html = `
       <div class="card">
@@ -122,7 +189,8 @@ async function loadAddEntryForm() {
             <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
             <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
             <select class="input-field item-select">${itemOptions}</select>
-            <input type="number" step="any" placeholder="الكمية (+ / -)" class="input-field qty-input" />
+            <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
+            <select class="input-field customer-select">${customerOptions}</select>
             <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
           </div>
         </div>
@@ -144,7 +212,9 @@ function attachEntryEvents() {
   document.getElementById('btn-add-line')?.addEventListener('click', () => {
     const container = document.getElementById('lines-container');
     const accountOptions = accountsCache.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    const itemOptions = '<option value="">بدون مادة</option>' + itemsCache.map(i => `<option value="${i.id}">${i.name} (المخزون: ${i.quantity})</option>`).join('');
+    const itemOptions = '<option value="">بدون مادة</option>' + itemsCache.map(i => `<option value="${i.id}">${i.name} (${i.quantity})</option>`).join('');
+    const customerOptions = '<option value="">بدون عميل</option>' + customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
     newLine.dataset.index = lineIndex++;
@@ -153,7 +223,8 @@ function attachEntryEvents() {
       <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
       <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
       <select class="input-field item-select">${itemOptions}</select>
-      <input type="number" step="any" placeholder="الكمية (+ / -)" class="input-field qty-input" />
+      <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
+      <select class="input-field customer-select">${customerOptions}</select>
       <button class="btn-remove-line btn-secondary">✕</button>
     `;
     container.appendChild(newLine);
@@ -184,13 +255,17 @@ function attachEntryEvents() {
       const credit = parseFloat(row.querySelector('.credit-input').value) || 0;
       const itemId = row.querySelector('.item-select').value || null;
       const qtyChange = parseFloat(row.querySelector('.qty-input').value) || 0;
-      if (!accountId || (debit === 0 && credit === 0 && qtyChange === 0)) return;
+      const customerId = row.querySelector('.customer-select').value || null;
+
+      if (!accountId) return;
+      if (debit === 0 && credit === 0 && qtyChange === 0 && !customerId) return;
       lines.push({
         account_id: accountId,
         debit,
         credit,
         item_id: itemId,
-        quantity_change: qtyChange
+        quantity_change: qtyChange,
+        customer_id: customerId
       });
       totalDebit += debit;
       totalCredit += credit;
@@ -202,9 +277,9 @@ function attachEntryEvents() {
     try {
       await apiCall('/entries', 'POST', { date, description, reference, lines });
       alert('تم حفظ القيد بنجاح');
-      // تحديث مخبأ المواد بعد التغيير لأنه قد تتغير الكميات
+      // تحديث الذاكرة المؤقتة للعملاء والمواد
       itemsCache = await apiCall('/items', 'GET');
-      // الانتقال إلى تبويب القيود
+      customersCache = await apiCall('/customers', 'GET');
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelector('.tab[data-tab="journal"]').classList.add('active');
       loadJournal();
@@ -229,7 +304,7 @@ async function loadItems() {
       apiCall('/items', 'GET'),
       apiCall('/categories', 'GET')
     ]);
-    itemsCache = items; // تحديث الكاش
+    itemsCache = items;
     let html = `
       <div class="card" style="margin-bottom:20px;">
         <h2>المواد</h2>
@@ -332,6 +407,7 @@ document.addEventListener('click', (e) => {
     else if (tab === 'journal') loadJournal();
     else if (tab === 'add-entry') loadAddEntryForm();
     else if (tab === 'items') loadItems();
+    else if (tab === 'customers') loadCustomers();
   }
 });
 

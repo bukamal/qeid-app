@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('journal_entries')
-        .select('*, journal_lines(*, account:accounts(name), item:items(name))')
+        .select('*, journal_lines(*, account:accounts(name), item:items(name), customer:customers(name))')
         .eq('user_id', userId)
         .order('date', { ascending: false });
       if (error) throw error;
@@ -59,18 +59,15 @@ module.exports = async (req, res) => {
       if (!lines || !Array.isArray(lines) || lines.length === 0)
         return res.status(400).json({ error: 'يجب إضافة سطر مدين وسطر دائن على الأقل' });
 
-      // حساب مجموع المدين والدائن
       let totalDebit = 0, totalCredit = 0;
       for (const line of lines) {
         totalDebit += parseFloat(line.debit) || 0;
         totalCredit += parseFloat(line.credit) || 0;
         if (!line.account_id) return res.status(400).json({ error: 'يجب اختيار حساب لكل سطر' });
-        
-        // إذا وُجد item_id، تحقق من الكمية المتاحة إذا كان التأثير سالبًا (بيع)
+
         if (line.item_id) {
           const qtyChange = parseFloat(line.quantity_change) || 0;
           if (qtyChange < 0) {
-            // بيع – تحقق من الرصيد
             const { data: item } = await supabase
               .from('items')
               .select('quantity, name')
@@ -78,7 +75,7 @@ module.exports = async (req, res) => {
               .eq('user_id', userId)
               .single();
             if (!item) return res.status(400).json({ error: 'المادة غير موجودة' });
-            if (item.quantity + qtyChange < 0) {  // qtyChange بالسالب
+            if (item.quantity + qtyChange < 0) {
               return res.status(400).json({ error: `المخزون غير كافٍ للمادة "${item.name}". المتاح: ${item.quantity}` });
             }
           }
@@ -96,23 +93,23 @@ module.exports = async (req, res) => {
         .single();
       if (entryError) throw entryError;
 
-      // إدراج السطور
+      // تجهيز السطور
       const linesToInsert = lines.map(l => ({
         entry_id: entry.id,
         account_id: l.account_id,
         debit: parseFloat(l.debit) || 0,
         credit: parseFloat(l.credit) || 0,
         item_id: l.item_id || null,
-        quantity_change: parseFloat(l.quantity_change) || 0
+        quantity_change: parseFloat(l.quantity_change) || 0,
+        customer_id: l.customer_id || null
       }));
       const { error: linesError } = await supabase.from('journal_lines').insert(linesToInsert);
       if (linesError) throw linesError;
 
-      // تحديث كميات المواد بعد الحفظ
+      // تحديث المخزون
       for (const line of lines) {
         if (line.item_id && parseFloat(line.quantity_change) !== 0) {
           const qtyChange = parseFloat(line.quantity_change);
-          // جلب الكمية الحالية
           const { data: currentItem } = await supabase
             .from('items')
             .select('quantity')
@@ -125,6 +122,29 @@ module.exports = async (req, res) => {
               .from('items')
               .update({ quantity: newQty })
               .eq('id', line.item_id)
+              .eq('user_id', userId);
+          }
+        }
+      }
+
+      // تحديث أرصدة العملاء (إن وجدت)
+      for (const line of lines) {
+        if (line.customer_id) {
+          const custId = line.customer_id;
+          // احسب صافي الحركة لهذا العميل (مدين - دائن) وأضفه للرصيد الحالي
+          const { data: cust } = await supabase
+            .from('customers')
+            .select('balance')
+            .eq('id', custId)
+            .eq('user_id', userId)
+            .single();
+          if (cust) {
+            const change = (parseFloat(line.debit) || 0) - (parseFloat(line.credit) || 0);
+            const newBalance = parseFloat(cust.balance) + change;
+            await supabase
+              .from('customers')
+              .update({ balance: newBalance })
+              .eq('id', custId)
               .eq('user_id', userId);
           }
         }

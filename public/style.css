@@ -98,7 +98,7 @@ nav {
 }
 .debit-input, .credit-input { max-width: 90px; }
 .qty-input { max-width: 80px; }
-.item-select { min-width: 100px; }
+.item-select, .customer-select { min-width: 100px; }
 .btn-remove-line {
   background: #ef4444;
   color: white;
