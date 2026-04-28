@@ -25,7 +25,8 @@ function showError(msg) {
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
   if (method === 'GET') {
-    url += '?initData=' + encodeURIComponent(initData);
+    const separator = url.includes('?') ? '&' : '?';
+    url += separator + 'initData=' + encodeURIComponent(initData);
     const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
@@ -464,7 +465,7 @@ async function loadReports() {
   });
 }
 
-// تقرير ميزان المراجعة
+// ميزان المراجعة
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance', 'GET');
@@ -857,4 +858,3 @@ async function verifyUser() {
   }
 }
 verifyUser();
-
