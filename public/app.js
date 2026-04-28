@@ -55,10 +55,12 @@ async function loadDashboard() {
     const entries = await apiCall('/entries', 'GET');
     const items = await apiCall('/items', 'GET');
     const customers = await apiCall('/customers', 'GET');
+    const suppliers = await apiCall('/suppliers', 'GET');
     document.getElementById('tab-content').innerHTML = `
-      <div class="card">📊 عدد القيود: ${entries.length}</div>
-      <div class="card">📦 عدد المواد: ${items.length}</div>
-      <div class="card">👥 عدد العملاء: ${customers.length}</div>
+      <div class="card">📊 القيود: ${entries.length}</div>
+      <div class="card">📦 المواد: ${items.length}</div>
+      <div class="card">👥 العملاء: ${customers.length}</div>
+      <div class="card">🏭 الموردين: ${suppliers.length}</div>
     `;
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
@@ -82,6 +84,7 @@ async function loadJournal() {
           let detail = `${line.account?.name || 'حساب ' + line.account_id}: ${line.debit > 0 ? 'مدين ' + line.debit : 'دائن ' + line.credit}`;
           if (line.item) detail += ` | ${line.item.name}`;
           if (line.customer) detail += ` | العميل: ${line.customer.name}`;
+          if (line.supplier) detail += ` | المورد: ${line.supplier.name}`;
           html += detail + '<br>';
         });
         html += `</div></div>`;
@@ -114,7 +117,6 @@ async function loadCustomers() {
         <button id="btn-cancel-customer" class="btn-secondary">إلغاء</button>
       </div>
     `;
-
     if (customers.length === 0) {
       html += '<div class="card">لا يوجد عملاء</div>';
     } else {
@@ -158,24 +160,91 @@ function attachCustomersEvents() {
   });
 }
 
-// --- نموذج إضافة قيد مع العملاء ---
+// --- الموردين ---
+let suppliersCache = [];
+
+async function loadSuppliers() {
+  try {
+    const suppliers = await apiCall('/suppliers', 'GET');
+    suppliersCache = suppliers;
+    let html = `
+      <div class="card">
+        <h2>الموردين</h2>
+        <button id="btn-add-supplier" class="btn-primary">+ إضافة مورد</button>
+      </div>
+      <div id="supplier-form" class="card" style="display:none;">
+        <h3>إضافة مورد جديد</h3>
+        <input id="supplier-name" placeholder="الاسم" class="input-field" />
+        <input id="supplier-phone" placeholder="الهاتف" class="input-field" />
+        <input id="supplier-address" placeholder="العنوان" class="input-field" />
+        <button id="btn-save-supplier" class="btn-primary">حفظ</button>
+        <button id="btn-cancel-supplier" class="btn-secondary">إلغاء</button>
+      </div>
+    `;
+    if (suppliers.length === 0) {
+      html += '<div class="card">لا يوجد موردين</div>';
+    } else {
+      html += suppliers.map(s => `
+        <div class="card">
+          <strong>${s.name}</strong>
+          <span style="float:left; font-weight:bold; color:${s.balance <= 0 ? 'green' : 'red'};">الرصيد: ${s.balance}</span>
+          <br>📞 ${s.phone || '-'} | 🏠 ${s.address || '-'}
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    attachSuppliersEvents();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
+function attachSuppliersEvents() {
+  document.getElementById('btn-add-supplier')?.addEventListener('click', () => {
+    document.getElementById('supplier-form').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-supplier')?.addEventListener('click', () => {
+    document.getElementById('supplier-form').style.display = 'none';
+  });
+  document.getElementById('btn-save-supplier')?.addEventListener('click', async () => {
+    const name = document.getElementById('supplier-name').value.trim();
+    if (!name) return alert('الاسم مطلوب');
+    const payload = {
+      name,
+      phone: document.getElementById('supplier-phone').value.trim(),
+      address: document.getElementById('supplier-address').value.trim()
+    };
+    try {
+      await apiCall('/suppliers', 'POST', payload);
+      document.getElementById('supplier-form').style.display = 'none';
+      loadSuppliers();
+    } catch (err) {
+      alert('خطأ: ' + err.message);
+    }
+  });
+}
+
+// --- نموذج إضافة قيد مع الموردين ---
 let accountsCache = [];
 let itemsCache = [];
 
 async function loadAddEntryForm() {
   try {
-    const [accounts, items, customers] = await Promise.all([
+    const [accounts, items, customers, suppliers] = await Promise.all([
       apiCall('/accounts', 'GET'),
       apiCall('/items', 'GET'),
-      apiCall('/customers', 'GET')
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET')
     ]);
     accountsCache = accounts;
     itemsCache = items;
     customersCache = customers;
+    suppliersCache = suppliers;
 
     let accountOptions = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     let itemOptions = '<option value="">بدون مادة</option>' + items.map(i => `<option value="${i.id}">${i.name} (${i.quantity})</option>`).join('');
     let customerOptions = '<option value="">بدون عميل</option>' + customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    let supplierOptions = '<option value="">بدون مورد</option>' + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
     const html = `
       <div class="card">
@@ -191,6 +260,7 @@ async function loadAddEntryForm() {
             <select class="input-field item-select">${itemOptions}</select>
             <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
             <select class="input-field customer-select">${customerOptions}</select>
+            <select class="input-field supplier-select">${supplierOptions}</select>
             <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
           </div>
         </div>
@@ -214,6 +284,7 @@ function attachEntryEvents() {
     const accountOptions = accountsCache.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     const itemOptions = '<option value="">بدون مادة</option>' + itemsCache.map(i => `<option value="${i.id}">${i.name} (${i.quantity})</option>`).join('');
     const customerOptions = '<option value="">بدون عميل</option>' + customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    const supplierOptions = '<option value="">بدون مورد</option>' + suppliersCache.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
@@ -225,6 +296,7 @@ function attachEntryEvents() {
       <select class="input-field item-select">${itemOptions}</select>
       <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
       <select class="input-field customer-select">${customerOptions}</select>
+      <select class="input-field supplier-select">${supplierOptions}</select>
       <button class="btn-remove-line btn-secondary">✕</button>
     `;
     container.appendChild(newLine);
@@ -256,16 +328,17 @@ function attachEntryEvents() {
       const itemId = row.querySelector('.item-select').value || null;
       const qtyChange = parseFloat(row.querySelector('.qty-input').value) || 0;
       const customerId = row.querySelector('.customer-select').value || null;
+      const supplierId = row.querySelector('.supplier-select').value || null;
 
       if (!accountId) return;
-      if (debit === 0 && credit === 0 && qtyChange === 0 && !customerId) return;
       lines.push({
         account_id: accountId,
         debit,
         credit,
         item_id: itemId,
         quantity_change: qtyChange,
-        customer_id: customerId
+        customer_id: customerId,
+        supplier_id: supplierId
       });
       totalDebit += debit;
       totalCredit += credit;
@@ -277,9 +350,10 @@ function attachEntryEvents() {
     try {
       await apiCall('/entries', 'POST', { date, description, reference, lines });
       alert('تم حفظ القيد بنجاح');
-      // تحديث الذاكرة المؤقتة للعملاء والمواد
+      // تحديث الذاكرة المؤقتة
       itemsCache = await apiCall('/items', 'GET');
       customersCache = await apiCall('/customers', 'GET');
+      suppliersCache = await apiCall('/suppliers', 'GET');
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelector('.tab[data-tab="journal"]').classList.add('active');
       loadJournal();
@@ -408,6 +482,7 @@ document.addEventListener('click', (e) => {
     else if (tab === 'add-entry') loadAddEntryForm();
     else if (tab === 'items') loadItems();
     else if (tab === 'customers') loadCustomers();
+    else if (tab === 'suppliers') loadSuppliers();
   }
 });
 

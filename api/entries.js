@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('journal_entries')
-        .select('*, journal_lines(*, account:accounts(name), item:items(name), customer:customers(name))')
+        .select('*, journal_lines(*, account:accounts(name), item:items(name), customer:customers(name), supplier:suppliers(name))')
         .eq('user_id', userId)
         .order('date', { ascending: false });
       if (error) throw error;
@@ -85,7 +85,6 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'مجموع المبالغ المدينة يجب أن يساوي مجموع المبالغ الدائنة' });
       }
 
-      // إنشاء رأس القيد
       const { data: entry, error: entryError } = await supabase
         .from('journal_entries')
         .insert({ user_id: userId, date, description, reference })
@@ -93,7 +92,6 @@ module.exports = async (req, res) => {
         .single();
       if (entryError) throw entryError;
 
-      // تجهيز السطور
       const linesToInsert = lines.map(l => ({
         entry_id: entry.id,
         account_id: l.account_id,
@@ -101,7 +99,8 @@ module.exports = async (req, res) => {
         credit: parseFloat(l.credit) || 0,
         item_id: l.item_id || null,
         quantity_change: parseFloat(l.quantity_change) || 0,
-        customer_id: l.customer_id || null
+        customer_id: l.customer_id || null,
+        supplier_id: l.supplier_id || null
       }));
       const { error: linesError } = await supabase.from('journal_lines').insert(linesToInsert);
       if (linesError) throw linesError;
@@ -127,11 +126,10 @@ module.exports = async (req, res) => {
         }
       }
 
-      // تحديث أرصدة العملاء (إن وجدت)
+      // تحديث أرصدة العملاء
       for (const line of lines) {
         if (line.customer_id) {
           const custId = line.customer_id;
-          // احسب صافي الحركة لهذا العميل (مدين - دائن) وأضفه للرصيد الحالي
           const { data: cust } = await supabase
             .from('customers')
             .select('balance')
@@ -145,6 +143,29 @@ module.exports = async (req, res) => {
               .from('customers')
               .update({ balance: newBalance })
               .eq('id', custId)
+              .eq('user_id', userId);
+          }
+        }
+      }
+
+      // تحديث أرصدة الموردين
+      for (const line of lines) {
+        if (line.supplier_id) {
+          const supId = line.supplier_id;
+          const { data: sup } = await supabase
+            .from('suppliers')
+            .select('balance')
+            .eq('id', supId)
+            .eq('user_id', userId)
+            .single();
+          if (sup) {
+            // للمورد: الدائن يزيد الالتزام (الرصيد الدائن)، المدين يخفضه
+            const change = (parseFloat(line.credit) || 0) - (parseFloat(line.debit) || 0);
+            const newBalance = parseFloat(sup.balance) + change;
+            await supabase
+              .from('suppliers')
+              .update({ balance: newBalance })
+              .eq('id', supId)
               .eq('user_id', userId);
           }
         }
