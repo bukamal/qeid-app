@@ -5,7 +5,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
 
   try {
     let initData;
-    if (req.method === 'GET') {
+    if (req.method === 'GET' || req.method === 'DELETE') {
       initData = req.query.initData;
     } else {
       initData = req.body?.initData;
@@ -45,35 +45,51 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const { data, error } = await supabase
-        .from('items')
-        .select('*, category:categories(name)')
-        .eq('user_id', userId)
-        .order('name');
+        .from('items').select('*, category:categories(name)')
+        .eq('user_id', userId).order('name');
       if (error) throw error;
       return res.json(data);
-    } else if (req.method === 'POST') {
+    }
+
+    if (req.method === 'POST') {
       const { name, category_id, item_type, purchase_price, selling_price, quantity } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
       const { data, error } = await supabase
-        .from('items')
-        .insert({
-          user_id: userId,
-          name,
-          category_id: category_id || null,
+        .from('items').insert({
+          user_id: userId, name, category_id: category_id || null,
           item_type: item_type || 'مخزون',
           purchase_price: purchase_price || 0,
           selling_price: selling_price || 0,
           quantity: quantity || 0
-        })
-        .select()
-        .single();
+        }).select().single();
       if (error) throw error;
       return res.json(data);
-    } else {
-      return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    if (req.method === 'PUT') {
+      const { id, name, category_id, item_type, purchase_price, selling_price, quantity } = req.body;
+      if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
+      const { data, error } = await supabase
+        .from('items').update({
+          name, category_id: category_id || null,
+          item_type, purchase_price, selling_price, quantity
+        }).eq('id', id).eq('user_id', userId).select().single();
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'DELETE') {
+      const itemId = req.query.id;
+      if (!itemId) return res.status(400).json({ error: 'معرف المادة مطلوب' });
+      const { error } = await supabase
+        .from('items').delete().eq('id', itemId).eq('user_id', userId);
+      if (error) throw error;
+      return res.json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };

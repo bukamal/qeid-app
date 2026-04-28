@@ -1,14 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -39,13 +36,14 @@ module.exports = async (req, res) => {
 
   try {
     let initData;
-    if (req.method === 'GET') {
+    if (req.method === 'GET' || req.method === 'DELETE') {
       initData = req.query.initData;
     } else {
       initData = req.body?.initData;
     }
     const userId = await getUserId(initData);
 
+    // ========== جلب القيود ==========
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('journal_entries')
@@ -54,7 +52,10 @@ module.exports = async (req, res) => {
         .order('date', { ascending: false });
       if (error) throw error;
       return res.json(data);
-    } else if (req.method === 'POST') {
+    }
+
+    // ========== إضافة قيد ==========
+    if (req.method === 'POST') {
       const { date, description, reference, lines } = req.body;
       if (!lines || !Array.isArray(lines) || lines.length === 0)
         return res.status(400).json({ error: 'يجب إضافة سطر مدين وسطر دائن على الأقل' });
@@ -64,32 +65,22 @@ module.exports = async (req, res) => {
         totalDebit += parseFloat(line.debit) || 0;
         totalCredit += parseFloat(line.credit) || 0;
         if (!line.account_id) return res.status(400).json({ error: 'يجب اختيار حساب لكل سطر' });
-
-        if (line.item_id) {
-          const qtyChange = parseFloat(line.quantity_change) || 0;
-          if (qtyChange < 0) {
-            const { data: item } = await supabase
-              .from('items')
-              .select('quantity, name')
-              .eq('id', line.item_id)
-              .eq('user_id', userId)
-              .single();
-            if (!item) return res.status(400).json({ error: 'المادة غير موجودة' });
-            if (item.quantity + qtyChange < 0) {
-              return res.status(400).json({ error: `المخزون غير كافٍ للمادة "${item.name}". المتاح: ${item.quantity}` });
-            }
-          }
+        if (line.item_id && parseFloat(line.quantity_change) < 0) {
+          const { data: item } = await supabase
+            .from('items').select('quantity, name')
+            .eq('id', line.item_id).eq('user_id', userId).single();
+          if (!item) return res.status(400).json({ error: 'المادة غير موجودة' });
+          if (item.quantity + parseFloat(line.quantity_change) < 0)
+            return res.status(400).json({ error: `المخزون غير كافٍ للمادة "${item.name}". المتاح: ${item.quantity}` });
         }
       }
-      if (Math.abs(totalDebit - totalCredit) > 0.001) {
-        return res.status(400).json({ error: 'مجموع المبالغ المدينة يجب أن يساوي مجموع المبالغ الدائنة' });
-      }
+      if (Math.abs(totalDebit - totalCredit) > 0.001)
+        return res.status(400).json({ error: 'المبلغ المدين يجب أن يساوي المبلغ الدائن' });
 
       const { data: entry, error: entryError } = await supabase
         .from('journal_entries')
         .insert({ user_id: userId, date, description, reference })
-        .select()
-        .single();
+        .select().single();
       if (entryError) throw entryError;
 
       const linesToInsert = lines.map(l => ({
@@ -102,79 +93,82 @@ module.exports = async (req, res) => {
         customer_id: l.customer_id || null,
         supplier_id: l.supplier_id || null
       }));
-      const { error: linesError } = await supabase.from('journal_lines').insert(linesToInsert);
-      if (linesError) throw linesError;
+      await supabase.from('journal_lines').insert(linesToInsert);
 
-      // تحديث المخزون
+      // تحديث المخزون والعملاء والموردين (نفس المنطق السابق)
       for (const line of lines) {
         if (line.item_id && parseFloat(line.quantity_change) !== 0) {
           const qtyChange = parseFloat(line.quantity_change);
-          const { data: currentItem } = await supabase
-            .from('items')
-            .select('quantity')
-            .eq('id', line.item_id)
-            .eq('user_id', userId)
-            .single();
-          if (currentItem) {
-            const newQty = parseFloat(currentItem.quantity) + qtyChange;
-            await supabase
-              .from('items')
-              .update({ quantity: newQty })
-              .eq('id', line.item_id)
-              .eq('user_id', userId);
+          const { data: cur } = await supabase.from('items').select('quantity').eq('id', line.item_id).eq('user_id', userId).single();
+          if (cur) {
+            await supabase.from('items').update({ quantity: parseFloat(cur.quantity) + qtyChange }).eq('id', line.item_id).eq('user_id', userId);
           }
         }
-      }
-
-      // تحديث أرصدة العملاء
-      for (const line of lines) {
         if (line.customer_id) {
-          const custId = line.customer_id;
-          const { data: cust } = await supabase
-            .from('customers')
-            .select('balance')
-            .eq('id', custId)
-            .eq('user_id', userId)
-            .single();
+          const { data: cust } = await supabase.from('customers').select('balance').eq('id', line.customer_id).eq('user_id', userId).single();
           if (cust) {
             const change = (parseFloat(line.debit) || 0) - (parseFloat(line.credit) || 0);
-            const newBalance = parseFloat(cust.balance) + change;
-            await supabase
-              .from('customers')
-              .update({ balance: newBalance })
-              .eq('id', custId)
-              .eq('user_id', userId);
+            await supabase.from('customers').update({ balance: parseFloat(cust.balance) + change }).eq('id', line.customer_id).eq('user_id', userId);
           }
         }
-      }
-
-      // تحديث أرصدة الموردين
-      for (const line of lines) {
         if (line.supplier_id) {
-          const supId = line.supplier_id;
-          const { data: sup } = await supabase
-            .from('suppliers')
-            .select('balance')
-            .eq('id', supId)
-            .eq('user_id', userId)
-            .single();
+          const { data: sup } = await supabase.from('suppliers').select('balance').eq('id', line.supplier_id).eq('user_id', userId).single();
           if (sup) {
-            // للمورد: الدائن يزيد الالتزام (الرصيد الدائن)، المدين يخفضه
             const change = (parseFloat(line.credit) || 0) - (parseFloat(line.debit) || 0);
-            const newBalance = parseFloat(sup.balance) + change;
-            await supabase
-              .from('suppliers')
-              .update({ balance: newBalance })
-              .eq('id', supId)
-              .eq('user_id', userId);
+            await supabase.from('suppliers').update({ balance: parseFloat(sup.balance) + change }).eq('id', line.supplier_id).eq('user_id', userId);
           }
         }
       }
 
       return res.json(entry);
-    } else {
-      return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // ========== حذف قيد ==========
+    if (req.method === 'DELETE') {
+      const entryId = req.query.id;
+      if (!entryId) return res.status(400).json({ error: 'معرف القيد مطلوب' });
+
+      // التحقق من ملكية القيد
+      const { data: entry, error: fetchError } = await supabase
+        .from('journal_entries').select('id').eq('id', entryId).eq('user_id', userId).single();
+      if (fetchError || !entry) return res.status(404).json({ error: 'القيد غير موجود' });
+
+      // إعادة تأثير المخزون والعملاء والموردين (عكس العملية)
+      const { data: lines } = await supabase
+        .from('journal_lines').select('*').eq('entry_id', entryId);
+      
+      if (lines) {
+        for (const line of lines) {
+          if (line.item_id && parseFloat(line.quantity_change) !== 0) {
+            const qtyChange = parseFloat(line.quantity_change);
+            const { data: cur } = await supabase.from('items').select('quantity').eq('id', line.item_id).eq('user_id', userId).single();
+            if (cur) {
+              await supabase.from('items').update({ quantity: parseFloat(cur.quantity) - qtyChange }).eq('id', line.item_id).eq('user_id', userId);
+            }
+          }
+          if (line.customer_id) {
+            const { data: cust } = await supabase.from('customers').select('balance').eq('id', line.customer_id).eq('user_id', userId).single();
+            if (cust) {
+              const change = (parseFloat(line.debit) || 0) - (parseFloat(line.credit) || 0);
+              await supabase.from('customers').update({ balance: parseFloat(cust.balance) - change }).eq('id', line.customer_id).eq('user_id', userId);
+            }
+          }
+          if (line.supplier_id) {
+            const { data: sup } = await supabase.from('suppliers').select('balance').eq('id', line.supplier_id).eq('user_id', userId).single();
+            if (sup) {
+              const change = (parseFloat(line.credit) || 0) - (parseFloat(line.debit) || 0);
+              await supabase.from('suppliers').update({ balance: parseFloat(sup.balance) - change }).eq('id', line.supplier_id).eq('user_id', userId);
+            }
+          }
+        }
+      }
+
+      await supabase.from('journal_lines').delete().eq('entry_id', entryId);
+      await supabase.from('journal_entries').delete().eq('id', entryId).eq('user_id', userId);
+      return res.json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
     res.status(500).json({ error: err.message });

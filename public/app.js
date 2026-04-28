@@ -64,7 +64,7 @@ async function loadDashboard() {
   }
 }
 
-// ==================== عرض القيود ====================
+// ==================== عرض القيود (مع زر الحذف) ====================
 async function loadJournal() {
   try {
     const entries = await apiCall('/entries', 'GET');
@@ -84,7 +84,11 @@ async function loadJournal() {
           if (line.supplier) detail += ` | المورد: ${line.supplier.name}`;
           html += detail + '<br>';
         });
-        html += `</div></div>`;
+        html += `</div>
+          <div class="card-actions">
+            <button class="btn-danger" onclick="deleteEntry(${e.id})">🗑️ حذف القيد</button>
+          </div>
+        </div>`;
       });
     }
     document.getElementById('tab-content').innerHTML = html;
@@ -117,6 +121,10 @@ async function loadCustomers() {
           <strong>${c.name}</strong>
           <span style="float:left; font-weight:bold; color:${c.balance >= 0 ? 'green' : 'red'};">الرصيد: ${c.balance}</span>
           <br>📞 ${c.phone || '-'} | 🏠 ${c.address || '-'}
+          <div class="card-actions">
+            <button class="btn-secondary" onclick="editCustomer({id:${c.id}, name:'${c.name}', phone:'${c.phone || ''}', address:'${c.address || ''}'})">✏️ تعديل</button>
+            <button class="btn-danger" onclick="deleteCustomer(${c.id})">🗑️ حذف</button>
+          </div>
         </div>
       `).join('');
     }
@@ -148,7 +156,6 @@ function attachCustomersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
-
 // ==================== الموردين ====================
 let suppliersCache = [];
 async function loadSuppliers() {
@@ -174,6 +181,10 @@ async function loadSuppliers() {
           <strong>${s.name}</strong>
           <span style="float:left; font-weight:bold; color:${s.balance <= 0 ? 'green' : 'red'};">الرصيد: ${s.balance}</span>
           <br>📞 ${s.phone || '-'} | 🏠 ${s.address || '-'}
+          <div class="card-actions">
+            <button class="btn-secondary" onclick="editSupplier({id:${s.id}, name:'${s.name}', phone:'${s.phone || ''}', address:'${s.address || ''}'})">✏️ تعديل</button>
+            <button class="btn-danger" onclick="deleteSupplier(${s.id})">🗑️ حذف</button>
+          </div>
         </div>
       `).join('');
     }
@@ -252,6 +263,10 @@ async function loadItems() {
           <br>
           📂 ${item.category ? item.category.name : 'بدون تصنيف'} |
           🛒 شراء: ${item.purchase_price} | 💰 بيع: ${item.selling_price} | 📦 الكمية: ${item.quantity}
+          <div class="card-actions">
+            <button class="btn-secondary" onclick="editItem({id:${item.id}, name:'${item.name}', category_id:${item.category_id || null}, item_type:'${item.item_type}', purchase_price:${item.purchase_price}, selling_price:${item.selling_price}, quantity:${item.quantity}})">✏️ تعديل</button>
+            <button class="btn-danger" onclick="deleteItem(${item.id})">🗑️ حذف</button>
+          </div>
         </div>
       `).join('');
     }
@@ -689,14 +704,19 @@ async function loadInvoices() {
     if (invoices.length === 0) {
       html += '<div class="card">لا توجد فواتير</div>';
     } else {
-      html += invoices.map(inv => `
+      html += invoices.map(inv => {
+        const invData = JSON.stringify(inv).replace(/"/g, '&quot;');
+        return `
         <div class="card">
           <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
           ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
           الإجمالي: ${inv.total}
           <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || ''} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
+          <div class="card-actions">
+            <button class="btn-primary" onclick='printInvoice(${invData})'>🖨️ طباعة / PDF</button>
+          </div>
         </div>
-      `).join('');
+      `}).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
     attachInvoiceEvents();
@@ -822,6 +842,133 @@ function updateInvoiceRemoveButtons() {
     const btn = row.querySelector('.btn-remove-line');
     if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
   });
+}
+
+// طباعة الفاتورة
+function printInvoice(invoice) {
+  const w = window.open('', '_blank', 'width=700,height=600');
+  w.document.write(`
+    <html dir="rtl">
+    <head><title>فاتورة ${invoice.reference || ''}</title>
+    <style>
+      body { font-family: 'Tajawal', sans-serif; padding: 20px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+      th { background: #f0f0f0; }
+      @media print { button { display: none; } }
+    </style></head>
+    <body>
+      <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
+      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+      <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
+      <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+      ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+      </table>
+      <h3>الإجمالي: ${invoice.total}</h3>
+      <p>${invoice.notes || ''}</p>
+      <button onclick="window.print()">🖨️ طباعة</button>
+    </body></html>
+  `);
+}
+
+// ==================== مربع حوار تأكيدي ====================
+function confirmDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <p>${message}</p>
+        <div class="modal-actions">
+          <button class="btn-danger" id="modal-confirm">نعم، احذف</button>
+          <button class="btn-secondary" id="modal-cancel">إلغاء</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
+    document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
+  });
+}
+
+// ==================== دوال الحذف والتعديل العامة ====================
+async function deleteEntry(entryId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا القيد؟ سيتم عكس تأثيره على المخزون والأرصدة.')) return;
+  try {
+    await apiCall(`/entries?id=${entryId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadJournal();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteItem(itemId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟')) return;
+  try {
+    await apiCall(`/items?id=${itemId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadItems();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function editItem(item) {
+  const newName = prompt('اسم المادة:', item.name);
+  if (!newName) return;
+  const payload = {
+    id: item.id,
+    name: newName,
+    category_id: item.category_id,
+    item_type: item.item_type,
+    purchase_price: item.purchase_price,
+    selling_price: item.selling_price,
+    quantity: item.quantity
+  };
+  try {
+    await apiCall('/items', 'PUT', payload);
+    alert('تم التعديل');
+    loadItems();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteCustomer(custId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا العميل؟')) return;
+  try {
+    await apiCall(`/customers?id=${custId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadCustomers();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function editCustomer(cust) {
+  const newName = prompt('اسم العميل:', cust.name);
+  if (!newName) return;
+  const newPhone = prompt('الهاتف:', cust.phone || '');
+  const newAddr = prompt('العنوان:', cust.address || '');
+  try {
+    await apiCall('/customers', 'PUT', { id: cust.id, name: newName, phone: newPhone, address: newAddr });
+    alert('تم التعديل');
+    loadCustomers();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteSupplier(supId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا المورد؟')) return;
+  try {
+    await apiCall(`/suppliers?id=${supId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadSuppliers();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function editSupplier(sup) {
+  const newName = prompt('اسم المورد:', sup.name);
+  if (!newName) return;
+  const newPhone = prompt('الهاتف:', sup.phone || '');
+  const newAddr = prompt('العنوان:', sup.address || '');
+  try {
+    await apiCall('/suppliers', 'PUT', { id: sup.id, name: newName, phone: newPhone, address: newAddr });
+    alert('تم التعديل');
+    loadSuppliers();
+  } catch (e) { alert('خطأ: ' + e.message); }
 }
 
 // ==================== توجيه التبويبات ====================

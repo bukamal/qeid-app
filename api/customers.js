@@ -1,14 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -39,7 +36,7 @@ module.exports = async (req, res) => {
 
   try {
     let initData;
-    if (req.method === 'GET') {
+    if (req.method === 'GET' || req.method === 'DELETE') {
       initData = req.query.initData;
     } else {
       initData = req.body?.initData;
@@ -47,49 +44,49 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      // جلب العملاء مع رصيدهم الفعلي (مجموع حركاتهم)
       const { data: customers, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('user_id', userId)
-        .order('name');
-
+        .from('customers').select('*').eq('user_id', userId).order('name');
       if (error) throw error;
 
-      // لكل عميل، نحسب رصيده من journal_lines المرتبطة به
       for (let cust of customers) {
         const { data: lines } = await supabase
-          .from('journal_lines')
-          .select('debit, credit')
-          .eq('customer_id', cust.id);
-
-        const totalDebit = lines?.reduce((sum, l) => sum + parseFloat(l.debit), 0) || 0;
-        const totalCredit = lines?.reduce((sum, l) => sum + parseFloat(l.credit), 0) || 0;
-        cust.balance = totalDebit - totalCredit; // مدين يزيد الرصيد، دائن ينقص
+          .from('journal_lines').select('debit, credit').eq('customer_id', cust.id);
+        const totalDebit = lines?.reduce((s, l) => s + parseFloat(l.debit), 0) || 0;
+        const totalCredit = lines?.reduce((s, l) => s + parseFloat(l.credit), 0) || 0;
+        cust.balance = totalDebit - totalCredit;
       }
-
       return res.json(customers);
-    } else if (req.method === 'POST') {
+    }
+
+    if (req.method === 'POST') {
       const { name, phone, address } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم العميل مطلوب' });
-
       const { data, error } = await supabase
-        .from('customers')
-        .insert({
-          user_id: userId,
-          name,
-          phone: phone || null,
-          address: address || null,
-          balance: 0
-        })
-        .select()
-        .single();
-
+        .from('customers').insert({ user_id: userId, name, phone: phone || null, address: address || null, balance: 0 })
+        .select().single();
       if (error) throw error;
       return res.json(data);
-    } else {
-      return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    if (req.method === 'PUT') {
+      const { id, name, phone, address } = req.body;
+      if (!id) return res.status(400).json({ error: 'معرف العميل مطلوب' });
+      const { data, error } = await supabase
+        .from('customers').update({ name, phone, address }).eq('id', id).eq('user_id', userId).select().single();
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'DELETE') {
+      const customerId = req.query.id;
+      if (!customerId) return res.status(400).json({ error: 'معرف العميل مطلوب' });
+      const { error } = await supabase
+        .from('customers').delete().eq('id', customerId).eq('user_id', userId);
+      if (error) throw error;
+      return res.json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
     res.status(500).json({ error: err.message });
