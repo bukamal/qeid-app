@@ -4,6 +4,7 @@
   --text: #111827;
   --primary: #2563eb;
   --secondary: #f3f4f6;
+  --danger: #ef4444;
 }
 body.dark {
   --bg: #1a1a2e;
@@ -12,13 +13,18 @@ body.dark {
   --primary: #3b82f6;
   --secondary: #0f3460;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 body {
   font-family: 'Tajawal', sans-serif;
   background: var(--bg);
   color: var(--text);
   direction: rtl;
   padding: 10px;
+  font-size: 16px;
 }
 header {
   background: var(--card-bg);
@@ -29,7 +35,10 @@ header {
   align-items: center;
   margin-bottom: 15px;
 }
-h1 { font-size: 1.8rem; color: var(--primary); }
+h1 {
+  font-size: 1.8rem;
+  color: var(--primary);
+}
 nav {
   display: flex;
   gap: 5px;
@@ -46,15 +55,24 @@ nav {
   cursor: pointer;
   color: var(--text);
   text-align: center;
+  transition: background 0.2s;
 }
-.tab.active { background: var(--primary); color: white; }
+.tab.active {
+  background: var(--primary);
+  color: white;
+}
 .card {
   background: var(--card-bg);
   border-radius: 12px;
   padding: 15px;
   margin-bottom: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
-#loading { text-align: center; padding: 30px; }
+#loading {
+  text-align: center;
+  padding: 30px;
+}
+/* أزرار */
 .btn-primary {
   background: var(--primary);
   color: white;
@@ -65,7 +83,9 @@ nav {
   font-size: 1rem;
   margin: 5px 0;
   width: 100%;
+  transition: opacity 0.2s;
 }
+.btn-primary:active { opacity: 0.8; }
 .btn-secondary {
   background: var(--secondary);
   color: var(--text);
@@ -75,7 +95,11 @@ nav {
   cursor: pointer;
   font-size: 1rem;
   margin: 5px 0;
+  width: 100%;
+  transition: opacity 0.2s;
 }
+.btn-secondary:active { opacity: 0.8; }
+/* حقول الإدخال */
 .input-field {
   width: 100%;
   padding: 10px;
@@ -85,7 +109,13 @@ nav {
   background: var(--bg);
   color: var(--text);
   font-family: inherit;
+  font-size: 0.95rem;
 }
+textarea.input-field {
+  resize: vertical;
+  min-height: 60px;
+}
+/* صفوف النموذج */
 .line-row {
   display: flex;
   gap: 5px;
@@ -97,35 +127,39 @@ nav {
   flex: 1 1 80px;
 }
 .debit-input, .credit-input { max-width: 90px; }
-.qty-input { max-width: 80px; }
+.qty-input, .price-input, .total-input { max-width: 90px; }
 .item-select, .customer-select, .supplier-select { min-width: 100px; }
 .btn-remove-line {
-  background: #ef4444;
+  background: var(--danger);
   color: white;
   border: none;
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
 }
-
-/* تنسيقات التقارير */
+/* بطاقات التقارير */
 .report-link {
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 500;
   transition: background 0.2s;
 }
-.report-link:hover { background: var(--secondary); }
+.report-link:hover {
+  background: var(--secondary);
+}
+/* جداول التقارير */
 .report-table {
   width: 100%;
   border-collapse: collapse;
   margin: 10px 0;
   font-size: 0.9rem;
 }
-.report-table th, .report-table td {
+.report-table th,
+.report-table td {
   padding: 8px;
   border: 1px solid var(--secondary);
   text-align: right;
 }
 .report-table th {
   background: var(--secondary);
+  font-weight: 600;
 }
