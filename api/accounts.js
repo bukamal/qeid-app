@@ -48,45 +48,22 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const { data, error } = await supabase
-        .from('journal_entries')
-        .select('*, journal_lines(*, account:accounts(name))')
+        .from('accounts')
+        .select('*')
         .eq('user_id', userId)
-        .order('date', { ascending: false });
+        .order('name');
       if (error) throw error;
       return res.json(data);
     } else if (req.method === 'POST') {
-      const { date, description, reference, lines } = req.body;
-      if (!lines || !Array.isArray(lines) || lines.length === 0)
-        return res.status(400).json({ error: 'يجب إضافة سطر مدين وسطر دائن على الأقل' });
-
-      // حساب مجموع المبالغ المدينة والدائنة للتأكد من التوازن
-      let totalDebit = 0, totalCredit = 0;
-      for (const line of lines) {
-        totalDebit += parseFloat(line.debit) || 0;
-        totalCredit += parseFloat(line.credit) || 0;
-        if (!line.account_id) return res.status(400).json({ error: 'يجب اختيار حساب لكل سطر' });
-      }
-      if (Math.abs(totalDebit - totalCredit) > 0.001) {
-        return res.status(400).json({ error: 'مجموع المبالغ المدينة يجب أن يساوي مجموع المبالغ الدائنة' });
-      }
-
-      const { data: entry, error: entryError } = await supabase
-        .from('journal_entries')
-        .insert({ user_id: userId, date, description, reference })
+      const { name, type } = req.body;
+      if (!name) return res.status(400).json({ error: 'اسم الحساب مطلوب' });
+      const { data, error } = await supabase
+        .from('accounts')
+        .insert({ user_id: userId, name, type: type || 'expense', balance: 0 })
         .select()
         .single();
-      if (entryError) throw entryError;
-
-      const linesWithEntry = lines.map(l => ({
-        entry_id: entry.id,
-        account_id: l.account_id,
-        debit: parseFloat(l.debit) || 0,
-        credit: parseFloat(l.credit) || 0
-      }));
-      const { error: linesError } = await supabase.from('journal_lines').insert(linesWithEntry);
-      if (linesError) throw linesError;
-
-      return res.json(entry);
+      if (error) throw error;
+      return res.json(data);
     } else {
       return res.status(405).json({ error: 'Method not allowed' });
     }

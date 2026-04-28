@@ -6,7 +6,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// إعداد CORS
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -40,13 +39,42 @@ module.exports = async (req, res) => {
     const params = new URLSearchParams(initData);
     const user = JSON.parse(params.get('user'));
 
-    const { error } = await supabase
+    // تسجيل/تحديث المستخدم
+    const { error: userError } = await supabase
       .from('users')
       .upsert({ id: user.id, first_name: user.first_name, username: user.username }, { onConflict: 'id' });
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + error.message });
+    if (userError) {
+      console.error('Supabase user error:', userError);
+      return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + userError.message });
+    }
+
+    // إنشاء الحسابات الافتراضية إذا لم تكن موجودة
+    const defaultAccounts = [
+      { name: 'الصندوق', type: 'asset' },
+      { name: 'المبيعات', type: 'income' },
+      { name: 'المشتريات', type: 'expense' },
+      { name: 'المخزون', type: 'asset' },
+      { name: 'مصاريف عامة', type: 'expense' },
+      { name: 'رأس المال', type: 'equity' }
+    ];
+
+    for (const acc of defaultAccounts) {
+      const { data: existing } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', acc.name)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from('accounts').insert({
+          user_id: user.id,
+          name: acc.name,
+          type: acc.type,
+          balance: 0
+        });
+      }
     }
 
     res.json({ verified: true, user_id: user.id });

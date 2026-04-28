@@ -49,16 +49,14 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   }
 }
 
-// عرض لوحة التحكم
+// لوحة التحكم
 async function loadDashboard() {
   try {
     const entries = await apiCall('/entries', 'GET');
     const items = await apiCall('/items', 'GET');
-    const count = entries.length;
-    const itemsCount = items.length;
     document.getElementById('tab-content').innerHTML = `
-      <div class="card">📊 عدد القيود: ${count}</div>
-      <div class="card">📦 عدد المواد: ${itemsCount}</div>
+      <div class="card">📊 عدد القيود: ${entries.length}</div>
+      <div class="card">📦 عدد المواد: ${items.length}</div>
     `;
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
@@ -69,19 +67,134 @@ async function loadDashboard() {
 async function loadJournal() {
   try {
     const entries = await apiCall('/entries', 'GET');
-    const html = entries.map(e => `
-      <div class="card">
-        <strong>${e.reference || 'بدون رقم'}</strong> – ${e.date}<br>
-        ${e.description || ''}
-      </div>
-    `).join('');
-    document.getElementById('tab-content').innerHTML = html || '<div class="card">لا توجد قيود</div>';
+    let html = '';
+    if (entries.length === 0) {
+      html = '<div class="card">لا توجد قيود</div>';
+    } else {
+      entries.forEach(e => {
+        html += `<div class="card">
+          <strong>${e.reference || 'بدون رقم'}</strong> – ${e.date}<br>
+          ${e.description || ''}
+          <div style="font-size:0.9em; margin-top:5px;">`;
+        e.journal_lines.forEach(line => {
+          html += `${line.account?.name || 'حساب ' + line.account_id}: ${line.debit > 0 ? 'مدين ' + line.debit : 'دائن ' + line.credit}<br>`;
+        });
+        html += `</div></div>`;
+      });
+    }
+    document.getElementById('tab-content').innerHTML = html;
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
 
-// --- قسم المواد ---
+// --- نموذج إضافة قيد ---
+let accountsCache = [];
+
+async function loadAddEntryForm() {
+  try {
+    const accounts = await apiCall('/accounts', 'GET');
+    accountsCache = accounts;
+    let accountOptions = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+
+    const html = `
+      <div class="card">
+        <h3>إضافة قيد جديد</h3>
+        <input id="entry-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
+        <input id="entry-ref" placeholder="الرقم المرجعي (اختياري)" class="input-field" />
+        <input id="entry-desc" placeholder="الوصف" class="input-field" />
+        <div id="lines-container">
+          <div class="line-row" data-index="0">
+            <select class="input-field account-select">${accountOptions}</select>
+            <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
+            <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
+            <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
+          </div>
+        </div>
+        <button id="btn-add-line" class="btn-secondary">+ إضافة سطر</button>
+        <button id="btn-save-entry" class="btn-primary">حفظ القيد</button>
+      </div>
+    `;
+    document.getElementById('tab-content').innerHTML = html;
+    attachEntryEvents();
+    updateRemoveButtons();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
+let lineIndex = 1;
+
+function attachEntryEvents() {
+  document.getElementById('btn-add-line')?.addEventListener('click', () => {
+    const container = document.getElementById('lines-container');
+    const accountOptions = accountsCache.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    const newLine = document.createElement('div');
+    newLine.className = 'line-row';
+    newLine.dataset.index = lineIndex++;
+    newLine.innerHTML = `
+      <select class="input-field account-select">${accountOptions}</select>
+      <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
+      <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
+      <button class="btn-remove-line btn-secondary">✕</button>
+    `;
+    container.appendChild(newLine);
+    updateRemoveButtons();
+  });
+
+  document.getElementById('lines-container')?.addEventListener('click', (e) => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const lineRow = e.target.closest('.line-row');
+      if (document.querySelectorAll('.line-row').length > 1) {
+        lineRow.remove();
+        updateRemoveButtons();
+      }
+    }
+  });
+
+  document.getElementById('btn-save-entry')?.addEventListener('click', async () => {
+    const date = document.getElementById('entry-date').value;
+    const reference = document.getElementById('entry-ref').value.trim();
+    const description = document.getElementById('entry-desc').value.trim();
+    if (!date || !description) return alert('التاريخ والوصف مطلوبان');
+
+    const lines = [];
+    let totalDebit = 0, totalCredit = 0;
+    document.querySelectorAll('.line-row').forEach(row => {
+      const accountId = row.querySelector('.account-select').value;
+      const debit = parseFloat(row.querySelector('.debit-input').value) || 0;
+      const credit = parseFloat(row.querySelector('.credit-input').value) || 0;
+      if (!accountId || (debit === 0 && credit === 0)) return;
+      lines.push({ account_id: accountId, debit, credit });
+      totalDebit += debit;
+      totalCredit += credit;
+    });
+
+    if (lines.length < 2) return alert('أضف سطرين على الأقل');
+    if (Math.abs(totalDebit - totalCredit) > 0.01) return alert('المبلغ المدين يجب أن يساوي المبلغ الدائن');
+
+    try {
+      await apiCall('/entries', 'POST', { date, description, reference, lines });
+      alert('تم حفظ القيد بنجاح');
+      // إعادة تحميل قائمة القيود
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector('.tab[data-tab="journal"]').classList.add('active');
+      loadJournal();
+    } catch (err) {
+      alert('خطأ: ' + err.message);
+    }
+  });
+}
+
+function updateRemoveButtons() {
+  const rows = document.querySelectorAll('.line-row');
+  rows.forEach(row => {
+    const btn = row.querySelector('.btn-remove-line');
+    if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
+  });
+}
+
+// المواد (نفس السابق)
 async function loadItems() {
   try {
     const [items, categories] = await Promise.all([
@@ -93,10 +206,6 @@ async function loadItems() {
         <h2>المواد</h2>
         <button id="btn-add-item" class="btn-primary">+ إضافة مادة</button>
       </div>
-    `;
-
-    // نموذج إضافة مادة (مخفي افتراضياً)
-    html += `
       <div id="item-form" class="card" style="display:none;">
         <h3>إضافة مادة جديدة</h3>
         <input id="item-name" placeholder="اسم المادة" class="input-field" />
@@ -120,8 +229,6 @@ async function loadItems() {
         <button id="btn-cancel-item" class="btn-secondary">إلغاء</button>
       </div>
     `;
-
-    // قائمة المواد
     if (items.length === 0) {
       html += '<div class="card">لا توجد مواد مضافة بعد</div>';
     } else {
@@ -135,7 +242,6 @@ async function loadItems() {
         </div>
       `).join('');
     }
-
     document.getElementById('tab-content').innerHTML = html;
     attachItemsEvents();
   } catch (err) {
@@ -155,7 +261,6 @@ function attachItemsEvents() {
     if (!name) return alert('أدخل اسم التصنيف');
     try {
       const newCat = await apiCall('/categories', 'POST', { name });
-      // تحديث قائمة التصنيفات في النموذج
       const select = document.getElementById('item-category');
       const opt = document.createElement('option');
       opt.value = newCat.id;
@@ -181,7 +286,7 @@ function attachItemsEvents() {
     try {
       await apiCall('/items', 'POST', payload);
       document.getElementById('item-form').style.display = 'none';
-      loadItems(); // إعادة تحميل القائمة
+      loadItems();
     } catch (err) {
       alert('خطأ: ' + err.message);
     }
@@ -196,6 +301,7 @@ document.addEventListener('click', (e) => {
     const tab = e.target.dataset.tab;
     if (tab === 'dashboard') loadDashboard();
     else if (tab === 'journal') loadJournal();
+    else if (tab === 'add-entry') loadAddEntryForm();
     else if (tab === 'items') loadItems();
   }
 });
@@ -208,7 +314,7 @@ async function verifyUser() {
       document.getElementById('user-name').textContent = user.first_name;
       document.getElementById('loading').style.display = 'none';
       document.getElementById('main').style.display = 'block';
-      loadDashboard(); // التحميل الافتراضي
+      loadDashboard();
     } else {
       throw new Error('فشل التحقق من الهوية');
     }
