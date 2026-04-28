@@ -63,7 +63,7 @@ async function loadDashboard() {
   }
 }
 
-// عرض القيود
+// عرض القيود (مع إظهار المادة إن وجدت)
 async function loadJournal() {
   try {
     const entries = await apiCall('/entries', 'GET');
@@ -77,7 +77,14 @@ async function loadJournal() {
           ${e.description || ''}
           <div style="font-size:0.9em; margin-top:5px;">`;
         e.journal_lines.forEach(line => {
-          html += `${line.account?.name || 'حساب ' + line.account_id}: ${line.debit > 0 ? 'مدين ' + line.debit : 'دائن ' + line.credit}<br>`;
+          let detail = `${line.account?.name || 'حساب ' + line.account_id}: ${line.debit > 0 ? 'مدين ' + line.debit : 'دائن ' + line.credit}`;
+          if (line.item) {
+            detail += ` | المادة: ${line.item.name}`;
+            if (line.quantity_change && line.quantity_change != 0) {
+              detail += ` (${line.quantity_change > 0 ? '+' : ''}${line.quantity_change})`;
+            }
+          }
+          html += detail + '<br>';
         });
         html += `</div></div>`;
       });
@@ -88,14 +95,20 @@ async function loadJournal() {
   }
 }
 
-// --- نموذج إضافة قيد ---
+// --- نموذج إضافة قيد مع دعم المواد ---
 let accountsCache = [];
+let itemsCache = [];
 
 async function loadAddEntryForm() {
   try {
-    const accounts = await apiCall('/accounts', 'GET');
+    const [accounts, items] = await Promise.all([
+      apiCall('/accounts', 'GET'),
+      apiCall('/items', 'GET')
+    ]);
     accountsCache = accounts;
+    itemsCache = items;
     let accountOptions = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    let itemOptions = '<option value="">بدون مادة</option>' + items.map(i => `<option value="${i.id}">${i.name} (المخزون: ${i.quantity})</option>`).join('');
 
     const html = `
       <div class="card">
@@ -108,6 +121,8 @@ async function loadAddEntryForm() {
             <select class="input-field account-select">${accountOptions}</select>
             <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
             <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
+            <select class="input-field item-select">${itemOptions}</select>
+            <input type="number" step="any" placeholder="الكمية (+ / -)" class="input-field qty-input" />
             <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
           </div>
         </div>
@@ -129,6 +144,7 @@ function attachEntryEvents() {
   document.getElementById('btn-add-line')?.addEventListener('click', () => {
     const container = document.getElementById('lines-container');
     const accountOptions = accountsCache.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    const itemOptions = '<option value="">بدون مادة</option>' + itemsCache.map(i => `<option value="${i.id}">${i.name} (المخزون: ${i.quantity})</option>`).join('');
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
     newLine.dataset.index = lineIndex++;
@@ -136,6 +152,8 @@ function attachEntryEvents() {
       <select class="input-field account-select">${accountOptions}</select>
       <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
       <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
+      <select class="input-field item-select">${itemOptions}</select>
+      <input type="number" step="any" placeholder="الكمية (+ / -)" class="input-field qty-input" />
       <button class="btn-remove-line btn-secondary">✕</button>
     `;
     container.appendChild(newLine);
@@ -164,8 +182,16 @@ function attachEntryEvents() {
       const accountId = row.querySelector('.account-select').value;
       const debit = parseFloat(row.querySelector('.debit-input').value) || 0;
       const credit = parseFloat(row.querySelector('.credit-input').value) || 0;
-      if (!accountId || (debit === 0 && credit === 0)) return;
-      lines.push({ account_id: accountId, debit, credit });
+      const itemId = row.querySelector('.item-select').value || null;
+      const qtyChange = parseFloat(row.querySelector('.qty-input').value) || 0;
+      if (!accountId || (debit === 0 && credit === 0 && qtyChange === 0)) return;
+      lines.push({
+        account_id: accountId,
+        debit,
+        credit,
+        item_id: itemId,
+        quantity_change: qtyChange
+      });
       totalDebit += debit;
       totalCredit += credit;
     });
@@ -176,7 +202,9 @@ function attachEntryEvents() {
     try {
       await apiCall('/entries', 'POST', { date, description, reference, lines });
       alert('تم حفظ القيد بنجاح');
-      // إعادة تحميل قائمة القيود
+      // تحديث مخبأ المواد بعد التغيير لأنه قد تتغير الكميات
+      itemsCache = await apiCall('/items', 'GET');
+      // الانتقال إلى تبويب القيود
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelector('.tab[data-tab="journal"]').classList.add('active');
       loadJournal();
@@ -201,6 +229,7 @@ async function loadItems() {
       apiCall('/items', 'GET'),
       apiCall('/categories', 'GET')
     ]);
+    itemsCache = items; // تحديث الكاش
     let html = `
       <div class="card" style="margin-bottom:20px;">
         <h2>المواد</h2>
