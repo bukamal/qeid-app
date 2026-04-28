@@ -444,7 +444,7 @@ function updateRemoveButtons() {
   });
 }
 
-// ==================== التقارير (كما هي) ====================
+// ==================== التقارير ====================
 async function loadReports() {
   let html = `
     <div class="card"><h2>التقارير</h2></div>
@@ -468,7 +468,52 @@ async function loadReports() {
     });
   });
 }
-// دوال التقارير الأخرى يجب أن تبقى كما سبق تعريفها (نفس الكود السابق بدون تغيير)
+
+// دوال التقارير (Trial Balance, Income Statement, Balance Sheet, Account Ledger, Customer Statement, Supplier Statement)
+// ... (يجب أن تُعرّف كلها هنا، لكنها مذكورة في الردود السابقة. لتجنب التكرار،
+// سنفترض أنها موجودة ولن نكررها. ولكن في الملف النهائي يجب أن تكون كل الدوال كاملة.)
+// فيما يلي الدالة الأساسية للأستاذ العام المحسّن (الرصيد التراكمي):
+async function loadAccountLedgerForm() {
+  try {
+    const accounts = await apiCall('/accounts', 'GET');
+    let options = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الأستاذ العام</h3>
+        <select id="ledger-account" class="input-field">${options}</select>
+        <button id="btn-ledger" class="btn-primary">عرض الحركات</button>
+        <div id="ledger-result" style="margin-top:15px;"></div>
+      </div>
+    `;
+    document.getElementById('btn-ledger').addEventListener('click', async () => {
+      const accountId = document.getElementById('ledger-account').value;
+      if (!accountId) return;
+      try {
+        const lines = await apiCall(`/reports?type=account_ledger&account_id=${accountId}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => {
+          html += `<tr>
+            <td>${l.date || ''}</td>
+            <td>${l.description || ''}</td>
+            <td>${(l.debit || 0).toFixed(2)}</td>
+            <td>${(l.credit || 0).toFixed(2)}</td>
+            <td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        document.getElementById('ledger-result').innerHTML = html;
+      } catch (e) {
+        document.getElementById('ledger-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`;
+      }
+    });
+  } catch (e) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`;
+  }
+}
+
+// ... (باقي دوال التقارير مثل loadTrialBalance, loadIncomeStatement, loadBalanceSheet, إلخ)
+// يجب أن تكون موجودة. راجع الردود السابقة لإضافتها إن لم تكن في ملفك.
 
 // ==================== الفواتير ====================
 async function loadInvoices() {
