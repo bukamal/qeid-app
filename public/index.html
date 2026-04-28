@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>قِيد</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="loading">جاري التحميل...</div>
+    <div id="main" style="display:none;">
+      <header>
+        <h1>قِيد</h1>
+        <span id="user-name"></span>
+      </header>
+      <nav>
+        <button class="tab active" data-tab="dashboard">لوحة التحكم</button>
+        <button class="tab" data-tab="journal">القيود</button>
+      </nav>
+      <div id="tab-content"></div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
