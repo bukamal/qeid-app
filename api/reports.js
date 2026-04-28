@@ -153,35 +153,90 @@ module.exports = async (req, res) => {
     else if (reportType === 'account_ledger') {
       const accountId = req.query.account_id;
       if (!accountId) return res.status(400).json({ error: 'account_id مطلوب' });
+
       const { data: lines, error } = await supabase
         .from('journal_lines')
         .select('id, debit, credit, entry:journal_entries(date, description, reference)')
         .eq('account_id', accountId)
-        .order('id', { ascending: false });
+        .order('id', { ascending: true });
+
       if (error) throw error;
-      return res.json(lines);
+
+      let runningBalance = 0;
+      const linesWithBalance = lines.map(line => {
+        const debit = parseFloat(line.debit) || 0;
+        const credit = parseFloat(line.credit) || 0;
+        runningBalance += (debit - credit);
+        return {
+          id: line.id,
+          date: line.entry?.date,
+          description: line.entry?.description,
+          reference: line.entry?.reference,
+          debit: debit,
+          credit: credit,
+          balance: runningBalance
+        };
+      });
+
+      return res.json(linesWithBalance);
     } 
     else if (reportType === 'customer_statement') {
       const customerId = req.query.customer_id;
       if (!customerId) return res.status(400).json({ error: 'customer_id مطلوب' });
+
       const { data: lines, error } = await supabase
         .from('journal_lines')
         .select('id, debit, credit, entry:journal_entries(date, description, reference)')
         .eq('customer_id', customerId)
-        .order('id', { ascending: false });
+        .order('id', { ascending: true });
+
       if (error) throw error;
-      return res.json(lines);
+
+      let runningBalance = 0;
+      const linesWithBalance = lines.map(line => {
+        const debit = parseFloat(line.debit) || 0;
+        const credit = parseFloat(line.credit) || 0;
+        runningBalance += (debit - credit);
+        return {
+          id: line.id,
+          date: line.entry?.date,
+          description: line.entry?.description,
+          debit: debit,
+          credit: credit,
+          balance: runningBalance
+        };
+      });
+
+      return res.json(linesWithBalance);
     } 
     else if (reportType === 'supplier_statement') {
       const supplierId = req.query.supplier_id;
       if (!supplierId) return res.status(400).json({ error: 'supplier_id مطلوب' });
+
       const { data: lines, error } = await supabase
         .from('journal_lines')
         .select('id, debit, credit, entry:journal_entries(date, description, reference)')
         .eq('supplier_id', supplierId)
-        .order('id', { ascending: false });
+        .order('id', { ascending: true });
+
       if (error) throw error;
-      return res.json(lines);
+
+      let runningBalance = 0;
+      const linesWithBalance = lines.map(line => {
+        const debit = parseFloat(line.debit) || 0;
+        const credit = parseFloat(line.credit) || 0;
+        runningBalance += (credit - debit);
+        return {
+          id: line.id,
+          date: line.entry?.date,
+          description: line.entry?.description,
+          debit: debit,
+          credit: credit,
+          balance: runningBalance
+        };
+      });
+
+      return res.json(linesWithBalance);
     } 
     else {
       return res.status(400).json({ error: 'نوع تقرير غير معروف' });
