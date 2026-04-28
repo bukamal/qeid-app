@@ -2,9 +2,7 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-if (tg.colorScheme === 'dark') {
-  document.body.classList.add('dark');
-}
+if (tg.colorScheme === 'dark') document.body.classList.add('dark');
 tg.onEvent('themeChanged', () => {
   document.body.classList.toggle('dark', tg.colorScheme === 'dark');
 });
@@ -18,7 +16,6 @@ function showLoading(msg) {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('main').style.display = 'none';
 }
-
 function showError(msg) {
   document.getElementById('loading').textContent = '❌ ' + msg;
   document.getElementById('loading').style.display = 'block';
@@ -29,10 +26,7 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
   if (method === 'GET') {
     url += '?initData=' + encodeURIComponent(initData);
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
     return json;
@@ -49,7 +43,7 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   }
 }
 
-// لوحة التحكم
+// ========== لوحة التحكم ==========
 async function loadDashboard() {
   try {
     const entries = await apiCall('/entries', 'GET');
@@ -67,7 +61,7 @@ async function loadDashboard() {
   }
 }
 
-// عرض القيود
+// ========== عرض القيود ==========
 async function loadJournal() {
   try {
     const entries = await apiCall('/entries', 'GET');
@@ -96,9 +90,8 @@ async function loadJournal() {
   }
 }
 
-// --- العملاء ---
+// ========== العملاء ==========
 let customersCache = [];
-
 async function loadCustomers() {
   try {
     const customers = await apiCall('/customers', 'GET');
@@ -134,7 +127,6 @@ async function loadCustomers() {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-
 function attachCustomersEvents() {
   document.getElementById('btn-add-customer')?.addEventListener('click', () => {
     document.getElementById('customer-form').style.display = 'block';
@@ -154,15 +146,12 @@ function attachCustomersEvents() {
       await apiCall('/customers', 'POST', payload);
       document.getElementById('customer-form').style.display = 'none';
       loadCustomers();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
+    } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
 
-// --- الموردين ---
+// ========== الموردين ==========
 let suppliersCache = [];
-
 async function loadSuppliers() {
   try {
     const suppliers = await apiCall('/suppliers', 'GET');
@@ -198,7 +187,6 @@ async function loadSuppliers() {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-
 function attachSuppliersEvents() {
   document.getElementById('btn-add-supplier')?.addEventListener('click', () => {
     document.getElementById('supplier-form').style.display = 'block';
@@ -218,16 +206,108 @@ function attachSuppliersEvents() {
       await apiCall('/suppliers', 'POST', payload);
       document.getElementById('supplier-form').style.display = 'none';
       loadSuppliers();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
+    } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
 
-// --- نموذج إضافة قيد مع الموردين ---
-let accountsCache = [];
+// ========== المواد ==========
 let itemsCache = [];
+async function loadItems() {
+  try {
+    const [items, categories] = await Promise.all([
+      apiCall('/items', 'GET'),
+      apiCall('/categories', 'GET')
+    ]);
+    itemsCache = items;
+    let html = `
+      <div class="card" style="margin-bottom:20px;">
+        <h2>المواد</h2>
+        <button id="btn-add-item" class="btn-primary">+ إضافة مادة</button>
+      </div>
+      <div id="item-form" class="card" style="display:none;">
+        <h3>إضافة مادة جديدة</h3>
+        <input id="item-name" placeholder="اسم المادة" class="input-field" />
+        <select id="item-category" class="input-field">
+          <option value="">بدون تصنيف</option>
+          ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+        <div style="display:flex; gap:8px; margin:5px 0;">
+          <input id="item-add-category" placeholder="تصنيف جديد" class="input-field" style="flex:2;" />
+          <button id="btn-add-category" class="btn-secondary" style="flex:1;">أضف تصنيف</button>
+        </div>
+        <select id="item-type" class="input-field">
+          <option value="مخزون">مخزون</option>
+          <option value="منتج نهائي">منتج نهائي</option>
+          <option value="خدمة">خدمة</option>
+        </select>
+        <input id="item-purchase" placeholder="سعر الشراء" type="number" step="0.01" class="input-field" />
+        <input id="item-selling" placeholder="سعر البيع" type="number" step="0.01" class="input-field" />
+        <input id="item-qty" placeholder="الكمية" type="number" step="any" class="input-field" />
+        <button id="btn-save-item" class="btn-primary">حفظ</button>
+        <button id="btn-cancel-item" class="btn-secondary">إلغاء</button>
+      </div>
+    `;
+    if (items.length === 0) {
+      html += '<div class="card">لا توجد مواد مضافة بعد</div>';
+    } else {
+      html += items.map(item => `
+        <div class="card item-row">
+          <strong>${item.name}</strong> 
+          <span style="float:left; font-size:0.9em;">${item.item_type || 'مخزون'}</span>
+          <br>
+          📂 ${item.category ? item.category.name : 'بدون تصنيف'} |
+          🛒 شراء: ${item.purchase_price} | 💰 بيع: ${item.selling_price} | 📦 الكمية: ${item.quantity}
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    attachItemsEvents();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+function attachItemsEvents() {
+  document.getElementById('btn-add-item')?.addEventListener('click', () => {
+    document.getElementById('item-form').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-item')?.addEventListener('click', () => {
+    document.getElementById('item-form').style.display = 'none';
+  });
+  document.getElementById('btn-add-category')?.addEventListener('click', async () => {
+    const name = document.getElementById('item-add-category').value.trim();
+    if (!name) return alert('أدخل اسم التصنيف');
+    try {
+      const newCat = await apiCall('/categories', 'POST', { name });
+      const select = document.getElementById('item-category');
+      const opt = document.createElement('option');
+      opt.value = newCat.id;
+      opt.textContent = newCat.name;
+      select.appendChild(opt);
+      select.value = newCat.id;
+      document.getElementById('item-add-category').value = '';
+    } catch (err) { alert('خطأ: ' + err.message); }
+  });
+  document.getElementById('btn-save-item')?.addEventListener('click', async () => {
+    const name = document.getElementById('item-name').value.trim();
+    if (!name) return alert('اسم المادة مطلوب');
+    const payload = {
+      name,
+      category_id: document.getElementById('item-category').value || null,
+      item_type: document.getElementById('item-type').value,
+      purchase_price: parseFloat(document.getElementById('item-purchase').value) || 0,
+      selling_price: parseFloat(document.getElementById('item-selling').value) || 0,
+      quantity: parseFloat(document.getElementById('item-qty').value) || 0
+    };
+    try {
+      await apiCall('/items', 'POST', payload);
+      document.getElementById('item-form').style.display = 'none';
+      loadItems();
+    } catch (err) { alert('خطأ: ' + err.message); }
+  });
+}
 
+// ========== نموذج إضافة قيد ==========
+let accountsCache = [];
 async function loadAddEntryForm() {
   try {
     const [accounts, items, customers, suppliers] = await Promise.all([
@@ -275,9 +355,7 @@ async function loadAddEntryForm() {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-
 let lineIndex = 1;
-
 function attachEntryEvents() {
   document.getElementById('btn-add-line')?.addEventListener('click', () => {
     const container = document.getElementById('lines-container');
@@ -350,7 +428,6 @@ function attachEntryEvents() {
     try {
       await apiCall('/entries', 'POST', { date, description, reference, lines });
       alert('تم حفظ القيد بنجاح');
-      // تحديث الذاكرة المؤقتة
       itemsCache = await apiCall('/items', 'GET');
       customersCache = await apiCall('/customers', 'GET');
       suppliersCache = await apiCall('/suppliers', 'GET');
@@ -362,7 +439,6 @@ function attachEntryEvents() {
     }
   });
 }
-
 function updateRemoveButtons() {
   const rows = document.querySelectorAll('.line-row');
   rows.forEach(row => {
@@ -371,107 +447,204 @@ function updateRemoveButtons() {
   });
 }
 
-// المواد (نفس السابق)
-async function loadItems() {
+// ========== التقارير ==========
+async function loadReports() {
+  let html = `
+    <div class="card"><h2>التقارير</h2></div>
+    <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
+    <div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div>
+    <div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div>
+    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام (حركة حساب)</div>
+    <div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div>
+    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>
+  `;
+  document.getElementById('tab-content').innerHTML = html;
+  document.querySelectorAll('.report-link').forEach(el => {
+    el.addEventListener('click', () => {
+      const report = el.dataset.report;
+      if (report === 'trial_balance') loadTrialBalance();
+      else if (report === 'income_statement') loadIncomeStatement();
+      else if (report === 'balance_sheet') loadBalanceSheet();
+      else if (report === 'account_ledger') loadAccountLedgerForm();
+      else if (report === 'customer_statement') loadCustomerStatementForm();
+      else if (report === 'supplier_statement') loadSupplierStatementForm();
+    });
+  });
+}
+
+async function loadTrialBalance() {
   try {
-    const [items, categories] = await Promise.all([
-      apiCall('/items', 'GET'),
-      apiCall('/categories', 'GET')
-    ]);
-    itemsCache = items;
-    let html = `
-      <div class="card" style="margin-bottom:20px;">
-        <h2>المواد</h2>
-        <button id="btn-add-item" class="btn-primary">+ إضافة مادة</button>
-      </div>
-      <div id="item-form" class="card" style="display:none;">
-        <h3>إضافة مادة جديدة</h3>
-        <input id="item-name" placeholder="اسم المادة" class="input-field" />
-        <select id="item-category" class="input-field">
-          <option value="">بدون تصنيف</option>
-          ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <div style="display:flex; gap:8px; margin:5px 0;">
-          <input id="item-add-category" placeholder="تصنيف جديد" class="input-field" style="flex:2;" />
-          <button id="btn-add-category" class="btn-secondary" style="flex:1;">أضف تصنيف</button>
-        </div>
-        <select id="item-type" class="input-field">
-          <option value="مخزون">مخزون</option>
-          <option value="منتج نهائي">منتج نهائي</option>
-          <option value="خدمة">خدمة</option>
-        </select>
-        <input id="item-purchase" placeholder="سعر الشراء" type="number" step="0.01" class="input-field" />
-        <input id="item-selling" placeholder="سعر البيع" type="number" step="0.01" class="input-field" />
-        <input id="item-qty" placeholder="الكمية" type="number" step="any" class="input-field" />
-        <button id="btn-save-item" class="btn-primary">حفظ</button>
-        <button id="btn-cancel-item" class="btn-secondary">إلغاء</button>
+    const data = await apiCall('/reports?type=trial_balance', 'GET');
+    let rows = data.map(r => `
+      <tr>
+        <td>${r.name}</td>
+        <td>${r.total_debit.toFixed(2)}</td>
+        <td>${r.total_credit.toFixed(2)}</td>
+        <td style="color:${r.balance >= 0 ? 'green' : 'red'}">${r.balance.toFixed(2)}</td>
+      </tr>
+    `).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>ميزان المراجعة</h3>
+        <table class="report-table">
+          <tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>
+          ${rows}
+        </table>
       </div>
     `;
-    if (items.length === 0) {
-      html += '<div class="card">لا توجد مواد مضافة بعد</div>';
-    } else {
-      html += items.map(item => `
-        <div class="card item-row">
-          <strong>${item.name}</strong> 
-          <span style="float:left; font-size:0.9em;">${item.item_type || 'مخزون'}</span>
-          <br>
-          📂 ${item.category ? item.category.name : 'بدون تصنيف'} |
-          🛒 شراء: ${item.purchase_price} | 💰 بيع: ${item.selling_price} | 📦 الكمية: ${item.quantity}
-        </div>
-      `).join('');
-    }
-    document.getElementById('tab-content').innerHTML = html;
-    attachItemsEvents();
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-function attachItemsEvents() {
-  document.getElementById('btn-add-item')?.addEventListener('click', () => {
-    document.getElementById('item-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-item')?.addEventListener('click', () => {
-    document.getElementById('item-form').style.display = 'none';
-  });
-  document.getElementById('btn-add-category')?.addEventListener('click', async () => {
-    const name = document.getElementById('item-add-category').value.trim();
-    if (!name) return alert('أدخل اسم التصنيف');
-    try {
-      const newCat = await apiCall('/categories', 'POST', { name });
-      const select = document.getElementById('item-category');
-      const opt = document.createElement('option');
-      opt.value = newCat.id;
-      opt.textContent = newCat.name;
-      select.appendChild(opt);
-      select.value = newCat.id;
-      document.getElementById('item-add-category').value = '';
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
-  });
-  document.getElementById('btn-save-item')?.addEventListener('click', async () => {
-    const name = document.getElementById('item-name').value.trim();
-    if (!name) return alert('اسم المادة مطلوب');
-    const payload = {
-      name,
-      category_id: document.getElementById('item-category').value || null,
-      item_type: document.getElementById('item-type').value,
-      purchase_price: parseFloat(document.getElementById('item-purchase').value) || 0,
-      selling_price: parseFloat(document.getElementById('item-selling').value) || 0,
-      quantity: parseFloat(document.getElementById('item-qty').value) || 0
-    };
-    try {
-      await apiCall('/items', 'POST', payload);
-      document.getElementById('item-form').style.display = 'none';
-      loadItems();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
-  });
+async function loadIncomeStatement() {
+  try {
+    const data = await apiCall('/reports?type=income_statement', 'GET');
+    let incomeRows = data.income.map(i => `<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td></tr>`).join('');
+    let expenseRows = data.expenses.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>قائمة الدخل</h3>
+        <h4>الإيرادات</h4>
+        <table class="report-table">${incomeRows}</table>
+        <strong>إجمالي الإيرادات: ${data.total_income.toFixed(2)}</strong>
+        <h4>المصروفات</h4>
+        <table class="report-table">${expenseRows}</table>
+        <strong>إجمالي المصروفات: ${data.total_expenses.toFixed(2)}</strong>
+        <hr>
+        <h2>صافي الربح: ${data.net_profit.toFixed(2)}</h2>
+      </div>
+    `;
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// توجيه التبويبات
+async function loadBalanceSheet() {
+  try {
+    const data = await apiCall('/reports?type=balance_sheet', 'GET');
+    let assetRows = data.assets.map(a => `<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td></tr>`).join('');
+    let liabRows = data.liabilities.map(l => `<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td></tr>`).join('');
+    let equityRows = data.equity.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الميزانية العمومية</h3>
+        <h4>الأصول</h4>
+        <table class="report-table">${assetRows}</table>
+        <strong>إجمالي الأصول: ${data.total_assets.toFixed(2)}</strong>
+        <h4>الخصوم</h4>
+        <table class="report-table">${liabRows}</table>
+        <strong>إجمالي الخصوم: ${data.total_liabilities.toFixed(2)}</strong>
+        <h4>حقوق الملكية</h4>
+        <table class="report-table">${equityRows}</table>
+        <strong>إجمالي حقوق الملكية: ${data.total_equity.toFixed(2)}</strong>
+      </div>
+    `;
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+
+async function loadAccountLedgerForm() {
+  try {
+    const accounts = await apiCall('/accounts', 'GET');
+    let options = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الأستاذ العام</h3>
+        <select id="ledger-account" class="input-field">${options}</select>
+        <button id="btn-ledger" class="btn-primary">عرض الحركات</button>
+        <div id="ledger-result"></div>
+      </div>
+    `;
+    document.getElementById('btn-ledger').addEventListener('click', async () => {
+      const accountId = document.getElementById('ledger-account').value;
+      if (!accountId) return;
+      try {
+        const lines = await apiCall(`/reports?type=account_ledger&account_id=${accountId}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th></tr>';
+        lines.forEach(l => {
+          html += `<tr>
+            <td>${l.entry?.date || ''}</td>
+            <td>${l.entry?.description || ''}</td>
+            <td>${l.debit || ''}</td>
+            <td>${l.credit || ''}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        document.getElementById('ledger-result').innerHTML = html;
+      } catch (e) { document.getElementById('ledger-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
+    });
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+
+async function loadCustomerStatementForm() {
+  try {
+    const customers = await apiCall('/customers', 'GET');
+    let options = customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>كشف حساب عميل</h3>
+        <select id="statement-customer" class="input-field">${options}</select>
+        <button id="btn-customer-statement" class="btn-primary">عرض الكشف</button>
+        <div id="statement-result"></div>
+      </div>
+    `;
+    document.getElementById('btn-customer-statement').addEventListener('click', async () => {
+      const customerId = document.getElementById('statement-customer').value;
+      if (!customerId) return;
+      try {
+        const lines = await apiCall(`/reports?type=customer_statement&customer_id=${customerId}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th></tr>';
+        lines.forEach(l => {
+          html += `<tr>
+            <td>${l.entry?.date || ''}</td>
+            <td>${l.entry?.description || ''}</td>
+            <td>${l.debit || ''}</td>
+            <td>${l.credit || ''}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        document.getElementById('statement-result').innerHTML = html;
+      } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
+    });
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+
+async function loadSupplierStatementForm() {
+  try {
+    const suppliers = await apiCall('/suppliers', 'GET');
+    let options = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>كشف حساب مورد</h3>
+        <select id="statement-supplier" class="input-field">${options}</select>
+        <button id="btn-supplier-statement" class="btn-primary">عرض الكشف</button>
+        <div id="statement-result"></div>
+      </div>
+    `;
+    document.getElementById('btn-supplier-statement').addEventListener('click', async () => {
+      const supplierId = document.getElementById('statement-supplier').value;
+      if (!supplierId) return;
+      try {
+        const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${supplierId}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th></tr>';
+        lines.forEach(l => {
+          html += `<tr>
+            <td>${l.entry?.date || ''}</td>
+            <td>${l.entry?.description || ''}</td>
+            <td>${l.debit || ''}</td>
+            <td>${l.credit || ''}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        document.getElementById('statement-result').innerHTML = html;
+      } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
+    });
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+
+// ========== توجيه التبويبات ==========
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -483,10 +656,11 @@ document.addEventListener('click', (e) => {
     else if (tab === 'items') loadItems();
     else if (tab === 'customers') loadCustomers();
     else if (tab === 'suppliers') loadSuppliers();
+    else if (tab === 'reports') loadReports();
   }
 });
 
-// بدء التطبيق
+// ========== بدء التطبيق ==========
 async function verifyUser() {
   try {
     const data = await apiCall('/verify', 'POST');
@@ -502,5 +676,4 @@ async function verifyUser() {
     showError(err.message);
   }
 }
-
 verifyUser();

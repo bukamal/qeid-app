@@ -98,7 +98,7 @@ nav {
 }
 .debit-input, .credit-input { max-width: 90px; }
 .qty-input { max-width: 80px; }
-.item-select, .customer-select { min-width: 100px; }
+.item-select, .customer-select, .supplier-select { min-width: 100px; }
 .btn-remove-line {
   background: #ef4444;
   color: white;
@@ -106,4 +106,26 @@ nav {
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* تنسيقات التقارير */
+.report-link {
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+.report-link:hover { background: var(--secondary); }
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 0.9rem;
+}
+.report-table th, .report-table td {
+  padding: 8px;
+  border: 1px solid var(--secondary);
+  text-align: right;
+}
+.report-table th {
+  background: var(--secondary);
 }
