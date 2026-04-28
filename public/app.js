@@ -25,19 +25,30 @@ function showError(msg) {
   document.getElementById('main').style.display = 'none';
 }
 
+// إرسال initData باراميتر query لـ GET، وbody لباقي الطرق
 async function apiCall(endpoint, method = 'GET', body = {}) {
-  // نضيف initData تلقائياً للتحقق الخادمي
-  const finalBody = { ...body, initData };
-  const res = await fetch(apiBase + endpoint, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: method !== 'GET' ? JSON.stringify(finalBody) : undefined
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(json.error || `خطأ ${res.status}`);
+  let url = apiBase + endpoint;
+  if (method === 'GET') {
+    // إضافة initData كـ query string
+    url += '?initData=' + encodeURIComponent(initData);
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
+    return json;
+  } else {
+    const finalBody = { ...body, initData };
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalBody)
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
+    return json;
   }
-  return json;
 }
 
 async function verifyUser() {
@@ -58,7 +69,7 @@ async function verifyUser() {
 
 async function loadDashboard() {
   try {
-    const entries = await apiCall('/entries');
+    const entries = await apiCall('/entries', 'GET');
     const count = entries.length;
     document.getElementById('tab-content').innerHTML =
       `<div class="card">📊 عدد القيود: ${count}</div>`;
@@ -70,7 +81,7 @@ async function loadDashboard() {
 
 async function loadJournal() {
   try {
-    const entries = await apiCall('/entries');
+    const entries = await apiCall('/entries', 'GET');
     const html = entries.map(e => `
       <div class="card">
         <strong>${e.reference || 'بدون رقم'}</strong> – ${e.date}<br>

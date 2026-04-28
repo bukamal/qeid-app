@@ -38,7 +38,14 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { initData } = req.body;
+    // استخراج initData: من body لـ POST، ومن query لـ GET
+    let initData;
+    if (req.method === 'GET') {
+      initData = req.query.initData;
+    } else {
+      initData = req.body?.initData;
+    }
+
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
