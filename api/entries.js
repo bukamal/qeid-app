@@ -6,7 +6,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 function verifyTelegramData(initData) {
+  if (!initData) return false;
   const BOT_TOKEN = process.env.BOT_TOKEN;
   const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
   const params = new URLSearchParams(initData);
@@ -27,6 +34,9 @@ async function getUserId(initData) {
 }
 
 module.exports = async (req, res) => {
+  setCorsHeaders(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
   try {
     const { initData } = req.body;
     const userId = await getUserId(initData);
@@ -37,27 +47,42 @@ module.exports = async (req, res) => {
         .select('*, journal_lines(*)')
         .eq('user_id', userId)
         .order('date', { ascending: false });
-      if (error) throw error;
+
+      if (error) {
+        console.error('Entries GET error:', error);
+        return res.status(500).json({ error: 'فشل جلب القيود: ' + error.message });
+      }
       return res.json(data);
     } else if (req.method === 'POST') {
       const { date, description, reference, lines } = req.body;
-      if (!lines || !Array.isArray(lines)) return res.status(400).json({ error: 'lines required' });
+      if (!lines || !Array.isArray(lines)) return res.status(400).json({ error: 'الرجاء توفير سطور القيد' });
+
       const { data: entry, error: entryError } = await supabase
         .from('journal_entries')
         .insert({ user_id: userId, date, description, reference })
         .select()
         .single();
-      if (entryError) throw entryError;
+
+      if (entryError) {
+        console.error('Insert entry error:', entryError);
+        return res.status(500).json({ error: 'فشل إنشاء القيد: ' + entryError.message });
+      }
+
       const linesWithEntry = lines.map(l => ({ ...l, entry_id: entry.id }));
-      const { error: linesError } = await supabase
-        .from('journal_lines')
-        .insert(linesWithEntry);
-      if (linesError) throw linesError;
+      const { error: linesError } = await supabase.from('journal_lines').insert(linesWithEntry);
+      if (linesError) {
+        console.error('Insert lines error:', linesError);
+        return res.status(500).json({ error: 'فشل حفظ سطور القيد: ' + linesError.message });
+      }
       return res.json(entry);
     } else {
       return res.status(405).json({ error: 'Method not allowed' });
     }
   } catch (err) {
-    res.status(err.message === 'Unauthorized' ? 401 : 500).json({ error: err.message });
+    console.error('Entries error:', err);
+    if (err.message === 'Unauthorized') {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+    res.status(500).json({ error: 'خطأ في الخادم: ' + err.message });
   }
 };

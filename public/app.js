@@ -2,7 +2,6 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// الوضع الليلي
 if (tg.colorScheme === 'dark') {
   document.body.classList.add('dark');
 }
@@ -12,18 +11,33 @@ tg.onEvent('themeChanged', () => {
 
 const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
-
 const apiBase = '/api';
 
+function showLoading(msg) {
+  document.getElementById('loading').textContent = msg;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+}
+
+function showError(msg) {
+  document.getElementById('loading').textContent = '❌ ' + msg;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+}
+
 async function apiCall(endpoint, method = 'GET', body = {}) {
-  body.initData = initData; // إرسال بيانات تيليجرام مع كل طلب للتحقق
+  // نضيف initData تلقائياً للتحقق الخادمي
+  const finalBody = { ...body, initData };
   const res = await fetch(apiBase + endpoint, {
     method,
     headers: { 'Content-Type': 'application/json' },
-    body: method !== 'GET' ? JSON.stringify(body) : undefined
+    body: method !== 'GET' ? JSON.stringify(finalBody) : undefined
   });
-  if (!res.ok) throw new Error('API error');
-  return res.json();
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error || `خطأ ${res.status}`);
+  }
+  return json;
 }
 
 async function verifyUser() {
@@ -35,46 +49,46 @@ async function verifyUser() {
       document.getElementById('main').style.display = 'block';
       loadDashboard();
     } else {
-      document.getElementById('loading').textContent = 'فشل التحقق';
+      throw new Error('فشل التحقق من الهوية');
     }
   } catch (err) {
-    document.getElementById('loading').textContent = 'خطأ في الاتصال';
+    showError(err.message);
   }
 }
 
 async function loadDashboard() {
   try {
     const entries = await apiCall('/entries');
+    const count = entries.length;
     document.getElementById('tab-content').innerHTML =
-      `<div class="card">عدد القيود: ${entries.length}</div>`;
+      `<div class="card">📊 عدد القيود: ${count}</div>`;
   } catch (err) {
     document.getElementById('tab-content').innerHTML =
-      '<div class="card">تعذر تحميل البيانات</div>';
+      `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
 
 async function loadJournal() {
   try {
     const entries = await apiCall('/entries');
-    let html = entries.map(e => `
+    const html = entries.map(e => `
       <div class="card">
-        <strong>${e.reference || 'بدون رقم'}</strong> - ${e.date} - ${e.description}
+        <strong>${e.reference || 'بدون رقم'}</strong> – ${e.date}<br>
+        ${e.description || ''}
       </div>
     `).join('');
     document.getElementById('tab-content').innerHTML = html || '<div class="card">لا توجد قيود</div>';
   } catch (err) {
-    document.getElementById('tab-content').innerHTML = '<div class="card">خطأ في تحميل القيود</div>';
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
 
-// التنقل بين التبويبات
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
-    const tab = e.target.dataset.tab;
-    if (tab === 'dashboard') loadDashboard();
-    else if (tab === 'journal') loadJournal();
+    if (e.target.dataset.tab === 'dashboard') loadDashboard();
+    else if (e.target.dataset.tab === 'journal') loadJournal();
   }
 });
 
