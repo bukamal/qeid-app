@@ -340,6 +340,10 @@ function attachItemsEvents() {
   document.getElementById('btn-save-item')?.addEventListener('click', async () => {
     const name = document.getElementById('item-name').value.trim();
     if (!name) return alert('اسم المادة مطلوب');
+    // فحص محلي سريع للتكرار
+    if (itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+      return alert('توجد مادة بنفس الاسم');
+    }
     const payload = {
       name,
       category_id: document.getElementById('item-category').value || null,
@@ -418,8 +422,8 @@ function updateInvoiceRemoveButtons() {
   });
 }
 
-// دالة attachInvoiceEvents كاملة (مع منع تكرار المادة)
-function attachInvoiceEvents() {
+// دالة attachInvoiceEvents كاملة (مع منع تكرار المادة وتعبئة السعر تلقائياً)
+function attachInvoiceEvents(invoiceType) {
   // دالة مساعدة: فحص تكرار المادة في الأسطر عدا السطر الحالي
   function isItemDuplicate(itemId, currentRow) {
     if (!itemId) return false;
@@ -430,6 +434,26 @@ function attachInvoiceEvents() {
       if (select && select.value === itemId) found = true;
     });
     return found;
+  }
+
+  // دالة مساعدة: تعبئة السعر تلقائياً عند اختيار مادة
+  function autoFillPrice(selectElement, priceInput) {
+    const itemId = selectElement.value;
+    if (!itemId) {
+      priceInput.value = '';
+      return;
+    }
+    const item = itemsCache.find(i => i.id == itemId);
+    if (item) {
+      const price = invoiceType === 'sale' ? item.selling_price : item.purchase_price;
+      priceInput.value = price || 0;
+      const row = selectElement.closest('.line-row');
+      const qtyInput = row.querySelector('.qty-input');
+      const totalInput = row.querySelector('.total-input');
+      if (qtyInput && totalInput) {
+        totalInput.value = ((parseFloat(qtyInput.value) || 0) * (parseFloat(priceInput.value) || 0)).toFixed(2);
+      }
+    }
   }
 
   // حدث إضافة سطر جديد
@@ -451,13 +475,16 @@ function attachInvoiceEvents() {
     updateInvoiceRemoveButtons();
     attachLineEvents(newLine);
 
-    // فحص التكرار عند تغيير المادة في السطر الجديد
     const select = newLine.querySelector('.item-select');
+    const priceInput = newLine.querySelector('.price-input');
     select.addEventListener('change', function() {
       if (isItemDuplicate(this.value, this.closest('.line-row'))) {
         alert('المادة مضافة مسبقاً في الفاتورة');
         this.value = '';
+        priceInput.value = '';
+        return;
       }
+      autoFillPrice(this, priceInput);
     });
   });
 
@@ -472,7 +499,7 @@ function attachInvoiceEvents() {
     }
   });
 
-  // ربط أحداث حساب الإجمالي
+  // ربط أحداث حساب الإجمالي وتعبئة السعر
   function attachLineEvents(row) {
     const qty = row.querySelector('.qty-input');
     const price = row.querySelector('.price-input');
@@ -485,17 +512,18 @@ function attachInvoiceEvents() {
     qty?.addEventListener('input', calculate);
     price?.addEventListener('input', calculate);
 
-    // فحص التكرار عند تغيير المادة
     const select = row.querySelector('.item-select');
     select?.addEventListener('change', function() {
       if (isItemDuplicate(this.value, this.closest('.line-row'))) {
         alert('المادة مضافة مسبقاً في الفاتورة');
         this.value = '';
+        price.value = '';
+        return;
       }
+      autoFillPrice(this, price);
     });
   }
 
-  // ربط الأسطر الأولية
   document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
 
   // حفظ الفاتورة مع فحص نهائي
@@ -622,7 +650,7 @@ async function loadInvoiceFormByType(type) {
       </div>
     `;
     document.getElementById('tab-content').innerHTML = html;
-    attachInvoiceEvents();
+    attachInvoiceEvents(type);
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
@@ -690,7 +718,7 @@ async function loadInvoices() {
   }
 }
 
-// نموذج تعديل فاتورة (Modal) مع منع تكرار المادة
+// نموذج تعديل فاتورة (Modal) مع منع تكرار المادة وتعبئة السعر تلقائياً
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
   const itemsOpt = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
@@ -707,6 +735,26 @@ function showEditInvoiceModal(invoice) {
       if (select && select.value === itemId) found = true;
     });
     return found;
+  }
+
+  // دالة تعبئة السعر تلقائياً
+  function autoFillPrice(selectElement, priceInput) {
+    const itemId = selectElement.value;
+    if (!itemId) {
+      priceInput.value = '';
+      return;
+    }
+    const item = itemsCache.find(i => i.id == itemId);
+    if (item) {
+      const price = type === 'sale' ? item.selling_price : item.purchase_price;
+      priceInput.value = price || 0;
+      const row = selectElement.closest('.line-row');
+      const qtyInput = row.querySelector('.qty-input');
+      const totalInput = row.querySelector('.total-input');
+      if (qtyInput && totalInput) {
+        totalInput.value = ((parseFloat(qtyInput.value) || 0) * (parseFloat(priceInput.value) || 0)).toFixed(2);
+      }
+    }
   }
 
   let linesHtml = '';
@@ -766,7 +814,7 @@ function showEditInvoiceModal(invoice) {
     document.getElementById('edit-supplier-block').style.display = this.value === 'purchase' ? 'block' : 'none';
   });
 
-  // إضافة بند جديد مع فحص التكرار
+  // إضافة بند جديد مع فحص التكرار وتعبئة السعر
   document.getElementById('btn-add-edit-line').addEventListener('click', () => {
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
@@ -783,11 +831,15 @@ function showEditInvoiceModal(invoice) {
     document.getElementById('edit-inv-lines').appendChild(newLine);
     attachLineEvents(newLine);
     const select = newLine.querySelector('.item-select');
+    const priceInput = newLine.querySelector('.price-input');
     select.addEventListener('change', function() {
       if (isEditItemDuplicate(this.value, this.closest('.line-row'))) {
         alert('المادة مضافة مسبقاً في الفاتورة');
         this.value = '';
+        priceInput.value = '';
+        return;
       }
+      autoFillPrice(this, priceInput);
     });
   });
 
@@ -814,7 +866,10 @@ function showEditInvoiceModal(invoice) {
       if (isEditItemDuplicate(this.value, this.closest('.line-row'))) {
         alert('المادة مضافة مسبقاً في الفاتورة');
         this.value = '';
+        price.value = '';
+        return;
       }
+      autoFillPrice(this, price);
     });
   }
 
