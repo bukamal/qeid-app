@@ -418,8 +418,21 @@ function updateInvoiceRemoveButtons() {
   });
 }
 
-// دالة attachInvoiceEvents كاملة
+// دالة attachInvoiceEvents كاملة (مع منع تكرار المادة)
 function attachInvoiceEvents() {
+  // دالة مساعدة: فحص تكرار المادة في الأسطر عدا السطر الحالي
+  function isItemDuplicate(itemId, currentRow) {
+    if (!itemId) return false;
+    let found = false;
+    document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+      if (row === currentRow) return;
+      const select = row.querySelector('.item-select');
+      if (select && select.value === itemId) found = true;
+    });
+    return found;
+  }
+
+  // حدث إضافة سطر جديد
   document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
     const container = document.getElementById('inv-lines-container');
     const newLine = document.createElement('div');
@@ -437,8 +450,18 @@ function attachInvoiceEvents() {
     container.appendChild(newLine);
     updateInvoiceRemoveButtons();
     attachLineEvents(newLine);
+
+    // فحص التكرار عند تغيير المادة في السطر الجديد
+    const select = newLine.querySelector('.item-select');
+    select.addEventListener('change', function() {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً في الفاتورة');
+        this.value = '';
+      }
+    });
   });
 
+  // حدث حذف سطر
   document.getElementById('inv-lines-container')?.addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-remove-line')) {
       const row = e.target.closest('.line-row');
@@ -449,6 +472,7 @@ function attachInvoiceEvents() {
     }
   });
 
+  // ربط أحداث حساب الإجمالي
   function attachLineEvents(row) {
     const qty = row.querySelector('.qty-input');
     const price = row.querySelector('.price-input');
@@ -460,10 +484,21 @@ function attachInvoiceEvents() {
     };
     qty?.addEventListener('input', calculate);
     price?.addEventListener('input', calculate);
+
+    // فحص التكرار عند تغيير المادة
+    const select = row.querySelector('.item-select');
+    select?.addEventListener('change', function() {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً في الفاتورة');
+        this.value = '';
+      }
+    });
   }
 
+  // ربط الأسطر الأولية
   document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
 
+  // حفظ الفاتورة مع فحص نهائي
   document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
     const type = document.getElementById('inv-type').value;
     const entityValue = document.getElementById('inv-entity').value;
@@ -480,8 +515,14 @@ function attachInvoiceEvents() {
     const paidAmount = parseFloat(document.getElementById('inv-paid')?.value) || 0;
 
     const lines = [];
+    const itemIds = [];
+    let duplicate = false;
     document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
       const itemId = row.querySelector('.item-select').value || null;
+      if (itemId) {
+        if (itemIds.includes(itemId)) duplicate = true;
+        itemIds.push(itemId);
+      }
       const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
       const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
       const total = parseFloat(row.querySelector('.total-input').value) || 0;
@@ -496,6 +537,7 @@ function attachInvoiceEvents() {
       }
     });
 
+    if (duplicate) return alert('لا يمكن تكرار نفس المادة في الفاتورة');
     if (lines.length === 0) return alert('أضف بنداً واحداً على الأقل');
 
     try {
@@ -648,12 +690,24 @@ async function loadInvoices() {
   }
 }
 
-// نموذج تعديل فاتورة (Modal)
+// نموذج تعديل فاتورة (Modal) مع منع تكرار المادة
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
   const itemsOpt = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
   const customersOpt = customersCache.map(c => `<option value="${c.id}" ${c.id === invoice.customer_id ? 'selected' : ''}>${c.name}</option>`).join('');
   const suppliersOpt = suppliersCache.map(s => `<option value="${s.id}" ${s.id === invoice.supplier_id ? 'selected' : ''}>${s.name}</option>`).join('');
+
+  // دالة فحص تكرار المادة
+  function isEditItemDuplicate(itemId, currentRow) {
+    if (!itemId) return false;
+    let found = false;
+    document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => {
+      if (row === currentRow) return;
+      const select = row.querySelector('.item-select');
+      if (select && select.value === itemId) found = true;
+    });
+    return found;
+  }
 
   let linesHtml = '';
   invoice.invoice_lines.forEach(line => {
@@ -706,13 +760,13 @@ function showEditInvoiceModal(invoice) {
   `;
   document.body.appendChild(overlay);
 
-  // أحداث التبديل بين عميل ومورد
+  // التبديل بين عميل ومورد
   document.getElementById('edit-inv-type').addEventListener('change', function() {
     document.getElementById('edit-customer-block').style.display = this.value === 'sale' ? 'block' : 'none';
     document.getElementById('edit-supplier-block').style.display = this.value === 'purchase' ? 'block' : 'none';
   });
 
-  // إضافة بند جديد
+  // إضافة بند جديد مع فحص التكرار
   document.getElementById('btn-add-edit-line').addEventListener('click', () => {
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
@@ -728,6 +782,13 @@ function showEditInvoiceModal(invoice) {
     `;
     document.getElementById('edit-inv-lines').appendChild(newLine);
     attachLineEvents(newLine);
+    const select = newLine.querySelector('.item-select');
+    select.addEventListener('change', function() {
+      if (isEditItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً في الفاتورة');
+        this.value = '';
+      }
+    });
   });
 
   // حذف بند
@@ -740,9 +801,6 @@ function showEditInvoiceModal(invoice) {
     }
   });
 
-  // حساب الإجمالي لكل بند
-  document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => attachLineEvents(row));
-
   function attachLineEvents(row) {
     const qty = row.querySelector('.qty-input');
     const price = row.querySelector('.price-input');
@@ -750,9 +808,19 @@ function showEditInvoiceModal(invoice) {
     const calc = () => { total.value = ((parseFloat(qty.value)||0) * (parseFloat(price.value)||0)).toFixed(2); };
     qty?.addEventListener('input', calc);
     price?.addEventListener('input', calc);
+
+    const select = row.querySelector('.item-select');
+    select?.addEventListener('change', function() {
+      if (isEditItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً في الفاتورة');
+        this.value = '';
+      }
+    });
   }
 
-  // حفظ التعديلات
+  document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => attachLineEvents(row));
+
+  // حفظ التعديلات مع فحص التكرار
   document.getElementById('save-invoice-edit').onclick = async () => {
     const id = parseInt(document.getElementById('edit-inv-id').value);
     const type = document.getElementById('edit-inv-type').value;
@@ -763,8 +831,14 @@ function showEditInvoiceModal(invoice) {
     const notes = document.getElementById('edit-inv-notes').value.trim();
 
     const lines = [];
+    const itemIds = [];
+    let duplicate = false;
     document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => {
       const itemId = row.querySelector('.item-select').value || null;
+      if (itemId) {
+        if (itemIds.includes(itemId)) duplicate = true;
+        itemIds.push(itemId);
+      }
       const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
       const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
       const total = parseFloat(row.querySelector('.total-input').value) || 0;
@@ -772,6 +846,7 @@ function showEditInvoiceModal(invoice) {
         lines.push({ item_id: itemId, description: '', quantity, unit_price: unitPrice, total });
       }
     });
+    if (duplicate) return alert('لا يمكن تكرار نفس المادة في الفاتورة');
     if (lines.length === 0) return alert('أضف بنداً على الأقل');
     try {
       await apiCall('/invoices', 'PUT', { id, type, customer_id: customerId, supplier_id: supplierId, date, reference, notes, lines });
