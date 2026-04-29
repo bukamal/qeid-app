@@ -893,22 +893,85 @@ function showEditInvoiceModal(invoice) {
   document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
 }
 
+// ==================== دالة الطباعة والتصدير PDF ====================
 function printInvoice(invoice) {
   if (!invoice) { alert('بيانات الفاتورة غير متوفرة'); return; }
-  const itemsRows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('') || '';
+
+  const itemsRows = invoice.invoice_lines?.map(l => 
+    `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`
+  ).join('') || '';
+
   const invoiceHTML = `
-    <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${invoice.reference || ''}</title>
-    <style>body { font-family: 'Tajawal', sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; margin-top: 10px; } th, td { border: 1px solid #ddd; padding: 8px; text-align: right; } th { background: #f0f0f0; } @media print { .no-print { display: none; } }</style></head>
-    <body><h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
-    <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
-    <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
-    <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${itemsRows}</table>
-    <h3>الإجمالي: ${invoice.total}</h3><p>المدفوع: ${invoice.paid || 0} | الباقي: <strong>${invoice.balance || 0}</strong></p><p>${invoice.notes || ''}</p>
-    <button class="no-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-    <script>setTimeout(function() { window.print(); }, 800);</script></body></html>`;
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>فاتورة ${invoice.reference || ''}</title>
+      <style>
+        body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; direction: rtl; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+        th { background: #f0f0f0; }
+        @media print { .no-print { display: none; } }
+        .btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        .btn-print { background: #2563eb; color: white; }
+        .btn-pdf { background: #dc2626; color: white; }
+      </style>
+    </head>
+    <body>
+      <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
+      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+      <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
+      <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${itemsRows}</table>
+      <h3>الإجمالي: ${invoice.total}</h3>
+      <p>المدفوع: ${invoice.paid || 0} | الباقي: <strong>${invoice.balance || 0}</strong></p>
+      <p>${invoice.notes || ''}</p>
+      <div class="no-print" style="margin-top:20px; text-align:center;">
+        <button class="btn btn-print" onclick="window.print()">🖨️ طباعة</button>
+        <button class="btn btn-pdf" id="btn-download-pdf">📥 تحميل PDF</button>
+      </div>
+      <script>
+        document.getElementById('btn-download-pdf').addEventListener('click', function() {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(16);
+          doc.text('${invoice.type === 'sale' ? 'فاتورة بيع' : 'فاتورة شراء'}', 105, 15, { align: 'center' });
+          doc.setFontSize(12);
+          doc.text('التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}', 105, 25, { align: 'center' });
+          doc.text('${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}', 105, 32, { align: 'center' });
+          
+          let y = 40;
+          doc.text('المادة', 20, y);
+          doc.text('الكمية', 80, y);
+          doc.text('السعر', 120, y);
+          doc.text('الإجمالي', 160, y);
+          y += 6;
+          invoice.invoice_lines?.forEach(line => {
+            doc.text(line.item?.name || '-', 20, y);
+            doc.text(String(line.quantity), 80, y);
+            doc.text(String(line.unit_price), 120, y);
+            doc.text(String(line.total), 160, y);
+            y += 8;
+          });
+          y += 5;
+          doc.text('الإجمالي: ' + (invoice.total || 0), 160, y, { align: 'right' });
+          doc.text('المدفوع: ' + (invoice.paid || 0) + ' | الباقي: ' + (invoice.balance || 0), 160, y+6, { align: 'right' });
+          if (invoice.notes) doc.text(invoice.notes, 20, y+12);
+          
+          doc.save('فاتورة-${invoice.reference || invoice.id}.pdf');
+        });
+      <\/script>
+    </body>
+    </html>
+  `;
+
   const printWindow = window.open('', '_blank', 'width=800,height=600');
-  if (printWindow) { printWindow.document.write(invoiceHTML); printWindow.document.close(); }
-  else {
+  if (printWindow) {
+    printWindow.document.write(invoiceHTML);
+    printWindow.document.close();
+  } else {
     alert('سيتم عرض الفاتورة للطباعة داخل التطبيق.');
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;';
