@@ -100,7 +100,7 @@ textarea.input-field { resize: vertical; min-height: 60px; }
 }
 .report-table th { background: var(--secondary); font-weight: 600; }
 
-/* مربع الحوار التأكيدي */
+/* مربع الحوار التأكيدي ونماذج التعديل */
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.4); display: flex;
@@ -108,11 +108,12 @@ textarea.input-field { resize: vertical; min-height: 60px; }
 }
 .modal-box {
   background: var(--card-bg); color: var(--text);
-  border-radius: 12px; padding: 20px; width: 90%; max-width: 380px;
-  text-align: center;
+  border-radius: 12px; padding: 20px; width: 90%; max-width: 400px;
+  text-align: center; max-height: 90vh; overflow-y: auto;
 }
 .modal-box p { margin-bottom: 20px; font-size: 1.1rem; }
 .modal-actions { display: flex; gap: 10px; justify-content: center; }
+.modal-box .input-field { margin: 8px 0; }
 
 /* أزرار التحرير والحذف داخل البطاقات */
 .card-actions { margin-top: 10px; display: flex; gap: 8px; }

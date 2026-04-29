@@ -24,10 +24,10 @@ function showError(msg) {
 
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
-  if (method === 'GET') {
+  if (method === 'GET' || method === 'DELETE') {
     const separator = url.includes('?') ? '&' : '?';
     url += separator + 'initData=' + encodeURIComponent(initData);
-    const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' } });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
     return json;
@@ -122,7 +122,7 @@ async function loadCustomers() {
           <span style="float:left; font-weight:bold; color:${c.balance >= 0 ? 'green' : 'red'};">الرصيد: ${c.balance}</span>
           <br>📞 ${c.phone || '-'} | 🏠 ${c.address || '-'}
           <div class="card-actions">
-            <button class="btn-secondary" onclick="editCustomer({id:${c.id}, name:'${c.name}', phone:'${c.phone || ''}', address:'${c.address || ''}'})">✏️ تعديل</button>
+            <button class="btn-secondary" onclick="showEditCustomerModal(${c.id})">✏️ تعديل</button>
             <button class="btn-danger" onclick="deleteCustomer(${c.id})">🗑️ حذف</button>
           </div>
         </div>
@@ -156,6 +156,41 @@ function attachCustomersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
+
+// نموذج تعديل عميل
+function showEditCustomerModal(custId) {
+  const customer = customersCache.find(c => c.id === custId);
+  if (!customer) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>تعديل العميل</h3>
+      <input id="edit-cust-name" class="input-field" value="${customer.name}" />
+      <input id="edit-cust-phone" class="input-field" value="${customer.phone || ''}" />
+      <input id="edit-cust-address" class="input-field" value="${customer.address || ''}" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-cust-edit">حفظ</button>
+        <button class="btn-secondary" id="cancel-cust-edit">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('save-cust-edit').onclick = async () => {
+    const name = document.getElementById('edit-cust-name').value.trim();
+    if (!name) return alert('الاسم مطلوب');
+    const phone = document.getElementById('edit-cust-phone').value.trim();
+    const address = document.getElementById('edit-cust-address').value.trim();
+    try {
+      await apiCall('/customers', 'PUT', { id: custId, name, phone, address });
+      document.body.removeChild(overlay);
+      loadCustomers();
+    } catch (e) { alert('خطأ: ' + e.message); }
+  };
+  document.getElementById('cancel-cust-edit').onclick = () => {
+    document.body.removeChild(overlay);
+  };
+}
 // ==================== الموردين ====================
 let suppliersCache = [];
 async function loadSuppliers() {
@@ -182,7 +217,7 @@ async function loadSuppliers() {
           <span style="float:left; font-weight:bold; color:${s.balance <= 0 ? 'green' : 'red'};">الرصيد: ${s.balance}</span>
           <br>📞 ${s.phone || '-'} | 🏠 ${s.address || '-'}
           <div class="card-actions">
-            <button class="btn-secondary" onclick="editSupplier({id:${s.id}, name:'${s.name}', phone:'${s.phone || ''}', address:'${s.address || ''}'})">✏️ تعديل</button>
+            <button class="btn-secondary" onclick="showEditSupplierModal(${s.id})">✏️ تعديل</button>
             <button class="btn-danger" onclick="deleteSupplier(${s.id})">🗑️ حذف</button>
           </div>
         </div>
@@ -216,8 +251,44 @@ function attachSuppliersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
+
+// نموذج تعديل مورد
+function showEditSupplierModal(supId) {
+  const supplier = suppliersCache.find(s => s.id === supId);
+  if (!supplier) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>تعديل المورد</h3>
+      <input id="edit-sup-name" class="input-field" value="${supplier.name}" />
+      <input id="edit-sup-phone" class="input-field" value="${supplier.phone || ''}" />
+      <input id="edit-sup-address" class="input-field" value="${supplier.address || ''}" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-sup-edit">حفظ</button>
+        <button class="btn-secondary" id="cancel-sup-edit">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('save-sup-edit').onclick = async () => {
+    const name = document.getElementById('edit-sup-name').value.trim();
+    if (!name) return alert('الاسم مطلوب');
+    const phone = document.getElementById('edit-sup-phone').value.trim();
+    const address = document.getElementById('edit-sup-address').value.trim();
+    try {
+      await apiCall('/suppliers', 'PUT', { id: supId, name, phone, address });
+      document.body.removeChild(overlay);
+      loadSuppliers();
+    } catch (e) { alert('خطأ: ' + e.message); }
+  };
+  document.getElementById('cancel-sup-edit').onclick = () => {
+    document.body.removeChild(overlay);
+  };
+}
 // ==================== المواد ====================
 let itemsCache = [];
+let categoriesCache = [];
 async function loadItems() {
   try {
     const [items, categories] = await Promise.all([
@@ -225,6 +296,7 @@ async function loadItems() {
       apiCall('/categories', 'GET')
     ]);
     itemsCache = items;
+    categoriesCache = categories;
     let html = `
       <div class="card" style="margin-bottom:20px;">
         <h2>المواد</h2>
@@ -264,7 +336,7 @@ async function loadItems() {
           📂 ${item.category ? item.category.name : 'بدون تصنيف'} |
           🛒 شراء: ${item.purchase_price} | 💰 بيع: ${item.selling_price} | 📦 الكمية: ${item.quantity}
           <div class="card-actions">
-            <button class="btn-secondary" onclick="editItem({id:${item.id}, name:'${item.name}', category_id:${item.category_id || null}, item_type:'${item.item_type}', purchase_price:${item.purchase_price}, selling_price:${item.selling_price}, quantity:${item.quantity}})">✏️ تعديل</button>
+            <button class="btn-secondary" onclick="showEditItemModal(${item.id})">✏️ تعديل</button>
             <button class="btn-danger" onclick="deleteItem(${item.id})">🗑️ حذف</button>
           </div>
         </div>
@@ -314,6 +386,59 @@ function attachItemsEvents() {
       loadItems();
     } catch (err) { alert('خطأ: ' + err.message); }
   });
+}
+
+// نموذج تعديل مادة (جميع الحقول)
+function showEditItemModal(itemId) {
+  const item = itemsCache.find(i => i.id === itemId);
+  if (!item) return;
+  const catOptions = categoriesCache.map(c => `<option value="${c.id}" ${c.id === item.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>تعديل المادة</h3>
+      <input id="edit-item-name" class="input-field" value="${item.name}" />
+      <select id="edit-item-category" class="input-field">
+        <option value="">بدون تصنيف</option>
+        ${catOptions}
+      </select>
+      <select id="edit-item-type" class="input-field">
+        <option value="مخزون" ${item.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option>
+        <option value="منتج نهائي" ${item.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option>
+        <option value="خدمة" ${item.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option>
+      </select>
+      <input id="edit-item-purchase" type="number" step="0.01" class="input-field" value="${item.purchase_price}" />
+      <input id="edit-item-selling" type="number" step="0.01" class="input-field" value="${item.selling_price}" />
+      <input id="edit-item-qty" type="number" step="any" class="input-field" value="${item.quantity}" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-item-edit">حفظ</button>
+        <button class="btn-secondary" id="cancel-item-edit">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('save-item-edit').onclick = async () => {
+    const name = document.getElementById('edit-item-name').value.trim();
+    if (!name) return alert('الاسم مطلوب');
+    const payload = {
+      id: itemId,
+      name,
+      category_id: document.getElementById('edit-item-category').value || null,
+      item_type: document.getElementById('edit-item-type').value,
+      purchase_price: parseFloat(document.getElementById('edit-item-purchase').value) || 0,
+      selling_price: parseFloat(document.getElementById('edit-item-selling').value) || 0,
+      quantity: parseFloat(document.getElementById('edit-item-qty').value) || 0
+    };
+    try {
+      await apiCall('/items', 'PUT', payload);
+      document.body.removeChild(overlay);
+      loadItems();
+    } catch (e) { alert('خطأ: ' + e.message); }
+  };
+  document.getElementById('cancel-item-edit').onclick = () => {
+    document.body.removeChild(overlay);
+  };
 }
 // ==================== نموذج إضافة قيد ====================
 let accountsCache = [];
@@ -453,6 +578,30 @@ function updateRemoveButtons() {
   rows.forEach(row => {
     const btn = row.querySelector('.btn-remove-line');
     if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
+  });
+}
+// ==================== التقارير ====================
+async function loadReports() {
+  let html = `
+    <div class="card"><h2>التقارير</h2></div>
+    <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
+    <div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div>
+    <div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div>
+    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام (حركة حساب)</div>
+    <div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div>
+    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>
+  `;
+  document.getElementById('tab-content').innerHTML = html;
+  document.querySelectorAll('.report-link').forEach(el => {
+    el.addEventListener('click', () => {
+      const report = el.dataset.report;
+      if (report === 'trial_balance') loadTrialBalance();
+      else if (report === 'income_statement') loadIncomeStatement();
+      else if (report === 'balance_sheet') loadBalanceSheet();
+      else if (report === 'account_ledger') loadAccountLedgerForm();
+      else if (report === 'customer_statement') loadCustomerStatementForm();
+      else if (report === 'supplier_statement') loadSupplierStatementForm();
+    });
   });
 }
 // ==================== التقارير ====================
@@ -648,7 +797,8 @@ async function loadSupplierStatementForm() {
     });
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-// ==================== الفواتير ====================
+// ==================== الفواتير (مع طباعة صحيحة) ====================
+let invoicesCache = [];
 async function loadInvoices() {
   try {
     const [invoices, customers, suppliers, items] = await Promise.all([
@@ -657,6 +807,7 @@ async function loadInvoices() {
       apiCall('/suppliers', 'GET'),
       apiCall('/items', 'GET')
     ]);
+    invoicesCache = invoices;
     let html = `
       <div class="card">
         <h2>الفواتير</h2>
@@ -704,22 +855,28 @@ async function loadInvoices() {
     if (invoices.length === 0) {
       html += '<div class="card">لا توجد فواتير</div>';
     } else {
-      html += invoices.map(inv => {
-        const invData = JSON.stringify(inv).replace(/"/g, '&quot;');
-        return `
+      html += invoices.map(inv => `
         <div class="card">
           <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
           ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
           الإجمالي: ${inv.total}
           <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || ''} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
           <div class="card-actions">
-            <button class="btn-primary" onclick='printInvoice(${invData})'>🖨️ طباعة / PDF</button>
+            <button class="btn-primary print-invoice-btn" data-invoice-id="${inv.id}">🖨️ طباعة / PDF</button>
           </div>
         </div>
-      `}).join('');
+      `).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
     attachInvoiceEvents();
+    // ربط أزرار الطباعة بمستمع حدث
+    document.querySelectorAll('.print-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        const invoice = invoicesCache.find(inv => inv.id === id);
+        if (invoice) printInvoice(invoice);
+      });
+    });
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
@@ -844,7 +1001,7 @@ function updateInvoiceRemoveButtons() {
   });
 }
 
-// طباعة الفاتورة
+// دالة الطباعة الصحيحة
 function printInvoice(invoice) {
   const w = window.open('', '_blank', 'width=700,height=600');
   w.document.write(`
@@ -891,7 +1048,7 @@ function confirmDialog(message) {
   });
 }
 
-// ==================== دوال الحذف والتعديل العامة ====================
+// ==================== دوال الحذف العامة ====================
 async function deleteEntry(entryId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا القيد؟ سيتم عكس تأثيره على المخزون والأرصدة.')) return;
   try {
@@ -910,25 +1067,6 @@ async function deleteItem(itemId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-async function editItem(item) {
-  const newName = prompt('اسم المادة:', item.name);
-  if (!newName) return;
-  const payload = {
-    id: item.id,
-    name: newName,
-    category_id: item.category_id,
-    item_type: item.item_type,
-    purchase_price: item.purchase_price,
-    selling_price: item.selling_price,
-    quantity: item.quantity
-  };
-  try {
-    await apiCall('/items', 'PUT', payload);
-    alert('تم التعديل');
-    loadItems();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
 async function deleteCustomer(custId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا العميل؟')) return;
   try {
@@ -938,35 +1076,11 @@ async function deleteCustomer(custId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-async function editCustomer(cust) {
-  const newName = prompt('اسم العميل:', cust.name);
-  if (!newName) return;
-  const newPhone = prompt('الهاتف:', cust.phone || '');
-  const newAddr = prompt('العنوان:', cust.address || '');
-  try {
-    await apiCall('/customers', 'PUT', { id: cust.id, name: newName, phone: newPhone, address: newAddr });
-    alert('تم التعديل');
-    loadCustomers();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
 async function deleteSupplier(supId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا المورد؟')) return;
   try {
     await apiCall(`/suppliers?id=${supId}`, 'DELETE');
     alert('تم الحذف بنجاح');
-    loadSuppliers();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
-async function editSupplier(sup) {
-  const newName = prompt('اسم المورد:', sup.name);
-  if (!newName) return;
-  const newPhone = prompt('الهاتف:', sup.phone || '');
-  const newAddr = prompt('العنوان:', sup.address || '');
-  try {
-    await apiCall('/suppliers', 'PUT', { id: sup.id, name: newName, phone: newPhone, address: newAddr });
-    alert('تم التعديل');
     loadSuppliers();
   } catch (e) { alert('خطأ: ' + e.message); }
 }
