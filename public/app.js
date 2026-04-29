@@ -1484,4 +1484,106 @@ async function verifyUser() {
     showError(err.message);
   }
 }
+
+// ==================== تفعيل سحب وإعادة ترتيب التبويبات ====================
+(function enableTabDragAndDrop() {
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+
+  let draggedItem = null;
+  let isTouch = false;
+
+  function saveTabOrder() {
+    const tabs = Array.from(nav.querySelectorAll('.tab'));
+    const order = tabs.map(tab => tab.dataset.tab);
+    localStorage.setItem('tabOrder', JSON.stringify(order));
+  }
+
+  function applySavedOrder() {
+    const savedOrder = JSON.parse(localStorage.getItem('tabOrder'));
+    if (!savedOrder) return;
+    const tabs = Array.from(nav.querySelectorAll('.tab'));
+    const tabMap = {};
+    tabs.forEach(tab => { tabMap[tab.dataset.tab] = tab; });
+    savedOrder.forEach(key => {
+      if (tabMap[key]) nav.appendChild(tabMap[key]);
+    });
+  }
+
+  // استعادة الترتيب المحفوظ
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applySavedOrder);
+  } else {
+    applySavedOrder();
+  }
+
+  // أحداث الفأرة
+  nav.addEventListener('dragstart', (e) => {
+    if (isTouch) return;
+    draggedItem = e.target.closest('.tab');
+    if (!draggedItem) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+    draggedItem.style.opacity = '0.5';
+  });
+
+  nav.addEventListener('dragend', (e) => {
+    if (draggedItem) {
+      draggedItem.style.opacity = '1';
+      draggedItem = null;
+    }
+  });
+
+  nav.addEventListener('dragover', (e) => e.preventDefault());
+
+  nav.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const target = e.target.closest('.tab');
+    if (!target || !draggedItem || target === draggedItem) return;
+    const tabs = Array.from(nav.querySelectorAll('.tab'));
+    const draggedIndex = tabs.indexOf(draggedItem);
+    const targetIndex = tabs.indexOf(target);
+    if (draggedIndex < targetIndex) {
+      nav.insertBefore(draggedItem, target.nextSibling);
+    } else {
+      nav.insertBefore(draggedItem, target);
+    }
+    saveTabOrder();
+  });
+
+  // أحداث اللمس
+  nav.addEventListener('touchstart', (e) => {
+    isTouch = true;
+    const touch = e.touches[0];
+    draggedItem = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.tab');
+    if (draggedItem) draggedItem.style.opacity = '0.5';
+  }, {passive: true});
+
+  nav.addEventListener('touchmove', (e) => {
+    if (!draggedItem) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.tab');
+    if (target && target !== draggedItem) {
+      const tabs = Array.from(nav.querySelectorAll('.tab'));
+      const draggedIndex = tabs.indexOf(draggedItem);
+      const targetIndex = tabs.indexOf(target);
+      if (draggedIndex < targetIndex) {
+        nav.insertBefore(draggedItem, target.nextSibling);
+      } else {
+        nav.insertBefore(draggedItem, target);
+      }
+    }
+  }, {passive: false});
+
+  nav.addEventListener('touchend', () => {
+    if (draggedItem) {
+      draggedItem.style.opacity = '1';
+      saveTabOrder();
+      draggedItem = null;
+    }
+    isTouch = false;
+  });
+})();
+
 verifyUser();

@@ -77,17 +77,21 @@ nav {
   border: none;
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
-  cursor: pointer;
+  cursor: grab;
   color: var(--text);
   text-align: center;
   white-space: nowrap;
   font-weight: 500;
   transition: all 0.2s ease;
   box-shadow: var(--shadow);
+  user-select: none;
 }
 .tab:hover {
   background: var(--secondary-hover);
   transform: translateY(-1px);
+}
+.tab:active {
+  cursor: grabbing;
 }
 .tab.active {
   background: var(--primary);
@@ -256,6 +260,15 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .modal-box p { margin-bottom: 20px; font-size: 1.1rem; font-weight: 500; }
 .modal-actions { display: flex; gap: 10px; justify-content: center; }
 .modal-box .input-field { margin: 8px 0; text-align: right; }
+
+/* شريط التمرير الناعم للتبويبات */
+nav::-webkit-scrollbar {
+  height: 4px;
+}
+nav::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 4px;
+}
 
 /* أزرار البطاقات */
 .card-actions { margin-top: 12px; display: flex; gap: 8px; }
