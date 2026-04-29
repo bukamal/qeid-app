@@ -123,7 +123,6 @@ function attachCustomersEvents() {
   });
 }
 
-// نموذج تعديل عميل
 function showEditCustomerModal(custId) {
   const customer = customersCache.find(c => c.id === custId);
   if (!customer) return;
@@ -219,7 +218,6 @@ function attachSuppliersEvents() {
   });
 }
 
-// نموذج تعديل مورد
 function showEditSupplierModal(supId) {
   const supplier = suppliersCache.find(s => s.id === supId);
   if (!supplier) return;
@@ -340,7 +338,6 @@ function attachItemsEvents() {
   document.getElementById('btn-save-item')?.addEventListener('click', async () => {
     const name = document.getElementById('item-name').value.trim();
     if (!name) return alert('اسم المادة مطلوب');
-    // فحص محلي سريع للتكرار
     if (itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
       return alert('توجد مادة بنفس الاسم');
     }
@@ -360,7 +357,6 @@ function attachItemsEvents() {
   });
 }
 
-// نموذج تعديل مادة (جميع الحقول)
 function showEditItemModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
@@ -436,10 +432,7 @@ function attachInvoiceEvents(invoiceType) {
 
   function autoFillPrice(selectElement, priceInput) {
     const itemId = selectElement.value;
-    if (!itemId) {
-      priceInput.value = '';
-      return;
-    }
+    if (!itemId) { priceInput.value = ''; return; }
     const item = itemsCache.find(i => i.id == itemId);
     if (item) {
       const price = invoiceType === 'sale' ? item.selling_price : item.purchase_price;
@@ -706,7 +699,6 @@ async function loadInvoices() {
   }
 }
 
-// نموذج تعديل فاتورة (Modal)
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
   const itemsOpt = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
@@ -726,10 +718,7 @@ function showEditInvoiceModal(invoice) {
 
   function autoFillPrice(selectElement, priceInput) {
     const itemId = selectElement.value;
-    if (!itemId) {
-      priceInput.value = '';
-      return;
-    }
+    if (!itemId) { priceInput.value = ''; return; }
     const item = itemsCache.find(i => i.id == itemId);
     if (item) {
       const price = type === 'sale' ? item.selling_price : item.purchase_price;
@@ -764,28 +753,42 @@ function showEditInvoiceModal(invoice) {
     <div class="modal-box" style="max-width:600px; max-height:90vh; overflow-y:auto;">
       <h3>تعديل الفاتورة</h3>
       <input type="hidden" id="edit-inv-id" value="${invoice.id}" />
+
+      <label for="edit-inv-type">النوع</label>
       <select id="edit-inv-type" class="input-field">
         <option value="sale" ${type === 'sale' ? 'selected' : ''}>بيع</option>
         <option value="purchase" ${type === 'purchase' ? 'selected' : ''}>شراء</option>
       </select>
+
       <div id="edit-customer-block" style="display:${type==='sale'?'block':'none'}">
+        <label for="edit-inv-customer">العميل</label>
         <select id="edit-inv-customer" class="input-field">
           <option value="">اختر عميل</option>
           ${customersOpt}
         </select>
       </div>
+
       <div id="edit-supplier-block" style="display:${type==='purchase'?'block':'none'}">
+        <label for="edit-inv-supplier">المورد</label>
         <select id="edit-inv-supplier" class="input-field">
           <option value="">اختر مورد</option>
           ${suppliersOpt}
         </select>
       </div>
+
+      <label for="edit-inv-date">التاريخ</label>
       <input id="edit-inv-date" type="date" class="input-field" value="${invoice.date}" />
+
+      <label for="edit-inv-ref">الرقم المرجعي</label>
       <input id="edit-inv-ref" class="input-field" value="${invoice.reference || ''}" />
+
+      <label for="edit-inv-notes">ملاحظات</label>
       <textarea id="edit-inv-notes" class="input-field">${invoice.notes || ''}</textarea>
+
       <h4>البنود</h4>
       <div id="edit-inv-lines">${linesHtml}</div>
       <button id="btn-add-edit-line" class="btn-secondary">+ بند</button>
+
       <div class="modal-actions">
         <button class="btn-primary" id="save-invoice-edit">حفظ التعديلات</button>
         <button class="btn-secondary" id="cancel-invoice-edit">إلغاء</button>
@@ -897,11 +900,7 @@ function showEditInvoiceModal(invoice) {
 }
 
 function printInvoice(invoice) {
-  // التأكد من وجود البيانات الأساسية
-  if (!invoice) {
-    alert('بيانات الفاتورة غير متوفرة');
-    return;
-  }
+  if (!invoice) { alert('بيانات الفاتورة غير متوفرة'); return; }
 
   const itemsRows = invoice.invoice_lines?.map(l => 
     `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`
@@ -932,30 +931,25 @@ function printInvoice(invoice) {
       <p>المدفوع: ${invoice.paid || 0} | الباقي: <strong>${invoice.balance || 0}</strong></p>
       <p>${invoice.notes || ''}</p>
       <p class="no-print" style="text-align:center; margin-top:20px; color:gray;">
-        إذا لم تظهر نافذة الطباعة، استخدم زر الطباعة أدناه أو احفظ الصفحة كـ PDF.
+        إذا لم تظهر نافذة الطباعة، استخدم زر الطباعة أدناه.
       </p>
       <button class="no-print" onclick="window.print()" style="display:block; margin:20px auto; padding:10px 30px; font-size:16px;">
         🖨️ طباعة / حفظ PDF
       </button>
       <script>
-        // محاولة فتح الطباعة تلقائياً بعد التحميل
         window.onload = function() {
-          setTimeout(function() {
-            window.print();
-          }, 800);
+          setTimeout(function() { window.print(); }, 800);
         };
       </script>
     </body>
     </html>
   `;
 
-  // الطريقة 1: فتح نافذة جديدة
   const printWindow = window.open('', '_blank', 'width=800,height=600');
   if (printWindow) {
     printWindow.document.write(invoiceHTML);
     printWindow.document.close();
   } else {
-    // الطريقة 2: استخدام iframe داخل التطبيق (لحالة المنع)
     alert('سيتم عرض الفاتورة للطباعة داخل التطبيق. اضغط موافق.');
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -969,14 +963,31 @@ function printInvoice(invoice) {
     document.body.appendChild(iframe);
     iframe.contentWindow.document.write(invoiceHTML);
     iframe.contentWindow.document.close();
-    
-    // إزالة الإطار بعد الطباعة (إن أمكن)
     try {
       iframe.contentWindow.onafterprint = function() {
         document.body.removeChild(iframe);
       };
     } catch(e) {}
   }
+}
+
+function confirmDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <p>${message}</p>
+        <div class="modal-actions">
+          <button class="btn-danger" id="modal-confirm">نعم، احذف</button>
+          <button class="btn-secondary" id="modal-cancel">إلغاء</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
+    document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
+  });
 }
 
 async function deleteItem(itemId) {
@@ -1015,7 +1026,7 @@ async function deleteInvoice(invId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// التصنيفات
+// ==================== التصنيفات ====================
 async function loadCategories() {
   try {
     const categories = await apiCall('/categories', 'GET');
@@ -1107,7 +1118,7 @@ async function deleteCategory(catId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// الدفعات
+// ==================== الدفعات ====================
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([
@@ -1250,7 +1261,7 @@ async function deletePayment(paymentId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// التقارير
+// ==================== التقارير ====================
 async function loadReports() {
   let html = `
     <div class="card"><h2>التقارير</h2></div>
@@ -1438,7 +1449,7 @@ async function loadSupplierStatementForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// توجيه التبويبات
+// ==================== توجيه التبويبات ====================
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1457,7 +1468,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// بدء التطبيق
+// ==================== بدء التطبيق ====================
 async function verifyUser() {
   try {
     const data = await apiCall('/verify', 'POST');
