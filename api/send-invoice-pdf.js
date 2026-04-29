@@ -1,7 +1,8 @@
-const PDFDocument = require('pdfkit');
+const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const FormData = require('form-data');
+const https = require('https');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -50,69 +51,88 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    const pdfPromise = new Promise(resolve => { doc.on('end', () => resolve(Buffer.concat(chunks))); });
+    // إنشاء PDF باستخدام pdf-lib
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([595.28, 841.89]); // A4
+    const { width, height } = page.getSize();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    doc.fontSize(20).text('الراجحي للمحاسبة', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(14).text(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`, { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`التاريخ: ${invoice.date}`, { align: 'center' });
-    doc.text(`المرجع: ${invoice.reference || '-'}`, { align: 'center' });
-    doc.moveDown();
-    if (invoice.customer?.name) doc.text(`العميل: ${invoice.customer.name}`);
-    if (invoice.supplier?.name) doc.text(`المورد: ${invoice.supplier.name}`);
-    doc.moveDown();
+    let y = height - 50;
+    page.drawText('الراجحي للمحاسبة', { x: 50, y, size: 20, font });
+    y -= 30;
+    page.drawText(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`, { x: 50, y, size: 14, font });
+    y -= 20;
+    page.drawText(`التاريخ: ${invoice.date}`, { x: 50, y, size: 12, font });
+    y -= 16;
+    page.drawText(`المرجع: ${invoice.reference || '-'}`, { x: 50, y, size: 12, font });
+    if (invoice.customer?.name) { y -= 16; page.drawText(`العميل: ${invoice.customer.name}`, { x: 50, y, size: 12, font }); }
+    if (invoice.supplier?.name) { y -= 16; page.drawText(`المورد: ${invoice.supplier.name}`, { x: 50, y, size: 12, font }); }
 
-    const tableTop = doc.y;
-    doc.fontSize(11).text('المادة', 50, tableTop, { continued: true });
-    doc.text('الكمية', 250, tableTop, { continued: true });
-    doc.text('السعر', 350, tableTop, { continued: true });
-    doc.text('الإجمالي', 450, tableTop);
-    doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-    doc.moveDown(0.5);
+    y -= 25;
+    // رؤوس الجدول
+    page.drawText('المادة', { x: 50, y, size: 11, font });
+    page.drawText('الكمية', { x: 250, y, size: 11, font });
+    page.drawText('السعر', { x: 350, y, size: 11, font });
+    page.drawText('الإجمالي', { x: 450, y, size: 11, font });
+    y -= 14;
+    page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, color: rgb(0,0,0) });
+    y -= 2;
 
     invoice.invoice_lines?.forEach(line => {
-      doc.text(line.item?.name || '-', 50, doc.y, { continued: true });
-      doc.text(String(line.quantity), 250, doc.y, { continued: true });
-      doc.text(String(line.unit_price), 350, doc.y, { continued: true });
-      doc.text(String(line.total), 450, doc.y);
-      doc.moveDown(0.3);
+      y -= 14;
+      page.drawText(line.item?.name || '-', { x: 50, y, size: 10, font });
+      page.drawText(String(line.quantity), { x: 250, y, size: 10, font });
+      page.drawText(String(line.unit_price), { x: 350, y, size: 10, font });
+      page.drawText(String(line.total), { x: 450, y, size: 10, font });
     });
 
-    doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-    doc.moveDown();
-    doc.fontSize(12).text(`الإجمالي: ${invoice.total}`, { align: 'right' });
-    doc.text(`المدفوع: ${paid}`, { align: 'right' });
-    doc.text(`الباقي: ${balance}`, { align: 'right' });
+    y -= 20;
+    page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, color: rgb(0,0,0) });
+    y -= 20;
+    page.drawText(`الإجمالي: ${invoice.total}`, { x: 400, y, size: 12, font, maxWidth: 150 });
+    y -= 16;
+    page.drawText(`المدفوع: ${paid}`, { x: 400, y, size: 12, font, maxWidth: 150 });
+    y -= 16;
+    page.drawText(`الباقي: ${balance}`, { x: 400, y, size: 12, font, maxWidth: 150 });
     if (invoice.notes) {
-      doc.moveDown();
-      doc.text(`ملاحظات: ${invoice.notes}`);
+      y -= 20;
+      page.drawText(`ملاحظات: ${invoice.notes}`, { x: 50, y, size: 11, font, maxWidth: 500 });
     }
 
-    doc.end();
-    const pdfBuffer = await pdfPromise;
+    const pdfBytes = await pdfDoc.save();
+    const pdfBuffer = Buffer.from(pdfBytes);
 
-    const formData = new FormData();
-    formData.append('chat_id', userId);
-    formData.append('document', pdfBuffer, {
+    // إرسال عبر https مباشرة
+    const form = new FormData();
+    form.append('chat_id', String(userId));
+    form.append('document', pdfBuffer, {
       filename: `فاتورة-${invoice.reference || invoice.id}.pdf`,
       contentType: 'application/pdf'
     });
-    formData.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
+    form.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
 
-    // استخدام fetch المضمن في Node 18+
-    const tgResponse = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
+    const options = {
+      hostname: 'api.telegram.org',
+      path: `/bot${BOT_TOKEN}/sendDocument`,
       method: 'POST',
-      body: formData,
-      headers: formData.getHeaders()
-    });
-    const tgJson = await tgResponse.json();
+      headers: form.getHeaders()
+    };
 
-    if (!tgJson.ok) throw new Error(tgJson.description || 'فشل إرسال الملف');
-    res.json({ success: true, message: 'تم إرسال الفاتورة PDF عبر البوت' });
+    const request = https.request(options, (tgRes) => {
+      let data = '';
+      tgRes.on('data', chunk => data += chunk);
+      tgRes.on('end', () => {
+        const json = JSON.parse(data);
+        if (!json.ok) {
+          return res.status(500).json({ error: json.description || 'فشل الإرسال' });
+        }
+        res.json({ success: true, message: 'تم إرسال الفاتورة PDF عبر البوت' });
+      });
+    });
+    request.on('error', (err) => {
+      res.status(500).json({ error: err.message });
+    });
+    form.pipe(request);
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
     res.status(500).json({ error: err.message });
