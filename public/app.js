@@ -409,6 +409,116 @@ function showEditItemModal(itemId) {
   };
 }
 
+// ==================== دوال مساعدة للفواتير ====================
+function updateInvoiceRemoveButtons() {
+  const rows = document.querySelectorAll('#inv-lines-container .line-row');
+  rows.forEach(row => {
+    const btn = row.querySelector('.btn-remove-line');
+    if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
+  });
+}
+
+// دالة attachInvoiceEvents كاملة
+function attachInvoiceEvents() {
+  document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
+    const container = document.getElementById('inv-lines-container');
+    const newLine = document.createElement('div');
+    newLine.className = 'line-row';
+    newLine.innerHTML = `
+      <select class="input-field item-select">
+        <option value="">اختر مادة</option>
+        ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
+      </select>
+      <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
+      <input type="number" step="0.01" placeholder="السعر" class="input-field price-input" />
+      <input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly />
+      <button class="btn-remove-line btn-secondary">✕</button>
+    `;
+    container.appendChild(newLine);
+    updateInvoiceRemoveButtons();
+    attachLineEvents(newLine);
+  });
+
+  document.getElementById('inv-lines-container')?.addEventListener('click', (e) => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const row = e.target.closest('.line-row');
+      if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) {
+        row.remove();
+        updateInvoiceRemoveButtons();
+      }
+    }
+  });
+
+  function attachLineEvents(row) {
+    const qty = row.querySelector('.qty-input');
+    const price = row.querySelector('.price-input');
+    const total = row.querySelector('.total-input');
+    const calculate = () => {
+      const q = parseFloat(qty.value) || 0;
+      const p = parseFloat(price.value) || 0;
+      total.value = (q * p).toFixed(2);
+    };
+    qty?.addEventListener('input', calculate);
+    price?.addEventListener('input', calculate);
+  }
+
+  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
+
+  document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
+    const type = document.getElementById('inv-type').value;
+    const entityValue = document.getElementById('inv-entity').value;
+    let customerId = null;
+    let supplierId = null;
+    if (type === 'sale') {
+      customerId = entityValue === 'cash' ? null : entityValue;
+    } else {
+      supplierId = entityValue === 'cash' ? null : entityValue;
+    }
+    const date = document.getElementById('inv-date').value;
+    const reference = document.getElementById('inv-ref').value.trim();
+    const notes = document.getElementById('inv-notes').value.trim();
+    const paidAmount = parseFloat(document.getElementById('inv-paid')?.value) || 0;
+
+    const lines = [];
+    document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+      const itemId = row.querySelector('.item-select').value || null;
+      const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
+      const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
+      const total = parseFloat(row.querySelector('.total-input').value) || 0;
+      if (itemId || quantity > 0) {
+        lines.push({
+          item_id: itemId,
+          description: itemId ? '' : 'بند',
+          quantity,
+          unit_price: unitPrice,
+          total
+        });
+      }
+    });
+
+    if (lines.length === 0) return alert('أضف بنداً واحداً على الأقل');
+
+    try {
+      await apiCall('/invoices', 'POST', {
+        type,
+        customer_id: customerId,
+        supplier_id: supplierId,
+        date,
+        reference,
+        notes,
+        lines,
+        paid_amount: paidAmount
+      });
+      alert('تم حفظ الفاتورة بنجاح');
+      loadInvoices();
+    } catch (err) {
+      alert('خطأ: ' + err.message);
+    }
+  });
+
+  updateInvoiceRemoveButtons();
+}
+
 // ==================== فاتورة مبيعات سريعة ====================
 async function loadSaleInvoiceForm() {
   await loadInvoiceFormByType('sale');
@@ -474,15 +584,6 @@ async function loadInvoiceFormByType(type) {
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
-}
-
-// دوال مساعدة للفواتير
-function updateInvoiceRemoveButtons() {
-  const rows = document.querySelectorAll('#inv-lines-container .line-row');
-  rows.forEach(row => {
-    const btn = row.querySelector('.btn-remove-line');
-    if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
-  });
 }
 
 // ==================== عرض جميع الفواتير مع التعديل والطباعة والحذف ====================
