@@ -47,17 +47,14 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
+      // نقرأ الرصيد المخزن مباشرة من حقل balance
       const { data: customers, error } = await supabase
-        .from('customers').select('*').eq('user_id', userId).order('name');
+        .from('customers')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
       if (error) throw error;
 
-      for (let cust of customers) {
-        const { data: lines } = await supabase
-          .from('journal_lines').select('debit, credit').eq('customer_id', cust.id);
-        const totalDebit = lines?.reduce((s, l) => s + parseFloat(l.debit), 0) || 0;
-        const totalCredit = lines?.reduce((s, l) => s + parseFloat(l.credit), 0) || 0;
-        cust.balance = totalDebit - totalCredit;
-      }
       return res.json(customers);
     }
 
@@ -65,10 +62,16 @@ module.exports = async (req, res) => {
       const { name, phone, address } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم العميل مطلوب' });
       const { data, error } = await supabase
-        .from('customers').insert({
-          user_id: userId, name,
-          phone: phone || null, address: address || null, balance: 0
-        }).select().single();
+        .from('customers')
+        .insert({
+          user_id: userId,
+          name,
+          phone: phone || null,
+          address: address || null,
+          balance: 0
+        })
+        .select()
+        .single();
       if (error) throw error;
       return res.json(data);
     }
@@ -77,8 +80,12 @@ module.exports = async (req, res) => {
       const { id, name, phone, address } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف العميل مطلوب' });
       const { data, error } = await supabase
-        .from('customers').update({ name, phone, address })
-        .eq('id', id).eq('user_id', userId).select().single();
+        .from('customers')
+        .update({ name, phone, address })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
       if (error) throw error;
       return res.json(data);
     }
@@ -87,7 +94,10 @@ module.exports = async (req, res) => {
       const customerId = req.query.id;
       if (!customerId) return res.status(400).json({ error: 'معرف العميل مطلوب' });
       const { error } = await supabase
-        .from('customers').delete().eq('id', customerId).eq('user_id', userId);
+        .from('customers')
+        .delete()
+        .eq('id', customerId)
+        .eq('user_id', userId);
       if (error) throw error;
       return res.json({ success: true });
     }

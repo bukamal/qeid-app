@@ -47,6 +47,7 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
+      // نقرأ الرصيد المخزن مباشرة من حقل balance
       const { data: suppliers, error } = await supabase
         .from('suppliers')
         .select('*')
@@ -54,15 +55,7 @@ module.exports = async (req, res) => {
         .order('name');
       if (error) throw error;
 
-      for (let sup of suppliers) {
-        const { data: lines } = await supabase
-          .from('journal_lines')
-          .select('debit, credit')
-          .eq('supplier_id', sup.id);
-        const totalDebit = lines?.reduce((s, l) => s + parseFloat(l.debit), 0) || 0;
-        const totalCredit = lines?.reduce((s, l) => s + parseFloat(l.credit), 0) || 0;
-        sup.balance = totalCredit - totalDebit;
-      }
+      // الرصيد جاهز ولا حاجة لحسابه من journal_lines
       return res.json(suppliers);
     }
 
