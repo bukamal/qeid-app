@@ -860,7 +860,7 @@ async function loadInvoices() {
           <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
           ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
           الإجمالي: ${inv.total}
-          <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || ''} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
+          <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || '-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
           <div class="card-actions">
             <button class="btn-primary print-invoice-btn" data-invoice-id="${inv.id}">🖨️ طباعة / PDF</button>
           </div>
@@ -869,7 +869,7 @@ async function loadInvoices() {
     }
     document.getElementById('tab-content').innerHTML = html;
     attachInvoiceEvents();
-    // ربط أزرار الطباعة بمستمع حدث
+    // ربط أزرار الطباعة
     document.querySelectorAll('.print-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = parseInt(e.target.dataset.invoiceId);
@@ -1001,31 +1001,48 @@ function updateInvoiceRemoveButtons() {
   });
 }
 
-// دالة الطباعة الصحيحة
+// دالة الطباعة المحسّنة
 function printInvoice(invoice) {
-  const w = window.open('', '_blank', 'width=700,height=600');
-  w.document.write(`
+  // إنشاء نافذة جديدة
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  if (!printWindow) {
+    alert('الرجاء السماح بفتح النوافذ المنبثقة');
+    return;
+  }
+
+  // بناء محتوى HTML
+  const content = `
     <html dir="rtl">
-    <head><title>فاتورة ${invoice.reference || ''}</title>
-    <style>
-      body { font-family: 'Tajawal', sans-serif; padding: 20px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-      th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-      th { background: #f0f0f0; }
-      @media print { button { display: none; } }
-    </style></head>
+    <head>
+      <title>فاتورة ${invoice.reference || ''}</title>
+      <style>
+        body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+        th { background: #f0f0f0; }
+        .print-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        @media print {
+          .print-btn { display: none; }
+        }
+      </style>
+    </head>
     <body>
       <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
       <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
       <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
-      <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
-      ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+      <table>
+        <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+        ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
       </table>
       <h3>الإجمالي: ${invoice.total}</h3>
       <p>${invoice.notes || ''}</p>
-      <button onclick="window.print()">🖨️ طباعة</button>
-    </body></html>
-  `);
+      <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.write(content);
+  printWindow.document.close(); // ضروري لبعض المتصفحات
 }
 
 // ==================== مربع حوار تأكيدي ====================
@@ -1048,7 +1065,7 @@ function confirmDialog(message) {
   });
 }
 
-// ==================== دوال الحذف العامة ====================
+// ==================== دوال الحذف والتعديل (تبقى كما هي) ====================
 async function deleteEntry(entryId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا القيد؟ سيتم عكس تأثيره على المخزون والأرصدة.')) return;
   try {
