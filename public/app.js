@@ -47,16 +47,79 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
 // ==================== لوحة التحكم ====================
 async function loadDashboard() {
   try {
-    const items = await apiCall('/items', 'GET');
-    const customers = await apiCall('/customers', 'GET');
-    const suppliers = await apiCall('/suppliers', 'GET');
-    const invoices = await apiCall('/invoices', 'GET');
+    const [items, customers, suppliers, invoices, monthly, daily] = await Promise.all([
+      apiCall('/items', 'GET'),
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET'),
+      apiCall('/invoices', 'GET'),
+      apiCall('/reports?type=monthly_summary', 'GET'),
+      apiCall('/reports?type=daily_profit', 'GET')
+    ]);
+
+    const totalSales = invoices.filter(inv => inv.type === 'sale').reduce((s, inv) => s + (inv.total || 0), 0);
+    const totalPurchases = invoices.filter(inv => inv.type === 'purchase').reduce((s, inv) => s + (inv.total || 0), 0);
+
     document.getElementById('tab-content').innerHTML = `
-      <div class="card">📦 المواد: ${items.length}</div>
-      <div class="card">👥 العملاء: ${customers.length}</div>
-      <div class="card">🏭 الموردين: ${suppliers.length}</div>
-      <div class="card">🧾 الفواتير: ${invoices.length}</div>
+      <div class="dashboard-grid">
+        <div class="dash-card items"><span class="dash-icon">📦</span><div class="dash-label">المواد</div><div class="dash-value">${items.length}</div></div>
+        <div class="dash-card customers"><span class="dash-icon">👥</span><div class="dash-label">العملاء</div><div class="dash-value">${customers.length}</div></div>
+        <div class="dash-card suppliers"><span class="dash-icon">🏭</span><div class="dash-label">الموردين</div><div class="dash-value">${suppliers.length}</div></div>
+        <div class="dash-card invoices"><span class="dash-icon">🧾</span><div class="dash-label">الفواتير</div><div class="dash-value">${invoices.length}</div></div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-container"><h4 style="margin-bottom:8px;">المبيعات والمشتريات</h4><canvas id="incomeChart"></canvas></div>
+        <div class="chart-container"><h4 style="margin-bottom:8px;">المدفوعات الشهرية</h4><canvas id="paymentsChart"></canvas></div>
+        <div class="chart-container"><h4 style="margin-bottom:8px;">صافي الربح اليومي</h4><canvas id="profitChart"></canvas></div>
+      </div>
     `;
+
+    setTimeout(() => {
+      const ctx1 = document.getElementById('incomeChart');
+      if (ctx1) new Chart(ctx1, {
+        type: 'doughnut',
+        data: { labels: ['مبيعات', 'مشتريات'], datasets: [{ data: [totalSales, totalPurchases], backgroundColor: ['#10b981', '#f59e0b'], borderColor: '#ffffff', borderWidth: 2 }] },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
+
+      const ctx2 = document.getElementById('paymentsChart');
+      if (ctx2 && monthly) new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: monthly.labels,
+          datasets: [
+            { label: 'وارد', data: monthly.payments_in, backgroundColor: '#10b981' },
+            { label: 'منصرف', data: monthly.payments_out, backgroundColor: '#ef4444' }
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      const ctx3 = document.getElementById('profitChart');
+      if (ctx3 && daily) {
+        const profitPoints = daily.dates.map((dateStr, i) => ({ x: new Date(dateStr + 'T00:00:00'), y: daily.profits[i] }));
+        new Chart(ctx3, {
+          type: 'line',
+          data: {
+            datasets: [{
+              label: 'صافي الربح اليومي',
+              data: profitPoints,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.1)',
+              fill: true,
+              pointRadius: 3
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+              x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'yyyy-MM-dd' } }, title: { display: true, text: 'التاريخ' } },
+              y: { beginAtZero: true, title: { display: true, text: 'الربح' } }
+            }
+          }
+        });
+      }
+    }, 100);
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
@@ -70,14 +133,6 @@ async function loadCustomers() {
     customersCache = customers;
     let html = `
       <div class="card"><h2>العملاء</h2><button id="btn-add-customer" class="btn-primary">+ إضافة عميل</button></div>
-      <div id="customer-form" class="card" style="display:none;">
-        <h3>إضافة عميل جديد</h3>
-        <input id="customer-name" placeholder="الاسم" class="input-field" />
-        <input id="customer-phone" placeholder="الهاتف" class="input-field" />
-        <input id="customer-address" placeholder="العنوان" class="input-field" />
-        <button id="btn-save-customer" class="btn-primary">حفظ</button>
-        <button id="btn-cancel-customer" class="btn-secondary">إلغاء</button>
-      </div>
     `;
     if (customers.length === 0) {
       html += '<div class="card">لا يوجد عملاء</div>';
@@ -95,32 +150,42 @@ async function loadCustomers() {
       `).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
-    attachCustomersEvents();
+    document.getElementById('btn-add-customer').addEventListener('click', showAddCustomerModal);
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-function attachCustomersEvents() {
-  document.getElementById('btn-add-customer')?.addEventListener('click', () => {
-    document.getElementById('customer-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-customer')?.addEventListener('click', () => {
-    document.getElementById('customer-form').style.display = 'none';
-  });
-  document.getElementById('btn-save-customer')?.addEventListener('click', async () => {
-    const name = document.getElementById('customer-name').value.trim();
+
+function showAddCustomerModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>إضافة عميل جديد</h3>
+      <label class="form-label">الاسم</label>
+      <input id="add-cust-name" class="input-field" placeholder="اسم العميل" />
+      <label class="form-label">الهاتف</label>
+      <input id="add-cust-phone" class="input-field" placeholder="رقم الهاتف" />
+      <label class="form-label">العنوان</label>
+      <input id="add-cust-address" class="input-field" placeholder="العنوان" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-add-cust">حفظ</button>
+        <button class="btn-secondary" id="cancel-add-cust">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('save-add-cust').onclick = async () => {
+    const name = document.getElementById('add-cust-name').value.trim();
     if (!name) return alert('الاسم مطلوب');
-    const payload = {
-      name,
-      phone: document.getElementById('customer-phone').value.trim(),
-      address: document.getElementById('customer-address').value.trim()
-    };
+    const payload = { name, phone: document.getElementById('add-cust-phone').value.trim(), address: document.getElementById('add-cust-address').value.trim() };
     try {
       await apiCall('/customers', 'POST', payload);
-      document.getElementById('customer-form').style.display = 'none';
+      document.body.removeChild(overlay);
       loadCustomers();
     } catch (err) { alert('خطأ: ' + err.message); }
-  });
+  };
+  document.getElementById('cancel-add-cust').onclick = () => { document.body.removeChild(overlay); };
 }
 
 function showEditCustomerModal(custId) {
@@ -131,8 +196,11 @@ function showEditCustomerModal(custId) {
   overlay.innerHTML = `
     <div class="modal-box">
       <h3>تعديل العميل</h3>
+      <label class="form-label">الاسم</label>
       <input id="edit-cust-name" class="input-field" value="${customer.name}" />
+      <label class="form-label">الهاتف</label>
       <input id="edit-cust-phone" class="input-field" value="${customer.phone || ''}" />
+      <label class="form-label">العنوان</label>
       <input id="edit-cust-address" class="input-field" value="${customer.address || ''}" />
       <div class="modal-actions">
         <button class="btn-primary" id="save-cust-edit">حفظ</button>
@@ -152,9 +220,7 @@ function showEditCustomerModal(custId) {
       loadCustomers();
     } catch (e) { alert('خطأ: ' + e.message); }
   };
-  document.getElementById('cancel-cust-edit').onclick = () => {
-    document.body.removeChild(overlay);
-  };
+  document.getElementById('cancel-cust-edit').onclick = () => { document.body.removeChild(overlay); };
 }
 
 // ==================== الموردين ====================
@@ -165,14 +231,6 @@ async function loadSuppliers() {
     suppliersCache = suppliers;
     let html = `
       <div class="card"><h2>الموردين</h2><button id="btn-add-supplier" class="btn-primary">+ إضافة مورد</button></div>
-      <div id="supplier-form" class="card" style="display:none;">
-        <h3>إضافة مورد جديد</h3>
-        <input id="supplier-name" placeholder="الاسم" class="input-field" />
-        <input id="supplier-phone" placeholder="الهاتف" class="input-field" />
-        <input id="supplier-address" placeholder="العنوان" class="input-field" />
-        <button id="btn-save-supplier" class="btn-primary">حفظ</button>
-        <button id="btn-cancel-supplier" class="btn-secondary">إلغاء</button>
-      </div>
     `;
     if (suppliers.length === 0) {
       html += '<div class="card">لا يوجد موردين</div>';
@@ -190,32 +248,42 @@ async function loadSuppliers() {
       `).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
-    attachSuppliersEvents();
+    document.getElementById('btn-add-supplier').addEventListener('click', showAddSupplierModal);
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-function attachSuppliersEvents() {
-  document.getElementById('btn-add-supplier')?.addEventListener('click', () => {
-    document.getElementById('supplier-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-supplier')?.addEventListener('click', () => {
-    document.getElementById('supplier-form').style.display = 'none';
-  });
-  document.getElementById('btn-save-supplier')?.addEventListener('click', async () => {
-    const name = document.getElementById('supplier-name').value.trim();
+
+function showAddSupplierModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>إضافة مورد جديد</h3>
+      <label class="form-label">الاسم</label>
+      <input id="add-sup-name" class="input-field" placeholder="اسم المورد" />
+      <label class="form-label">الهاتف</label>
+      <input id="add-sup-phone" class="input-field" placeholder="رقم الهاتف" />
+      <label class="form-label">العنوان</label>
+      <input id="add-sup-address" class="input-field" placeholder="العنوان" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-add-sup">حفظ</button>
+        <button class="btn-secondary" id="cancel-add-sup">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('save-add-sup').onclick = async () => {
+    const name = document.getElementById('add-sup-name').value.trim();
     if (!name) return alert('الاسم مطلوب');
-    const payload = {
-      name,
-      phone: document.getElementById('supplier-phone').value.trim(),
-      address: document.getElementById('supplier-address').value.trim()
-    };
+    const payload = { name, phone: document.getElementById('add-sup-phone').value.trim(), address: document.getElementById('add-sup-address').value.trim() };
     try {
       await apiCall('/suppliers', 'POST', payload);
-      document.getElementById('supplier-form').style.display = 'none';
+      document.body.removeChild(overlay);
       loadSuppliers();
     } catch (err) { alert('خطأ: ' + err.message); }
-  });
+  };
+  document.getElementById('cancel-add-sup').onclick = () => { document.body.removeChild(overlay); };
 }
 
 function showEditSupplierModal(supId) {
@@ -226,8 +294,11 @@ function showEditSupplierModal(supId) {
   overlay.innerHTML = `
     <div class="modal-box">
       <h3>تعديل المورد</h3>
+      <label class="form-label">الاسم</label>
       <input id="edit-sup-name" class="input-field" value="${supplier.name}" />
+      <label class="form-label">الهاتف</label>
       <input id="edit-sup-phone" class="input-field" value="${supplier.phone || ''}" />
+      <label class="form-label">العنوان</label>
       <input id="edit-sup-address" class="input-field" value="${supplier.address || ''}" />
       <div class="modal-actions">
         <button class="btn-primary" id="save-sup-edit">حفظ</button>
@@ -247,9 +318,7 @@ function showEditSupplierModal(supId) {
       loadSuppliers();
     } catch (e) { alert('خطأ: ' + e.message); }
   };
-  document.getElementById('cancel-sup-edit').onclick = () => {
-    document.body.removeChild(overlay);
-  };
+  document.getElementById('cancel-sup-edit').onclick = () => { document.body.removeChild(overlay); };
 }
 
 // ==================== المواد ====================
@@ -268,28 +337,6 @@ async function loadItems() {
         <h2>المواد</h2>
         <button id="btn-add-item" class="btn-primary">+ إضافة مادة</button>
       </div>
-      <div id="item-form" class="card" style="display:none;">
-        <h3>إضافة مادة جديدة</h3>
-        <input id="item-name" placeholder="اسم المادة" class="input-field" />
-        <select id="item-category" class="input-field">
-          <option value="">بدون تصنيف</option>
-          ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <div style="display:flex; gap:8px; margin:5px 0;">
-          <input id="item-add-category" placeholder="تصنيف جديد" class="input-field" style="flex:2;" />
-          <button id="btn-add-category" class="btn-secondary" style="flex:1;">أضف تصنيف</button>
-        </div>
-        <select id="item-type" class="input-field">
-          <option value="مخزون">مخزون</option>
-          <option value="منتج نهائي">منتج نهائي</option>
-          <option value="خدمة">خدمة</option>
-        </select>
-        <input id="item-purchase" placeholder="سعر الشراء" type="number" step="0.01" class="input-field" />
-        <input id="item-selling" placeholder="سعر البيع" type="number" step="0.01" class="input-field" />
-        <input id="item-qty" placeholder="الكمية" type="number" step="any" class="input-field" />
-        <button id="btn-save-item" class="btn-primary">حفظ</button>
-        <button id="btn-cancel-item" class="btn-secondary">إلغاء</button>
-      </div>
     `;
     if (items.length === 0) {
       html += '<div class="card">لا توجد مواد مضافة بعد</div>';
@@ -300,7 +347,7 @@ async function loadItems() {
           <span style="float:left; font-size:0.9em;">${item.item_type || 'مخزون'}</span>
           <br>
           📂 ${item.category ? item.category.name : 'بدون تصنيف'} |
-          🛒 شراء: ${item.purchase_price} | 💰 بيع: ${item.selling_price} | 📦 الكمية: ${item.quantity}
+          🛒 شراء: ${item.purchase_price} | 💰 بيع: ${item.selling_price}
           <div class="card-actions">
             <button class="btn-secondary" onclick="showEditItemModal(${item.id})">✏️ تعديل</button>
             <button class="btn-danger" onclick="deleteItem(${item.id})">🗑️ حذف</button>
@@ -309,52 +356,86 @@ async function loadItems() {
       `).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
-    attachItemsEvents();
+    document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-function attachItemsEvents() {
-  document.getElementById('btn-add-item')?.addEventListener('click', () => {
-    document.getElementById('item-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-item')?.addEventListener('click', () => {
-    document.getElementById('item-form').style.display = 'none';
-  });
-  document.getElementById('btn-add-category')?.addEventListener('click', async () => {
-    const name = document.getElementById('item-add-category').value.trim();
+
+function showAddItemModal() {
+  const catOptions = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>إضافة مادة جديدة</h3>
+      <label class="form-label">اسم المادة</label>
+      <input id="add-item-name" class="input-field" placeholder="اسم المادة" />
+      <label class="form-label">التصنيف</label>
+      <select id="add-item-category" class="input-field">
+        <option value="">بدون تصنيف</option>
+        ${catOptions}
+      </select>
+      <div style="display:flex; gap:8px; margin:5px 0;">
+        <input id="add-item-new-category" placeholder="تصنيف جديد" class="input-field" style="flex:2;" />
+        <button id="btn-add-category-in-modal" class="btn-secondary" style="flex:1;">أضف تصنيف</button>
+      </div>
+      <label class="form-label">نوع المادة</label>
+      <select id="add-item-type" class="input-field">
+        <option value="مخزون">مخزون</option>
+        <option value="منتج نهائي">منتج نهائي</option>
+        <option value="خدمة">خدمة</option>
+      </select>
+      <label class="form-label">سعر الشراء</label>
+      <input id="add-item-purchase" type="number" step="0.01" class="input-field" placeholder="0.00" />
+      <label class="form-label">سعر البيع</label>
+      <input id="add-item-selling" type="number" step="0.01" class="input-field" placeholder="0.00" />
+      <input id="add-item-qty" type="hidden" value="0" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-add-item">حفظ</button>
+        <button class="btn-secondary" id="cancel-add-item">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById('btn-add-category-in-modal').onclick = async () => {
+    const name = document.getElementById('add-item-new-category').value.trim();
     if (!name) return alert('أدخل اسم التصنيف');
     try {
       const newCat = await apiCall('/categories', 'POST', { name });
-      const select = document.getElementById('item-category');
+      const select = document.getElementById('add-item-category');
       const opt = document.createElement('option');
       opt.value = newCat.id;
       opt.textContent = newCat.name;
       select.appendChild(opt);
       select.value = newCat.id;
-      document.getElementById('item-add-category').value = '';
+      document.getElementById('add-item-new-category').value = '';
+      categoriesCache.push(newCat);
     } catch (err) { alert('خطأ: ' + err.message); }
-  });
-  document.getElementById('btn-save-item')?.addEventListener('click', async () => {
-    const name = document.getElementById('item-name').value.trim();
+  };
+
+  document.getElementById('save-add-item').onclick = async () => {
+    const name = document.getElementById('add-item-name').value.trim();
     if (!name) return alert('اسم المادة مطلوب');
     if (itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
       return alert('توجد مادة بنفس الاسم');
     }
     const payload = {
       name,
-      category_id: document.getElementById('item-category').value || null,
-      item_type: document.getElementById('item-type').value,
-      purchase_price: parseFloat(document.getElementById('item-purchase').value) || 0,
-      selling_price: parseFloat(document.getElementById('item-selling').value) || 0,
-      quantity: parseFloat(document.getElementById('item-qty').value) || 0
+      category_id: document.getElementById('add-item-category').value || null,
+      item_type: document.getElementById('add-item-type').value,
+      purchase_price: parseFloat(document.getElementById('add-item-purchase').value) || 0,
+      selling_price: parseFloat(document.getElementById('add-item-selling').value) || 0
     };
     try {
       await apiCall('/items', 'POST', payload);
-      document.getElementById('item-form').style.display = 'none';
+      document.body.removeChild(overlay);
       loadItems();
     } catch (err) { alert('خطأ: ' + err.message); }
-  });
+  };
+
+  document.getElementById('cancel-add-item').onclick = () => { document.body.removeChild(overlay); };
 }
 
 function showEditItemModal(itemId) {
@@ -366,19 +447,23 @@ function showEditItemModal(itemId) {
   overlay.innerHTML = `
     <div class="modal-box">
       <h3>تعديل المادة</h3>
+      <label class="form-label">اسم المادة</label>
       <input id="edit-item-name" class="input-field" value="${item.name}" />
+      <label class="form-label">التصنيف</label>
       <select id="edit-item-category" class="input-field">
         <option value="">بدون تصنيف</option>
         ${catOptions}
       </select>
+      <label class="form-label">نوع المادة</label>
       <select id="edit-item-type" class="input-field">
         <option value="مخزون" ${item.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option>
         <option value="منتج نهائي" ${item.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option>
         <option value="خدمة" ${item.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option>
       </select>
+      <label class="form-label">سعر الشراء</label>
       <input id="edit-item-purchase" type="number" step="0.01" class="input-field" value="${item.purchase_price}" />
+      <label class="form-label">سعر البيع</label>
       <input id="edit-item-selling" type="number" step="0.01" class="input-field" value="${item.selling_price}" />
-      <input id="edit-item-qty" type="number" step="any" class="input-field" value="${item.quantity}" />
       <div class="modal-actions">
         <button class="btn-primary" id="save-item-edit">حفظ</button>
         <button class="btn-secondary" id="cancel-item-edit">إلغاء</button>
@@ -395,8 +480,7 @@ function showEditItemModal(itemId) {
       category_id: document.getElementById('edit-item-category').value || null,
       item_type: document.getElementById('edit-item-type').value,
       purchase_price: parseFloat(document.getElementById('edit-item-purchase').value) || 0,
-      selling_price: parseFloat(document.getElementById('edit-item-selling').value) || 0,
-      quantity: parseFloat(document.getElementById('edit-item-qty').value) || 0
+      selling_price: parseFloat(document.getElementById('edit-item-selling').value) || 0
     };
     try {
       await apiCall('/items', 'PUT', payload);
@@ -404,12 +488,10 @@ function showEditItemModal(itemId) {
       loadItems();
     } catch (e) { alert('خطأ: ' + e.message); }
   };
-  document.getElementById('cancel-item-edit').onclick = () => {
-    document.body.removeChild(overlay);
-  };
+  document.getElementById('cancel-item-edit').onclick = () => { document.body.removeChild(overlay); };
 }
 
-// ==================== دوال مساعدة للفواتير ====================
+// ==================== دوال الفواتير ====================
 function updateInvoiceRemoveButtons() {
   const rows = document.querySelectorAll('#inv-lines-container .line-row');
   rows.forEach(row => {
@@ -518,11 +600,8 @@ function attachInvoiceEvents(invoiceType) {
     const entityValue = document.getElementById('inv-entity').value;
     let customerId = null;
     let supplierId = null;
-    if (type === 'sale') {
-      customerId = entityValue === 'cash' ? null : entityValue;
-    } else {
-      supplierId = entityValue === 'cash' ? null : entityValue;
-    }
+    if (type === 'sale') { customerId = entityValue === 'cash' ? null : entityValue; }
+    else { supplierId = entityValue === 'cash' ? null : entityValue; }
     const date = document.getElementById('inv-date').value;
     const reference = document.getElementById('inv-ref').value.trim();
     const notes = document.getElementById('inv-notes').value.trim();
@@ -533,84 +612,45 @@ function attachInvoiceEvents(invoiceType) {
     let duplicate = false;
     document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
       const itemId = row.querySelector('.item-select').value || null;
-      if (itemId) {
-        if (itemIds.includes(itemId)) duplicate = true;
-        itemIds.push(itemId);
-      }
+      if (itemId) { if (itemIds.includes(itemId)) duplicate = true; itemIds.push(itemId); }
       const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
       const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
       const total = parseFloat(row.querySelector('.total-input').value) || 0;
       if (itemId || quantity > 0) {
-        lines.push({
-          item_id: itemId,
-          description: itemId ? '' : 'بند',
-          quantity,
-          unit_price: unitPrice,
-          total
-        });
+        lines.push({ item_id: itemId, description: itemId ? '' : 'بند', quantity, unit_price: unitPrice, total });
       }
     });
-
     if (duplicate) return alert('لا يمكن تكرار نفس المادة في الفاتورة');
     if (lines.length === 0) return alert('أضف بنداً واحداً على الأقل');
 
     try {
-      await apiCall('/invoices', 'POST', {
-        type,
-        customer_id: customerId,
-        supplier_id: supplierId,
-        date,
-        reference,
-        notes,
-        lines,
-        paid_amount: paidAmount
-      });
+      await apiCall('/invoices', 'POST', { type, customer_id: customerId, supplier_id: supplierId, date, reference, notes, lines, paid_amount: paidAmount });
       alert('تم حفظ الفاتورة بنجاح');
       loadInvoices();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
+    } catch (err) { alert('خطأ: ' + err.message); }
   });
 
   updateInvoiceRemoveButtons();
 }
 
-// ==================== فاتورة مبيعات سريعة ====================
-async function loadSaleInvoiceForm() {
-  await loadInvoiceFormByType('sale');
-}
-
-async function loadPurchaseInvoiceForm() {
-  await loadInvoiceFormByType('purchase');
-}
+async function loadSaleInvoiceForm() { await loadInvoiceFormByType('sale'); }
+async function loadPurchaseInvoiceForm() { await loadInvoiceFormByType('purchase'); }
 
 async function loadInvoiceFormByType(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([
-      apiCall('/customers', 'GET'),
-      apiCall('/suppliers', 'GET'),
-      apiCall('/items', 'GET')
+      apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')
     ]);
-    itemsCache = items;
-    customersCache = customers;
-    suppliersCache = suppliers;
-
+    itemsCache = items; customersCache = customers; suppliersCache = suppliers;
     let entityOptions = '';
-    if (type === 'sale') {
-      entityOptions = `<option value="cash">عميل نقدي</option>` +
-        customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    } else {
-      entityOptions = `<option value="cash">مورد نقدي</option>` +
-        suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    }
+    if (type === 'sale') { entityOptions = `<option value="cash">عميل نقدي</option>` + customers.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); }
+    else { entityOptions = `<option value="cash">مورد نقدي</option>` + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join(''); }
 
     let html = `
       <div class="card">
         <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
         <input type="hidden" id="inv-type" value="${type}" />
-        <select id="inv-entity" class="input-field">
-          ${entityOptions}
-        </select>
+        <select id="inv-entity" class="input-field">${entityOptions}</select>
         <input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
         <input id="inv-ref" placeholder="الرقم المرجعي" class="input-field" />
         <textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea>
@@ -645,20 +685,13 @@ let invoicesCache = [];
 async function loadInvoices() {
   try {
     const [invoices, customers, suppliers, items] = await Promise.all([
-      apiCall('/invoices', 'GET'),
-      apiCall('/customers', 'GET'),
-      apiCall('/suppliers', 'GET'),
-      apiCall('/items', 'GET')
+      apiCall('/invoices', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')
     ]);
-    invoicesCache = invoices;
-    customersCache = customers;
-    suppliersCache = suppliers;
-    itemsCache = items;
+    invoicesCache = invoices; customersCache = customers; suppliersCache = suppliers; itemsCache = items;
 
     let html = `<div class="card"><h2>جميع الفواتير</h2></div>`;
-    if (invoices.length === 0) {
-      html += '<div class="card">لا توجد فواتير</div>';
-    } else {
+    if (invoices.length === 0) { html += '<div class="card">لا توجد فواتير</div>'; }
+    else {
       html += invoices.map(inv => `
         <div class="card">
           <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
@@ -676,22 +709,19 @@ async function loadInvoices() {
     document.getElementById('tab-content').innerHTML = html;
     document.querySelectorAll('.edit-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        const invoice = invoicesCache.find(inv => inv.id === id);
-        if (invoice) showEditInvoiceModal(invoice);
+        const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId));
+        if (inv) showEditInvoiceModal(inv);
       });
     });
     document.querySelectorAll('.print-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        const invoice = invoicesCache.find(inv => inv.id === id);
-        if (invoice) printInvoice(invoice);
+        const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId));
+        if (inv) printInvoice(inv);
       });
     });
     document.querySelectorAll('.delete-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        deleteInvoice(id);
+        deleteInvoice(parseInt(e.target.dataset.invoiceId));
       });
     });
   } catch (err) {
@@ -710,8 +740,7 @@ function showEditInvoiceModal(invoice) {
     let found = false;
     document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => {
       if (row === currentRow) return;
-      const select = row.querySelector('.item-select');
-      if (select && select.value === itemId) found = true;
+      if (row.querySelector('.item-select')?.value === itemId) found = true;
     });
     return found;
   }
@@ -753,42 +782,28 @@ function showEditInvoiceModal(invoice) {
     <div class="modal-box" style="max-width:600px; max-height:90vh; overflow-y:auto;">
       <h3>تعديل الفاتورة</h3>
       <input type="hidden" id="edit-inv-id" value="${invoice.id}" />
-
       <label for="edit-inv-type">النوع</label>
       <select id="edit-inv-type" class="input-field">
         <option value="sale" ${type === 'sale' ? 'selected' : ''}>بيع</option>
         <option value="purchase" ${type === 'purchase' ? 'selected' : ''}>شراء</option>
       </select>
-
       <div id="edit-customer-block" style="display:${type==='sale'?'block':'none'}">
         <label for="edit-inv-customer">العميل</label>
-        <select id="edit-inv-customer" class="input-field">
-          <option value="">اختر عميل</option>
-          ${customersOpt}
-        </select>
+        <select id="edit-inv-customer" class="input-field"><option value="">اختر عميل</option>${customersOpt}</select>
       </div>
-
       <div id="edit-supplier-block" style="display:${type==='purchase'?'block':'none'}">
         <label for="edit-inv-supplier">المورد</label>
-        <select id="edit-inv-supplier" class="input-field">
-          <option value="">اختر مورد</option>
-          ${suppliersOpt}
-        </select>
+        <select id="edit-inv-supplier" class="input-field"><option value="">اختر مورد</option>${suppliersOpt}</select>
       </div>
-
       <label for="edit-inv-date">التاريخ</label>
       <input id="edit-inv-date" type="date" class="input-field" value="${invoice.date}" />
-
       <label for="edit-inv-ref">الرقم المرجعي</label>
       <input id="edit-inv-ref" class="input-field" value="${invoice.reference || ''}" />
-
       <label for="edit-inv-notes">ملاحظات</label>
       <textarea id="edit-inv-notes" class="input-field">${invoice.notes || ''}</textarea>
-
       <h4>البنود</h4>
       <div id="edit-inv-lines">${linesHtml}</div>
       <button id="btn-add-edit-line" class="btn-secondary">+ بند</button>
-
       <div class="modal-actions">
         <button class="btn-primary" id="save-invoice-edit">حفظ التعديلات</button>
         <button class="btn-secondary" id="cancel-invoice-edit">إلغاء</button>
@@ -806,10 +821,7 @@ function showEditInvoiceModal(invoice) {
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
     newLine.innerHTML = `
-      <select class="input-field item-select">
-        <option value="">اختر مادة</option>
-        ${itemsOpt}
-      </select>
+      <select class="input-field item-select"><option value="">اختر مادة</option>${itemsOpt}</select>
       <input type="number" step="any" class="input-field qty-input" placeholder="الكمية" />
       <input type="number" step="0.01" class="input-field price-input" placeholder="السعر" />
       <input type="number" step="0.01" class="input-field total-input" placeholder="الإجمالي" readonly />
@@ -820,12 +832,7 @@ function showEditInvoiceModal(invoice) {
     const select = newLine.querySelector('.item-select');
     const priceInput = newLine.querySelector('.price-input');
     select.addEventListener('change', function() {
-      if (isEditItemDuplicate(this.value, this.closest('.line-row'))) {
-        alert('المادة مضافة مسبقاً في الفاتورة');
-        this.value = '';
-        priceInput.value = '';
-        return;
-      }
+      if (isEditItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value = ''; priceInput.value = ''; return; }
       autoFillPrice(this, priceInput);
     });
   });
@@ -833,9 +840,7 @@ function showEditInvoiceModal(invoice) {
   document.getElementById('edit-inv-lines').addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-remove-line')) {
       const row = e.target.closest('.line-row');
-      if (document.querySelectorAll('#edit-inv-lines .line-row').length > 1) {
-        row.remove();
-      }
+      if (document.querySelectorAll('#edit-inv-lines .line-row').length > 1) row.remove();
     }
   });
 
@@ -846,15 +851,9 @@ function showEditInvoiceModal(invoice) {
     const calc = () => { total.value = ((parseFloat(qty.value)||0) * (parseFloat(price.value)||0)).toFixed(2); };
     qty?.addEventListener('input', calc);
     price?.addEventListener('input', calc);
-
     const select = row.querySelector('.item-select');
     select?.addEventListener('change', function() {
-      if (isEditItemDuplicate(this.value, this.closest('.line-row'))) {
-        alert('المادة مضافة مسبقاً في الفاتورة');
-        this.value = '';
-        price.value = '';
-        return;
-      }
+      if (isEditItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value = ''; price.value = ''; return; }
       autoFillPrice(this, price);
     });
   }
@@ -869,25 +868,21 @@ function showEditInvoiceModal(invoice) {
     const date = document.getElementById('edit-inv-date').value;
     const reference = document.getElementById('edit-inv-ref').value.trim();
     const notes = document.getElementById('edit-inv-notes').value.trim();
-
     const lines = [];
     const itemIds = [];
     let duplicate = false;
     document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => {
       const itemId = row.querySelector('.item-select').value || null;
-      if (itemId) {
-        if (itemIds.includes(itemId)) duplicate = true;
-        itemIds.push(itemId);
-      }
-      const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
-      const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
-      const total = parseFloat(row.querySelector('.total-input').value) || 0;
-      if (itemId || quantity > 0) {
-        lines.push({ item_id: itemId, description: '', quantity, unit_price: unitPrice, total });
-      }
+      if (itemId) { if (itemIds.includes(itemId)) duplicate = true; itemIds.push(itemId); }
+      lines.push({
+        item_id: itemId || null,
+        quantity: parseFloat(row.querySelector('.qty-input').value) || 0,
+        unit_price: parseFloat(row.querySelector('.price-input').value) || 0,
+        total: parseFloat(row.querySelector('.total-input').value) || 0
+      });
     });
-    if (duplicate) return alert('لا يمكن تكرار نفس المادة في الفاتورة');
-    if (lines.length === 0) return alert('أضف بنداً على الأقل');
+    if (duplicate) return alert('لا يمكن تكرار نفس المادة');
+    if (lines.filter(l => l.item_id || l.quantity > 0).length === 0) return alert('أضف بنداً');
     try {
       await apiCall('/invoices', 'PUT', { id, type, customer_id: customerId, supplier_id: supplierId, date, reference, notes, lines });
       document.body.removeChild(overlay);
@@ -895,79 +890,32 @@ function showEditInvoiceModal(invoice) {
       loadInvoices();
     } catch (e) { alert('خطأ: ' + e.message); }
   };
-
   document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
 }
 
 function printInvoice(invoice) {
   if (!invoice) { alert('بيانات الفاتورة غير متوفرة'); return; }
-
-  const itemsRows = invoice.invoice_lines?.map(l => 
-    `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`
-  ).join('') || '';
-
+  const itemsRows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('') || '';
   const invoiceHTML = `
-    <!DOCTYPE html>
-    <html dir="rtl">
-    <head>
-      <meta charset="UTF-8">
-      <title>فاتورة ${invoice.reference || ''}</title>
-      <style>
-        body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-        th { background: #f0f0f0; }
-        @media print { .no-print { display: none; } }
-      </style>
-    </head>
-    <body>
-      <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
-      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
-      <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
-      <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
-      ${itemsRows}
-      </table>
-      <h3>الإجمالي: ${invoice.total}</h3>
-      <p>المدفوع: ${invoice.paid || 0} | الباقي: <strong>${invoice.balance || 0}</strong></p>
-      <p>${invoice.notes || ''}</p>
-      <p class="no-print" style="text-align:center; margin-top:20px; color:gray;">
-        إذا لم تظهر نافذة الطباعة، استخدم زر الطباعة أدناه.
-      </p>
-      <button class="no-print" onclick="window.print()" style="display:block; margin:20px auto; padding:10px 30px; font-size:16px;">
-        🖨️ طباعة / حفظ PDF
-      </button>
-      <script>
-        window.onload = function() {
-          setTimeout(function() { window.print(); }, 800);
-        };
-      </script>
-    </body>
-    </html>
-  `;
-
+    <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${invoice.reference || ''}</title>
+    <style>body { font-family: 'Tajawal', sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; margin-top: 10px; } th, td { border: 1px solid #ddd; padding: 8px; text-align: right; } th { background: #f0f0f0; } @media print { .no-print { display: none; } }</style></head>
+    <body><h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
+    <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+    <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
+    <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${itemsRows}</table>
+    <h3>الإجمالي: ${invoice.total}</h3><p>المدفوع: ${invoice.paid || 0} | الباقي: <strong>${invoice.balance || 0}</strong></p><p>${invoice.notes || ''}</p>
+    <button class="no-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+    <script>setTimeout(function() { window.print(); }, 800);</script></body></html>`;
   const printWindow = window.open('', '_blank', 'width=800,height=600');
-  if (printWindow) {
-    printWindow.document.write(invoiceHTML);
-    printWindow.document.close();
-  } else {
-    alert('سيتم عرض الفاتورة للطباعة داخل التطبيق. اضغط موافق.');
+  if (printWindow) { printWindow.document.write(invoiceHTML); printWindow.document.close(); }
+  else {
+    alert('سيتم عرض الفاتورة للطباعة داخل التطبيق.');
     const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.top = '0';
-    iframe.style.left = '0';
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    iframe.style.border = 'none';
-    iframe.style.zIndex = '9999';
-    iframe.style.background = 'white';
+    iframe.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;';
     document.body.appendChild(iframe);
     iframe.contentWindow.document.write(invoiceHTML);
     iframe.contentWindow.document.close();
-    try {
-      iframe.contentWindow.onafterprint = function() {
-        document.body.removeChild(iframe);
-      };
-    } catch(e) {}
+    try { iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe); } catch(e) {}
   }
 }
 
@@ -976,14 +924,12 @@ function confirmDialog(message) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
-      <div class="modal-box">
-        <p>${message}</p>
+      <div class="modal-box"><p>${message}</p>
         <div class="modal-actions">
           <button class="btn-danger" id="modal-confirm">نعم، احذف</button>
           <button class="btn-secondary" id="modal-cancel">إلغاء</button>
         </div>
-      </div>
-    `;
+      </div>`;
     document.body.appendChild(overlay);
     document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
     document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
@@ -992,88 +938,52 @@ function confirmDialog(message) {
 
 async function deleteItem(itemId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟')) return;
-  try {
-    await apiCall(`/items?id=${itemId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadItems();
-  } catch (e) { alert('خطأ: ' + e.message); }
+  try { await apiCall(`/items?id=${itemId}`, 'DELETE'); alert('تم الحذف'); loadItems(); } catch (e) { alert('خطأ: ' + e.message); }
 }
-
 async function deleteCustomer(custId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا العميل؟')) return;
-  try {
-    await apiCall(`/customers?id=${custId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadCustomers();
-  } catch (e) { alert('خطأ: ' + e.message); }
+  try { await apiCall(`/customers?id=${custId}`, 'DELETE'); alert('تم الحذف'); loadCustomers(); } catch (e) { alert('خطأ: ' + e.message); }
 }
-
 async function deleteSupplier(supId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا المورد؟')) return;
-  try {
-    await apiCall(`/suppliers?id=${supId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadSuppliers();
-  } catch (e) { alert('خطأ: ' + e.message); }
+  try { await apiCall(`/suppliers?id=${supId}`, 'DELETE'); alert('تم الحذف'); loadSuppliers(); } catch (e) { alert('خطأ: ' + e.message); }
 }
-
 async function deleteInvoice(invId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟')) return;
-  try {
-    await apiCall(`/invoices?id=${invId}`, 'DELETE');
-    alert('تم حذف الفاتورة بنجاح');
-    loadInvoices();
-  } catch (e) { alert('خطأ: ' + e.message); }
+  try { await apiCall(`/invoices?id=${invId}`, 'DELETE'); alert('تم الحذف'); loadInvoices(); } catch (e) { alert('خطأ: ' + e.message); }
 }
 
 // ==================== التصنيفات ====================
 async function loadCategories() {
   try {
     const categories = await apiCall('/categories', 'GET');
-    let html = `
-      <div class="card"><h2>التصنيفات</h2><button id="btn-add-category-tab" class="btn-primary">+ إضافة تصنيف</button></div>
+    let html = `<div class="card"><h2>التصنيفات</h2><button id="btn-add-category-tab" class="btn-primary">+ إضافة تصنيف</button></div>
       <div id="category-form" class="card" style="display:none;">
         <h3>إضافة تصنيف جديد</h3>
         <input id="category-name" placeholder="اسم التصنيف" class="input-field" />
         <button id="btn-save-category" class="btn-primary">حفظ</button>
         <button id="btn-cancel-category" class="btn-secondary">إلغاء</button>
-      </div>
-    `;
-    if (categories.length === 0) {
-      html += '<div class="card">لا توجد تصنيفات</div>';
-    } else {
-      html += categories.map(cat => `
-        <div class="card">
-          <strong>${cat.name}</strong>
-          <div class="card-actions">
-            <button class="btn-secondary" onclick="showEditCategoryModal(${cat.id})">✏️ تعديل</button>
-            <button class="btn-danger" onclick="deleteCategory(${cat.id})">🗑️ حذف</button>
-          </div>
+      </div>`;
+    if (categories.length === 0) html += '<div class="card">لا توجد تصنيفات</div>';
+    else html += categories.map(cat => `
+      <div class="card"><strong>${cat.name}</strong>
+        <div class="card-actions">
+          <button class="btn-secondary" onclick="showEditCategoryModal(${cat.id})">✏️ تعديل</button>
+          <button class="btn-danger" onclick="deleteCategory(${cat.id})">🗑️ حذف</button>
         </div>
-      `).join('');
-    }
+      </div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
     attachCategoryEvents();
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
+  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
 
 function attachCategoryEvents() {
-  document.getElementById('btn-add-category-tab')?.addEventListener('click', () => {
-    document.getElementById('category-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-category')?.addEventListener('click', () => {
-    document.getElementById('category-form').style.display = 'none';
-  });
+  document.getElementById('btn-add-category-tab')?.addEventListener('click', () => { document.getElementById('category-form').style.display = 'block'; });
+  document.getElementById('btn-cancel-category')?.addEventListener('click', () => { document.getElementById('category-form').style.display = 'none'; });
   document.getElementById('btn-save-category')?.addEventListener('click', async () => {
     const name = document.getElementById('category-name').value.trim();
     if (!name) return alert('اسم التصنيف مطلوب');
-    try {
-      await apiCall('/categories', 'POST', { name });
-      document.getElementById('category-form').style.display = 'none';
-      loadCategories();
-    } catch (err) { alert('خطأ: ' + err.message); }
+    try { await apiCall('/categories', 'POST', { name }); document.getElementById('category-form').style.display = 'none'; loadCategories(); } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
 
@@ -1083,103 +993,52 @@ function showEditCategoryModal(catId) {
     if (!cat) return;
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal-box">
-        <h3>تعديل التصنيف</h3>
-        <input id="edit-cat-name" class="input-field" value="${cat.name}" />
-        <div class="modal-actions">
-          <button class="btn-primary" id="save-cat-edit">حفظ</button>
-          <button class="btn-secondary" id="cancel-cat-edit">إلغاء</button>
-        </div>
-      </div>
-    `;
+    overlay.innerHTML = `<div class="modal-box"><h3>تعديل التصنيف</h3><input id="edit-cat-name" class="input-field" value="${cat.name}" /><div class="modal-actions"><button class="btn-primary" id="save-cat-edit">حفظ</button><button class="btn-secondary" id="cancel-cat-edit">إلغاء</button></div></div>`;
     document.body.appendChild(overlay);
     document.getElementById('save-cat-edit').onclick = async () => {
       const name = document.getElementById('edit-cat-name').value.trim();
       if (!name) return alert('الاسم مطلوب');
-      try {
-        await apiCall('/categories', 'PUT', { id: catId, name });
-        document.body.removeChild(overlay);
-        loadCategories();
-      } catch (e) { alert('خطأ: ' + e.message); }
+      try { await apiCall('/categories', 'PUT', { id: catId, name }); document.body.removeChild(overlay); loadCategories(); } catch (e) { alert('خطأ: ' + e.message); }
     };
-    document.getElementById('cancel-cat-edit').onclick = () => {
-      document.body.removeChild(overlay);
-    };
+    document.getElementById('cancel-cat-edit').onclick = () => { document.body.removeChild(overlay); };
   });
 }
 
 async function deleteCategory(catId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذا التصنيف؟ قد تبقى المواد المرتبطة به بدون تصنيف.')) return;
-  try {
-    await apiCall(`/categories?id=${catId}`, 'DELETE');
-    alert('تم حذف التصنيف بنجاح');
-    loadCategories();
-  } catch (e) { alert('خطأ: ' + e.message); }
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا التصنيف؟')) return;
+  try { await apiCall(`/categories?id=${catId}`, 'DELETE'); alert('تم الحذف'); loadCategories(); } catch (e) { alert('خطأ: ' + e.message); }
 }
 
 // ==================== الدفعات ====================
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([
-      apiCall('/payments', 'GET'),
-      apiCall('/invoices', 'GET'),
-      apiCall('/customers', 'GET'),
-      apiCall('/suppliers', 'GET')
+      apiCall('/payments', 'GET'), apiCall('/invoices', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET')
     ]);
-    let html = `
-      <div class="card">
-        <h2>الدفعات</h2>
-        <button id="btn-add-payment" class="btn-primary">+ إضافة دفعة</button>
-      </div>
+    let html = `<div class="card"><h2>الدفعات</h2><button id="btn-add-payment" class="btn-primary">+ إضافة دفعة</button></div>
       <div id="payment-form" class="card" style="display:none;">
         <h3>إضافة دفعة جديدة</h3>
-        <select id="payment-type" class="input-field">
-          <option value="customer">من عميل</option>
-          <option value="supplier">إلى مورد</option>
-        </select>
-        <div id="payment-customer-block">
-          <select id="payment-customer" class="input-field">
-            <option value="">اختر عميل</option>
-            ${customers.map(c => `<option value="${c.id}">${c.name} (الرصيد: ${c.balance})</option>`).join('')}
-          </select>
-        </div>
-        <div id="payment-supplier-block" style="display:none;">
-          <select id="payment-supplier" class="input-field">
-            <option value="">اختر مورد</option>
-            ${suppliers.map(s => `<option value="${s.id}">${s.name} (الرصيد: ${s.balance})</option>`).join('')}
-          </select>
-        </div>
-        <select id="payment-invoice" class="input-field">
-          <option value="">بدون فاتورة</option>
-        </select>
+        <select id="payment-type" class="input-field"><option value="customer">من عميل</option><option value="supplier">إلى مورد</option></select>
+        <div id="payment-customer-block"><select id="payment-customer" class="input-field"><option value="">اختر عميل</option>${customers.map(c => `<option value="${c.id}">${c.name} (${c.balance})</option>`).join('')}</select></div>
+        <div id="payment-supplier-block" style="display:none;"><select id="payment-supplier" class="input-field"><option value="">اختر مورد</option>${suppliers.map(s => `<option value="${s.id}">${s.name} (${s.balance})</option>`).join('')}</select></div>
+        <select id="payment-invoice" class="input-field"><option value="">بدون فاتورة</option></select>
         <input id="payment-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field" />
         <input id="payment-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
         <textarea id="payment-notes" placeholder="ملاحظات" class="input-field"></textarea>
         <button id="btn-save-payment" class="btn-primary">حفظ الدفعة</button>
         <button id="btn-cancel-payment" class="btn-secondary">إلغاء</button>
-      </div>
-    `;
-    if (payments.length === 0) {
-      html += '<div class="card">لا توجد دفعات</div>';
-    } else {
-      html += payments.map(p => `
-        <div class="card">
-          <strong>${p.amount}</strong> – ${p.payment_date}<br>
-          ${p.customer ? 'العميل: ' + p.customer.name : ''} ${p.supplier ? 'المورد: ' + p.supplier.name : ''}
-          ${p.invoice ? ' | فاتورة: ' + (p.invoice.type === 'sale' ? 'بيع ' : 'شراء ') + (p.invoice.reference || '') : ''}
-          ${p.notes ? '<br>' + p.notes : ''}
-          <div class="card-actions">
-            <button class="btn-danger" onclick="deletePayment(${p.id})">🗑️ حذف</button>
-          </div>
-        </div>
-      `).join('');
-    }
+      </div>`;
+    if (payments.length === 0) html += '<div class="card">لا توجد دفعات</div>';
+    else html += payments.map(p => `
+      <div class="card"><strong>${p.amount}</strong> – ${p.payment_date}<br>
+        ${p.customer ? 'العميل: ' + p.customer.name : ''} ${p.supplier ? 'المورد: ' + p.supplier.name : ''}
+        ${p.invoice ? ' | فاتورة: ' + (p.invoice.type==='sale'?'بيع ':'شراء ') + (p.invoice.reference||'') : ''}
+        ${p.notes ? '<br>' + p.notes : ''}
+        <div class="card-actions"><button class="btn-danger" onclick="deletePayment(${p.id})">🗑️ حذف</button></div>
+      </div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
     attachPaymentEvents(customers, suppliers, invoices);
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
+  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
 
 function attachPaymentEvents(customers, suppliers, invoices) {
@@ -1189,99 +1048,57 @@ function attachPaymentEvents(customers, suppliers, invoices) {
   const invoiceSelect = document.getElementById('payment-invoice');
   const customerSelect = document.getElementById('payment-customer');
   const supplierSelect = document.getElementById('payment-supplier');
-
   typeSelect?.addEventListener('change', () => {
-    if (typeSelect.value === 'customer') {
-      customerBlock.style.display = 'block';
-      supplierBlock.style.display = 'none';
-      updateInvoiceList(invoices, 'customer', customerSelect.value);
-    } else {
-      customerBlock.style.display = 'none';
-      supplierBlock.style.display = 'block';
-      updateInvoiceList(invoices, 'supplier', supplierSelect.value);
-    }
+    if (typeSelect.value === 'customer') { customerBlock.style.display = 'block'; supplierBlock.style.display = 'none'; updateInvoiceList(invoices, 'customer', customerSelect.value); }
+    else { customerBlock.style.display = 'none'; supplierBlock.style.display = 'block'; updateInvoiceList(invoices, 'supplier', supplierSelect.value); }
   });
-
-  customerSelect?.addEventListener('change', () => {
-    updateInvoiceList(invoices, 'customer', customerSelect.value);
-  });
-  supplierSelect?.addEventListener('change', () => {
-    updateInvoiceList(invoices, 'supplier', supplierSelect.value);
-  });
-
+  customerSelect?.addEventListener('change', () => updateInvoiceList(invoices, 'customer', customerSelect.value));
+  supplierSelect?.addEventListener('change', () => updateInvoiceList(invoices, 'supplier', supplierSelect.value));
   function updateInvoiceList(invoices, type, entityId) {
-    const filtered = invoices.filter(inv => {
-      if (type === 'customer') return inv.type === 'sale' && inv.customer_id == entityId;
-      else return inv.type === 'purchase' && inv.supplier_id == entityId;
-    });
-    invoiceSelect.innerHTML = '<option value="">بدون فاتورة</option>' +
-      filtered.map(inv => `<option value="${inv.id}">${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''} (${inv.total})</option>`).join('');
+    const filtered = invoices.filter(inv => type === 'customer' ? inv.type==='sale' && inv.customer_id==entityId : inv.type==='purchase' && inv.supplier_id==entityId);
+    invoiceSelect.innerHTML = '<option value="">بدون فاتورة</option>' + filtered.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join('');
   }
-
-  document.getElementById('btn-add-payment')?.addEventListener('click', () => {
-    document.getElementById('payment-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-payment')?.addEventListener('click', () => {
-    document.getElementById('payment-form').style.display = 'none';
-  });
-
+  document.getElementById('btn-add-payment')?.addEventListener('click', () => { document.getElementById('payment-form').style.display = 'block'; });
+  document.getElementById('btn-cancel-payment')?.addEventListener('click', () => { document.getElementById('payment-form').style.display = 'none'; });
   document.getElementById('btn-save-payment')?.addEventListener('click', async () => {
     const type = document.getElementById('payment-type').value;
-    const customerId = type === 'customer' ? (document.getElementById('payment-customer').value || null) : null;
-    const supplierId = type === 'supplier' ? (document.getElementById('payment-supplier').value || null) : null;
+    const customerId = type==='customer' ? (document.getElementById('payment-customer').value||null) : null;
+    const supplierId = type==='supplier' ? (document.getElementById('payment-supplier').value||null) : null;
     const invoiceId = document.getElementById('payment-invoice').value || null;
     const amount = parseFloat(document.getElementById('payment-amount').value);
-    const date = document.getElementById('payment-date').value;
-    const notes = document.getElementById('payment-notes').value.trim();
-
-    if (!amount || amount <= 0) return alert('المبلغ مطلوب');
+    if (!amount || amount<=0) return alert('المبلغ مطلوب');
     if (!customerId && !supplierId) return alert('اختر عميلاً أو مورداً');
-
     try {
-      await apiCall('/payments', 'POST', {
-        invoice_id: invoiceId,
-        customer_id: customerId,
-        supplier_id: supplierId,
-        amount,
-        payment_date: date,
-        notes
-      });
-      alert('تم حفظ الدفعة بنجاح');
-      loadPayments();
+      await apiCall('/payments', 'POST', { invoice_id: invoiceId, customer_id: customerId, supplier_id: supplierId, amount, payment_date: document.getElementById('payment-date').value, notes: document.getElementById('payment-notes').value.trim() });
+      alert('تم حفظ الدفعة'); loadPayments();
     } catch (e) { alert('خطأ: ' + e.message); }
   });
 }
 
 async function deletePayment(paymentId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الدفعة؟ سيتم عكس تأثيرها على الأرصدة.')) return;
-  try {
-    await apiCall(`/payments?id=${paymentId}`, 'DELETE');
-    alert('تم حذف الدفعة بنجاح');
-    loadPayments();
-  } catch (e) { alert('خطأ: ' + e.message); }
+  try { await apiCall(`/payments?id=${paymentId}`, 'DELETE'); alert('تم الحذف'); loadPayments(); } catch (e) { alert('خطأ: ' + e.message); }
 }
 
 // ==================== التقارير ====================
 async function loadReports() {
-  let html = `
-    <div class="card"><h2>التقارير</h2></div>
+  let html = `<div class="card"><h2>التقارير</h2></div>
     <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
     <div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div>
     <div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div>
-    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام (حركة حساب)</div>
+    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام</div>
     <div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div>
-    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>
-  `;
+    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>`;
   document.getElementById('tab-content').innerHTML = html;
   document.querySelectorAll('.report-link').forEach(el => {
     el.addEventListener('click', () => {
-      const report = el.dataset.report;
-      if (report === 'trial_balance') loadTrialBalance();
-      else if (report === 'income_statement') loadIncomeStatement();
-      else if (report === 'balance_sheet') loadBalanceSheet();
-      else if (report === 'account_ledger') loadAccountLedgerForm();
-      else if (report === 'customer_statement') loadCustomerStatementForm();
-      else if (report === 'supplier_statement') loadSupplierStatementForm();
+      const r = el.dataset.report;
+      if (r === 'trial_balance') loadTrialBalance();
+      else if (r === 'income_statement') loadIncomeStatement();
+      else if (r === 'balance_sheet') loadBalanceSheet();
+      else if (r === 'account_ledger') loadAccountLedgerForm();
+      else if (r === 'customer_statement') loadCustomerStatementForm();
+      else if (r === 'supplier_statement') loadSupplierStatementForm();
     });
   });
 }
@@ -1289,24 +1106,8 @@ async function loadReports() {
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance', 'GET');
-    let rows = data.map(r => `
-      <tr>
-        <td>${r.name}</td>
-        <td>${r.total_debit.toFixed(2)}</td>
-        <td>${r.total_credit.toFixed(2)}</td>
-        <td style="color:${r.balance >= 0 ? 'green' : 'red'}">${r.balance.toFixed(2)}</td>
-      </tr>
-    `).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>ميزان المراجعة</h3>
-        <table class="report-table">
-          <tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>
-          ${rows}
-        </table>
-      </div>
-    `;
+    let rows = data.map(r => `<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td>${r.total_credit.toFixed(2)}</td><td style="color:${r.balance>=0?'green':'red'}">${r.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>ميزان المراجعة</h3><table class="report-table"><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>${rows}</table></div>`;
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
@@ -1315,20 +1116,7 @@ async function loadIncomeStatement() {
     const data = await apiCall('/reports?type=income_statement', 'GET');
     let incomeRows = data.income.map(i => `<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td></tr>`).join('');
     let expenseRows = data.expenses.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>قائمة الدخل</h3>
-        <h4>الإيرادات</h4>
-        <table class="report-table">${incomeRows}</table>
-        <strong>إجمالي الإيرادات: ${data.total_income.toFixed(2)}</strong>
-        <h4>المصروفات</h4>
-        <table class="report-table">${expenseRows}</table>
-        <strong>إجمالي المصروفات: ${data.total_expenses.toFixed(2)}</strong>
-        <hr>
-        <h2>صافي الربح: ${data.net_profit.toFixed(2)}</h2>
-      </div>
-    `;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>قائمة الدخل</h3><h4>الإيرادات</h4><table class="report-table">${incomeRows}</table><strong>إجمالي الإيرادات: ${data.total_income.toFixed(2)}</strong><h4>المصروفات</h4><table class="report-table">${expenseRows}</table><strong>إجمالي المصروفات: ${data.total_expenses.toFixed(2)}</strong><hr><h2>صافي الربح: ${data.net_profit.toFixed(2)}</h2></div>`;
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
@@ -1338,21 +1126,7 @@ async function loadBalanceSheet() {
     let assetRows = data.assets.map(a => `<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td></tr>`).join('');
     let liabRows = data.liabilities.map(l => `<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td></tr>`).join('');
     let equityRows = data.equity.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>الميزانية العمومية</h3>
-        <h4>الأصول</h4>
-        <table class="report-table">${assetRows}</table>
-        <strong>إجمالي الأصول: ${data.total_assets.toFixed(2)}</strong>
-        <h4>الخصوم</h4>
-        <table class="report-table">${liabRows}</table>
-        <strong>إجمالي الخصوم: ${data.total_liabilities.toFixed(2)}</strong>
-        <h4>حقوق الملكية</h4>
-        <table class="report-table">${equityRows}</table>
-        <strong>إجمالي حقوق الملكية: ${data.total_equity.toFixed(2)}</strong>
-      </div>
-    `;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الميزانية العمومية</h3><h4>الأصول</h4><table class="report-table">${assetRows}</table><strong>إجمالي الأصول: ${data.total_assets.toFixed(2)}</strong><h4>الخصوم</h4><table class="report-table">${liabRows}</table><strong>إجمالي الخصوم: ${data.total_liabilities.toFixed(2)}</strong><h4>حقوق الملكية</h4><table class="report-table">${equityRows}</table><strong>إجمالي حقوق الملكية: ${data.total_equity.toFixed(2)}</strong></div>`;
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
@@ -1360,30 +1134,14 @@ async function loadAccountLedgerForm() {
   try {
     const accounts = await apiCall('/accounts', 'GET');
     let options = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>الأستاذ العام</h3>
-        <select id="ledger-account" class="input-field">${options}</select>
-        <button id="btn-ledger" class="btn-primary">عرض الحركات</button>
-        <div id="ledger-result" style="margin-top:15px;"></div>
-      </div>
-    `;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الأستاذ العام</h3><select id="ledger-account" class="input-field">${options}</select><button id="btn-ledger" class="btn-primary">عرض الحركات</button><div id="ledger-result" style="margin-top:15px;"></div></div>`;
     document.getElementById('btn-ledger').addEventListener('click', async () => {
       const accountId = document.getElementById('ledger-account').value;
       if (!accountId) return;
       try {
         const lines = await apiCall(`/reports?type=account_ledger&account_id=${accountId}`, 'GET');
         let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
-        lines.forEach(l => {
-          html += `<tr>
-            <td>${l.date || ''}</td>
-            <td>${l.description || ''}</td>
-            <td>${(l.debit || 0).toFixed(2)}</td>
-            <td>${(l.credit || 0).toFixed(2)}</td>
-            <td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td>
-          </tr>`;
-        });
+        lines.forEach(l => { html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`; });
         html += '</table>';
         document.getElementById('ledger-result').innerHTML = html;
       } catch (e) { document.getElementById('ledger-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
@@ -1395,24 +1153,14 @@ async function loadCustomerStatementForm() {
   try {
     const customers = await apiCall('/customers', 'GET');
     let options = customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>كشف حساب عميل</h3>
-        <select id="statement-customer" class="input-field">${options}</select>
-        <button id="btn-customer-statement" class="btn-primary">عرض الكشف</button>
-        <div id="statement-result"></div>
-      </div>
-    `;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب عميل</h3><select id="statement-customer" class="input-field">${options}</select><button id="btn-customer-statement" class="btn-primary">عرض الكشف</button><div id="statement-result"></div></div>`;
     document.getElementById('btn-customer-statement').addEventListener('click', async () => {
       const id = document.getElementById('statement-customer').value;
       if (!id) return;
       try {
         const lines = await apiCall(`/reports?type=customer_statement&customer_id=${id}`, 'GET');
         let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
-        lines.forEach(l => {
-          html += `<tr><td>${l.date || ''}</td><td>${l.description || ''}</td><td>${(l.debit || 0).toFixed(2)}</td><td>${(l.credit || 0).toFixed(2)}</td><td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td></tr>`;
-        });
+        lines.forEach(l => { html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`; });
         html += '</table>';
         document.getElementById('statement-result').innerHTML = html;
       } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
@@ -1424,30 +1172,73 @@ async function loadSupplierStatementForm() {
   try {
     const suppliers = await apiCall('/suppliers', 'GET');
     let options = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>كشف حساب مورد</h3>
-        <select id="statement-supplier" class="input-field">${options}</select>
-        <button id="btn-supplier-statement" class="btn-primary">عرض الكشف</button>
-        <div id="statement-result"></div>
-      </div>
-    `;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب مورد</h3><select id="statement-supplier" class="input-field">${options}</select><button id="btn-supplier-statement" class="btn-primary">عرض الكشف</button><div id="statement-result"></div></div>`;
     document.getElementById('btn-supplier-statement').addEventListener('click', async () => {
       const id = document.getElementById('statement-supplier').value;
       if (!id) return;
       try {
         const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`, 'GET');
         let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
-        lines.forEach(l => {
-          html += `<tr><td>${l.date || ''}</td><td>${l.description || ''}</td><td>${(l.debit || 0).toFixed(2)}</td><td>${(l.credit || 0).toFixed(2)}</td><td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td></tr>`;
-        });
+        lines.forEach(l => { html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`; });
         html += '</table>';
         document.getElementById('statement-result').innerHTML = html;
       } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
     });
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
+// ==================== سحب وترتيب التبويبات ====================
+(function enableTabDragAndDrop() {
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+  let draggedItem = null;
+  function saveTabOrder() {
+    const tabs = Array.from(nav.querySelectorAll('.tab'));
+    localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab)));
+  }
+  function applySavedOrder() {
+    const saved = JSON.parse(localStorage.getItem('tabOrder'));
+    if (!saved) return;
+    const tabs = Array.from(nav.querySelectorAll('.tab'));
+    const map = {};
+    tabs.forEach(t => { map[t.dataset.tab] = t; });
+    saved.forEach(key => { if (map[key]) nav.appendChild(map[key]); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applySavedOrder);
+  else applySavedOrder();
+
+  nav.addEventListener('dragstart', (e) => {
+    draggedItem = e.target.closest('.tab');
+    if (draggedItem) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); draggedItem.style.opacity = '0.5'; }
+  });
+  nav.addEventListener('dragend', () => { if (draggedItem) { draggedItem.style.opacity = '1'; draggedItem = null; } });
+  nav.addEventListener('dragover', (e) => e.preventDefault());
+  nav.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const target = e.target.closest('.tab');
+    if (!target || !draggedItem || target === draggedItem) return;
+    const tabs = Array.from(nav.querySelectorAll('.tab'));
+    if (tabs.indexOf(draggedItem) < tabs.indexOf(target)) nav.insertBefore(draggedItem, target.nextSibling);
+    else nav.insertBefore(draggedItem, target);
+    saveTabOrder();
+  });
+
+  nav.addEventListener('touchstart', (e) => {
+    draggedItem = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab');
+    if (draggedItem) draggedItem.style.opacity = '0.5';
+  }, {passive: true});
+  nav.addEventListener('touchmove', (e) => {
+    if (!draggedItem) return;
+    e.preventDefault();
+    const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab');
+    if (target && target !== draggedItem) {
+      const tabs = Array.from(nav.querySelectorAll('.tab'));
+      if (tabs.indexOf(draggedItem) < tabs.indexOf(target)) nav.insertBefore(draggedItem, target.nextSibling);
+      else nav.insertBefore(draggedItem, target);
+    }
+  }, {passive: false});
+  nav.addEventListener('touchend', () => { if (draggedItem) { draggedItem.style.opacity = '1'; saveTabOrder(); draggedItem = null; } });
+})();
 
 // ==================== توجيه التبويبات ====================
 document.addEventListener('click', (e) => {
@@ -1484,106 +1275,4 @@ async function verifyUser() {
     showError(err.message);
   }
 }
-
-// ==================== تفعيل سحب وإعادة ترتيب التبويبات ====================
-(function enableTabDragAndDrop() {
-  const nav = document.querySelector('nav');
-  if (!nav) return;
-
-  let draggedItem = null;
-  let isTouch = false;
-
-  function saveTabOrder() {
-    const tabs = Array.from(nav.querySelectorAll('.tab'));
-    const order = tabs.map(tab => tab.dataset.tab);
-    localStorage.setItem('tabOrder', JSON.stringify(order));
-  }
-
-  function applySavedOrder() {
-    const savedOrder = JSON.parse(localStorage.getItem('tabOrder'));
-    if (!savedOrder) return;
-    const tabs = Array.from(nav.querySelectorAll('.tab'));
-    const tabMap = {};
-    tabs.forEach(tab => { tabMap[tab.dataset.tab] = tab; });
-    savedOrder.forEach(key => {
-      if (tabMap[key]) nav.appendChild(tabMap[key]);
-    });
-  }
-
-  // استعادة الترتيب المحفوظ
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applySavedOrder);
-  } else {
-    applySavedOrder();
-  }
-
-  // أحداث الفأرة
-  nav.addEventListener('dragstart', (e) => {
-    if (isTouch) return;
-    draggedItem = e.target.closest('.tab');
-    if (!draggedItem) return;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', '');
-    draggedItem.style.opacity = '0.5';
-  });
-
-  nav.addEventListener('dragend', (e) => {
-    if (draggedItem) {
-      draggedItem.style.opacity = '1';
-      draggedItem = null;
-    }
-  });
-
-  nav.addEventListener('dragover', (e) => e.preventDefault());
-
-  nav.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const target = e.target.closest('.tab');
-    if (!target || !draggedItem || target === draggedItem) return;
-    const tabs = Array.from(nav.querySelectorAll('.tab'));
-    const draggedIndex = tabs.indexOf(draggedItem);
-    const targetIndex = tabs.indexOf(target);
-    if (draggedIndex < targetIndex) {
-      nav.insertBefore(draggedItem, target.nextSibling);
-    } else {
-      nav.insertBefore(draggedItem, target);
-    }
-    saveTabOrder();
-  });
-
-  // أحداث اللمس
-  nav.addEventListener('touchstart', (e) => {
-    isTouch = true;
-    const touch = e.touches[0];
-    draggedItem = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.tab');
-    if (draggedItem) draggedItem.style.opacity = '0.5';
-  }, {passive: true});
-
-  nav.addEventListener('touchmove', (e) => {
-    if (!draggedItem) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    const target = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.tab');
-    if (target && target !== draggedItem) {
-      const tabs = Array.from(nav.querySelectorAll('.tab'));
-      const draggedIndex = tabs.indexOf(draggedItem);
-      const targetIndex = tabs.indexOf(target);
-      if (draggedIndex < targetIndex) {
-        nav.insertBefore(draggedItem, target.nextSibling);
-      } else {
-        nav.insertBefore(draggedItem, target);
-      }
-    }
-  }, {passive: false});
-
-  nav.addEventListener('touchend', () => {
-    if (draggedItem) {
-      draggedItem.style.opacity = '1';
-      saveTabOrder();
-      draggedItem = null;
-    }
-    isTouch = false;
-  });
-})();
-
 verifyUser();
