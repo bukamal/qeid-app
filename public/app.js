@@ -679,7 +679,7 @@ async function loadInvoices() {
         <div class="card">
           <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
           ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
-          الإجمالي: ${inv.total}
+          الإجمالي: ${inv.total} | المدفوع: ${inv.paid || 0} | الباقي: <strong>${inv.balance || 0}</strong>
           <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || '-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
           <div class="card-actions">
             <button class="btn-secondary edit-invoice-btn" data-invoice-id="${inv.id}">✏️ تعديل</button>
@@ -690,6 +690,33 @@ async function loadInvoices() {
       `).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
+    // ربط أزرار التعديل
+    document.querySelectorAll('.edit-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        const invoice = invoicesCache.find(inv => inv.id === id);
+        if (invoice) showEditInvoiceModal(invoice);
+      });
+    });
+    // ربط أزرار الطباعة
+    document.querySelectorAll('.print-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        const invoice = invoicesCache.find(inv => inv.id === id);
+        if (invoice) printInvoice(invoice);
+      });
+    });
+    // ربط أزرار الحذف
+    document.querySelectorAll('.delete-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        deleteInvoice(id);
+      });
+    });
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
     // ربط أزرار التعديل
     document.querySelectorAll('.edit-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {

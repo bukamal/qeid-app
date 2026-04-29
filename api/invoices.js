@@ -47,13 +47,25 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      const { data, error } = await supabase
+      const { data: invoices, error } = await supabase
         .from('invoices')
         .select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))')
         .eq('user_id', userId)
         .order('date', { ascending: false });
+
       if (error) throw error;
-      return res.json(data);
+
+      // حساب المدفوع والباقي لكل فاتورة
+      for (let inv of invoices) {
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('invoice_id', inv.id);
+        inv.paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
+        inv.balance = inv.total - inv.paid;
+      }
+
+      return res.json(invoices);
     } 
     else if (req.method === 'POST') {
       let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
@@ -62,7 +74,6 @@ module.exports = async (req, res) => {
       if (!lines || !Array.isArray(lines) || lines.length === 0)
         return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
 
-      // تصفية القيم النصية غير الرقمية
       const finalCustomerId = (customer_id && customer_id !== 'cash') ? parseInt(customer_id) : null;
       const finalSupplierId = (supplier_id && supplier_id !== 'cash') ? parseInt(supplier_id) : null;
 
@@ -87,7 +98,7 @@ module.exports = async (req, res) => {
       }));
       await supabase.from('invoice_lines').insert(linesToInsert);
 
-      // --- المبلغ المدفوع والدفعات التلقائية ---
+      // المبلغ المدفوع والدفعات التلقائية
       const amountPaid = parseFloat(paid_amount) || 0;
       if (amountPaid > 0) {
         await supabase.from('payments').insert({
@@ -101,7 +112,7 @@ module.exports = async (req, res) => {
         });
       }
 
-      // تحديث رصيد العميل أو المورد فقط إذا لم تكن cash
+      // تحديث رصيد العميل أو المورد (فقط إذا لم تكن cash)
       if (type === 'sale' && finalCustomerId) {
         const { data: cust } = await supabase.from('customers').select('balance').eq('id', finalCustomerId).eq('user_id', userId).single();
         if (cust) {
