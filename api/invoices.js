@@ -1,10 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,18 +16,14 @@ function verifyTelegramData(initData) {
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
   params.delete('hash');
-  const pairs = Array.from(params.entries());
-  pairs.sort((a, b) => a[0].localeCompare(b[0]));
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
-  const computedHash = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
-  return computedHash === hash;
+  const pairs = Array.from(params.entries()).sort((a,b) => a[0].localeCompare(b[0]));
+  const dataCheckString = pairs.map(([k,v]) => `${k}=${v}`).join('\n');
+  return crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex') === hash;
 }
 
 async function getUserId(initData) {
   if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
-  const params = new URLSearchParams(initData);
-  const user = JSON.parse(params.get('user'));
-  return user.id;
+  return JSON.parse(new URLSearchParams(initData).get('user')).id;
 }
 
 module.exports = async (req, res) => {
@@ -38,12 +31,7 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    let initData;
-    if (req.method === 'GET' || req.method === 'DELETE') {
-      initData = req.query.initData;
-    } else {
-      initData = req.body?.initData;
-    }
+    let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
@@ -52,27 +40,19 @@ module.exports = async (req, res) => {
         .select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))')
         .eq('user_id', userId)
         .order('date', { ascending: false });
-
       if (error) throw error;
-
-      // حساب المدفوع والباقي لكل فاتورة
       for (let inv of invoices) {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('invoice_id', inv.id);
+        const { data: payments } = await supabase.from('payments').select('amount').eq('invoice_id', inv.id);
         inv.paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
         inv.balance = inv.total - inv.paid;
       }
-
       return res.json(invoices);
-    } 
-    else if (req.method === 'POST') {
+    }
+
+    if (req.method === 'POST') {
       let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
-      if (!type || !['sale', 'purchase'].includes(type))
-        return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
-      if (!lines || !Array.isArray(lines) || lines.length === 0)
-        return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
+      if (!type || !['sale', 'purchase'].includes(type)) return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
+      if (!lines || !Array.isArray(lines) || lines.length === 0) return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
 
       const finalCustomerId = (customer_id && customer_id !== 'cash') ? parseInt(customer_id) : null;
       const finalSupplierId = (supplier_id && supplier_id !== 'cash') ? parseInt(supplier_id) : null;
@@ -82,30 +62,25 @@ module.exports = async (req, res) => {
 
       const { data: invoice, error: invError } = await supabase
         .from('invoices')
-        .insert({
-          user_id: userId, type, customer_id: finalCustomerId,
-          supplier_id: finalSupplierId,
-          date: date || new Date().toISOString().split('T')[0],
-          reference, notes, total, status: 'posted'
-        })
+        .insert({ user_id: userId, type, customer_id: finalCustomerId, supplier_id: finalSupplierId, date: date || new Date().toISOString().split('T')[0], reference, notes, total, status: 'posted' })
         .select().single();
       if (invError) throw invError;
 
-      const linesToInsert = lines.map(l => ({
-        invoice_id: invoice.id, item_id: l.item_id || null,
-        description: l.description, quantity: parseFloat(l.quantity) || 0,
-        unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0
-      }));
+      const linesToInsert = lines.map(l => ({ invoice_id: invoice.id, item_id: l.item_id || null, description: l.description, quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0 }));
       await supabase.from('invoice_lines').insert(linesToInsert);
 
-      // المبلغ المدفوع والدفعات التلقائية
-      const amountPaid = parseFloat(paid_amount) || 0;
+      // --- المبلغ المدفوع والدفعات التلقائية ---
+      let amountPaid = parseFloat(paid_amount) || 0;
+      // إذا كانت الفاتورة نقدية بالكامل (لا عميل ولا مورد)، اعتبر المبلغ مدفوعاً
+      if (!finalCustomerId && !finalSupplierId) {
+        amountPaid = total;
+      }
       if (amountPaid > 0) {
         await supabase.from('payments').insert({
           user_id: userId,
           invoice_id: invoice.id,
-          customer_id: finalCustomerId,
-          supplier_id: finalSupplierId,
+          customer_id: finalCustomerId || null,
+          supplier_id: finalSupplierId || null,
           amount: amountPaid,
           payment_date: invoice.date,
           notes: 'دفعة تلقائية من الفاتورة'
@@ -128,53 +103,35 @@ module.exports = async (req, res) => {
       }
 
       return res.json(invoice);
-    } 
-    else if (req.method === 'PUT') {
+    }
+
+    if (req.method === 'PUT') {
       const { id, type, customer_id, supplier_id, date, reference, notes, lines } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
-
       const finalCustomerId = (customer_id && customer_id !== 'cash') ? parseInt(customer_id) : null;
       const finalSupplierId = (supplier_id && supplier_id !== 'cash') ? parseInt(supplier_id) : null;
-
-      const { data: existing } = await supabase
-        .from('invoices').select('id').eq('id', id).eq('user_id', userId).single();
+      const { data: existing } = await supabase.from('invoices').select('id').eq('id', id).eq('user_id', userId).single();
       if (!existing) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
-
       await supabase.from('invoice_lines').delete().eq('invoice_id', id);
-
       let total = 0;
       if (lines && Array.isArray(lines)) {
         for (const line of lines) total += parseFloat(line.total) || 0;
-        const linesToInsert = lines.map(l => ({
-          invoice_id: id, item_id: l.item_id || null,
-          description: l.description, quantity: parseFloat(l.quantity) || 0,
-          unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0
-        }));
+        const linesToInsert = lines.map(l => ({ invoice_id: id, item_id: l.item_id || null, description: l.description, quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0 }));
         await supabase.from('invoice_lines').insert(linesToInsert);
       }
-
-      const { data: updated, error: updateError } = await supabase
-        .from('invoices')
-        .update({ type, customer_id: finalCustomerId, supplier_id: finalSupplierId, date, reference, notes, total })
-        .eq('id', id).eq('user_id', userId)
-        .select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))')
-        .single();
+      const { data: updated, error: updateError } = await supabase.from('invoices').update({ type, customer_id: finalCustomerId, supplier_id: finalSupplierId, date, reference, notes, total }).eq('id', id).eq('user_id', userId).select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))').single();
       if (updateError) throw updateError;
       return res.json(updated);
     }
-    else if (req.method === 'DELETE') {
+
+    if (req.method === 'DELETE') {
       const invoiceId = req.query.id;
       if (!invoiceId) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
-
-      const { data: invoice, error: fetchError } = await supabase
-        .from('invoices').select('id').eq('id', invoiceId).eq('user_id', userId).single();
+      const { data: invoice, error: fetchError } = await supabase.from('invoices').select('id').eq('id', invoiceId).eq('user_id', userId).single();
       if (fetchError || !invoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
-
       await supabase.from('invoice_lines').delete().eq('invoice_id', invoiceId);
-      const { error: deleteError } = await supabase
-        .from('invoices').delete().eq('id', invoiceId).eq('user_id', userId);
+      const { error: deleteError } = await supabase.from('invoices').delete().eq('id', invoiceId).eq('user_id', userId);
       if (deleteError) throw deleteError;
-
       return res.json({ success: true });
     }
 
