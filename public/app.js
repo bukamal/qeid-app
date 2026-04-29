@@ -896,51 +896,67 @@ function showEditInvoiceModal(invoice) {
   document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
 }
 
-// دالة الطباعة (محسّنة)
 function printInvoice(invoice) {
-  // تحضير HTML الفاتورة
+  // التأكد من وجود البيانات الأساسية
+  if (!invoice) {
+    alert('بيانات الفاتورة غير متوفرة');
+    return;
+  }
+
+  const itemsRows = invoice.invoice_lines?.map(l => 
+    `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`
+  ).join('') || '';
+
   const invoiceHTML = `
+    <!DOCTYPE html>
     <html dir="rtl">
-    <head><title>فاتورة ${invoice.reference || ''}</title>
-    <style>
-      body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; }
-      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-      th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-      th { background: #f0f0f0; }
-      @media print { .print-btn { display: none; } }
-    </style></head>
+    <head>
+      <meta charset="UTF-8">
+      <title>فاتورة ${invoice.reference || ''}</title>
+      <style>
+        body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+        th { background: #f0f0f0; }
+        @media print { .no-print { display: none; } }
+      </style>
+    </head>
     <body>
       <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
       <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
       <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
       <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
-      ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+      ${itemsRows}
       </table>
       <h3>الإجمالي: ${invoice.total}</h3>
-      <p>المدفوع: ${invoice.paid || 0}</p>
-      <p>الباقي: ${invoice.balance || 0}</p>
+      <p>المدفوع: ${invoice.paid || 0} | الباقي: <strong>${invoice.balance || 0}</strong></p>
       <p>${invoice.notes || ''}</p>
-      <p style="text-align:center; margin-top:20px; color:gray;">سيتم فتح نافذة الطباعة تلقائياً...</p>
+      <p class="no-print" style="text-align:center; margin-top:20px; color:gray;">
+        إذا لم تظهر نافذة الطباعة، استخدم زر الطباعة أدناه أو احفظ الصفحة كـ PDF.
+      </p>
+      <button class="no-print" onclick="window.print()" style="display:block; margin:20px auto; padding:10px 30px; font-size:16px;">
+        🖨️ طباعة / حفظ PDF
+      </button>
       <script>
-        // محاولة الطباعة تلقائياً بعد تحميل الصفحة
+        // محاولة فتح الطباعة تلقائياً بعد التحميل
         window.onload = function() {
           setTimeout(function() {
             window.print();
-          }, 500);
+          }, 800);
         };
       </script>
     </body>
     </html>
   `;
 
-  // الطريقة الأساسية: فتح نافذة جديدة
+  // الطريقة 1: فتح نافذة جديدة
   const printWindow = window.open('', '_blank', 'width=800,height=600');
   if (printWindow) {
     printWindow.document.write(invoiceHTML);
     printWindow.document.close();
   } else {
-    // الطريقة الاحتياطية: استخدام iframe مخفي
-    alert('تعذر فتح نافذة منفصلة، سيتم الطباعة داخل التطبيق.');
+    // الطريقة 2: استخدام iframe داخل التطبيق (لحالة المنع)
+    alert('سيتم عرض الفاتورة للطباعة داخل التطبيق. اضغط موافق.');
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.top = '0';
@@ -949,13 +965,17 @@ function printInvoice(invoice) {
     iframe.style.height = '100%';
     iframe.style.border = 'none';
     iframe.style.zIndex = '9999';
+    iframe.style.background = 'white';
     document.body.appendChild(iframe);
     iframe.contentWindow.document.write(invoiceHTML);
     iframe.contentWindow.document.close();
-    // إزالة الإطار بعد الطباعة
-    iframe.contentWindow.onafterprint = function() {
-      document.body.removeChild(iframe);
-    };
+    
+    // إزالة الإطار بعد الطباعة (إن أمكن)
+    try {
+      iframe.contentWindow.onafterprint = function() {
+        document.body.removeChild(iframe);
+      };
+    } catch(e) {}
   }
 }
 
