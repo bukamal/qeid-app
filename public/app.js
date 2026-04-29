@@ -1064,6 +1064,149 @@ async function loadSupplierStatementForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
+// ==================== الدفعات ====================
+async function loadPayments() {
+  try {
+    const [payments, invoices, customers, suppliers] = await Promise.all([
+      apiCall('/payments', 'GET'),
+      apiCall('/invoices', 'GET'),
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET')
+    ]);
+    let html = `
+      <div class="card">
+        <h2>الدفعات</h2>
+        <button id="btn-add-payment" class="btn-primary">+ إضافة دفعة</button>
+      </div>
+      <div id="payment-form" class="card" style="display:none;">
+        <h3>إضافة دفعة جديدة</h3>
+        <select id="payment-type" class="input-field">
+          <option value="customer">من عميل</option>
+          <option value="supplier">إلى مورد</option>
+        </select>
+        <div id="payment-customer-block">
+          <select id="payment-customer" class="input-field">
+            <option value="">اختر عميل</option>
+            ${customers.map(c => `<option value="${c.id}">${c.name} (الرصيد: ${c.balance})</option>`).join('')}
+          </select>
+        </div>
+        <div id="payment-supplier-block" style="display:none;">
+          <select id="payment-supplier" class="input-field">
+            <option value="">اختر مورد</option>
+            ${suppliers.map(s => `<option value="${s.id}">${s.name} (الرصيد: ${s.balance})</option>`).join('')}
+          </select>
+        </div>
+        <select id="payment-invoice" class="input-field">
+          <option value="">بدون فاتورة</option>
+        </select>
+        <input id="payment-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field" />
+        <input id="payment-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
+        <textarea id="payment-notes" placeholder="ملاحظات" class="input-field"></textarea>
+        <button id="btn-save-payment" class="btn-primary">حفظ الدفعة</button>
+        <button id="btn-cancel-payment" class="btn-secondary">إلغاء</button>
+      </div>
+    `;
+    if (payments.length === 0) {
+      html += '<div class="card">لا توجد دفعات</div>';
+    } else {
+      html += payments.map(p => `
+        <div class="card">
+          <strong>${p.amount}</strong> – ${p.payment_date}<br>
+          ${p.customer ? 'العميل: ' + p.customer.name : ''} ${p.supplier ? 'المورد: ' + p.supplier.name : ''}
+          ${p.invoice ? ' | فاتورة: ' + (p.invoice.type === 'sale' ? 'بيع ' : 'شراء ') + (p.invoice.reference || '') : ''}
+          ${p.notes ? '<br>' + p.notes : ''}
+          <div class="card-actions">
+            <button class="btn-danger" onclick="deletePayment(${p.id})">🗑️ حذف</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    attachPaymentEvents(customers, suppliers, invoices);
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
+function attachPaymentEvents(customers, suppliers, invoices) {
+  const typeSelect = document.getElementById('payment-type');
+  const customerBlock = document.getElementById('payment-customer-block');
+  const supplierBlock = document.getElementById('payment-supplier-block');
+  const invoiceSelect = document.getElementById('payment-invoice');
+  const customerSelect = document.getElementById('payment-customer');
+  const supplierSelect = document.getElementById('payment-supplier');
+
+  typeSelect?.addEventListener('change', () => {
+    if (typeSelect.value === 'customer') {
+      customerBlock.style.display = 'block';
+      supplierBlock.style.display = 'none';
+      updateInvoiceList(invoices, 'customer', customerSelect.value);
+    } else {
+      customerBlock.style.display = 'none';
+      supplierBlock.style.display = 'block';
+      updateInvoiceList(invoices, 'supplier', supplierSelect.value);
+    }
+  });
+
+  customerSelect?.addEventListener('change', () => {
+    updateInvoiceList(invoices, 'customer', customerSelect.value);
+  });
+  supplierSelect?.addEventListener('change', () => {
+    updateInvoiceList(invoices, 'supplier', supplierSelect.value);
+  });
+
+  function updateInvoiceList(invoices, type, entityId) {
+    const filtered = invoices.filter(inv => {
+      if (type === 'customer') return inv.type === 'sale' && inv.customer_id == entityId;
+      else return inv.type === 'purchase' && inv.supplier_id == entityId;
+    });
+    invoiceSelect.innerHTML = '<option value="">بدون فاتورة</option>' +
+      filtered.map(inv => `<option value="${inv.id}">${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''} (${inv.total})</option>`).join('');
+  }
+
+  document.getElementById('btn-add-payment')?.addEventListener('click', () => {
+    document.getElementById('payment-form').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-payment')?.addEventListener('click', () => {
+    document.getElementById('payment-form').style.display = 'none';
+  });
+
+  document.getElementById('btn-save-payment')?.addEventListener('click', async () => {
+    const type = document.getElementById('payment-type').value;
+    const customerId = type === 'customer' ? (document.getElementById('payment-customer').value || null) : null;
+    const supplierId = type === 'supplier' ? (document.getElementById('payment-supplier').value || null) : null;
+    const invoiceId = document.getElementById('payment-invoice').value || null;
+    const amount = parseFloat(document.getElementById('payment-amount').value);
+    const date = document.getElementById('payment-date').value;
+    const notes = document.getElementById('payment-notes').value.trim();
+
+    if (!amount || amount <= 0) return alert('المبلغ مطلوب');
+    if (!customerId && !supplierId) return alert('اختر عميلاً أو مورداً');
+
+    try {
+      await apiCall('/payments', 'POST', {
+        invoice_id: invoiceId,
+        customer_id: customerId,
+        supplier_id: supplierId,
+        amount,
+        payment_date: date,
+        notes
+      });
+      alert('تم حفظ الدفعة بنجاح');
+      loadPayments();
+    } catch (e) { alert('خطأ: ' + e.message); }
+  });
+}
+
+async function deletePayment(paymentId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذه الدفعة؟ سيتم عكس تأثيرها على الأرصدة.')) return;
+  try {
+    await apiCall(`/payments?id=${paymentId}`, 'DELETE');
+    alert('تم حذف الدفعة بنجاح');
+    loadPayments();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
 // ==================== التصنيفات ====================
 async function loadCategories() {
   try {
@@ -1172,6 +1315,7 @@ document.addEventListener('click', (e) => {
     else if (tab === 'invoices') loadInvoices();
     else if (tab === 'reports') loadReports();
     else if (tab === 'categories') loadCategories();
+    else if (tab === 'payments') loadPayments();
   }
 });
 
