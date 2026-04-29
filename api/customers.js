@@ -1,7 +1,10 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -62,8 +65,10 @@ module.exports = async (req, res) => {
       const { name, phone, address } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم العميل مطلوب' });
       const { data, error } = await supabase
-        .from('customers').insert({ user_id: userId, name, phone: phone || null, address: address || null, balance: 0 })
-        .select().single();
+        .from('customers').insert({
+          user_id: userId, name,
+          phone: phone || null, address: address || null, balance: 0
+        }).select().single();
       if (error) throw error;
       return res.json(data);
     }
@@ -72,7 +77,8 @@ module.exports = async (req, res) => {
       const { id, name, phone, address } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف العميل مطلوب' });
       const { data, error } = await supabase
-        .from('customers').update({ name, phone, address }).eq('id', id).eq('user_id', userId).select().single();
+        .from('customers').update({ name, phone, address })
+        .eq('id', id).eq('user_id', userId).select().single();
       if (error) throw error;
       return res.json(data);
     }

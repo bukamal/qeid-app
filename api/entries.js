@@ -1,11 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -43,7 +46,6 @@ module.exports = async (req, res) => {
     }
     const userId = await getUserId(initData);
 
-    // ========== جلب القيود ==========
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('journal_entries')
@@ -54,7 +56,6 @@ module.exports = async (req, res) => {
       return res.json(data);
     }
 
-    // ========== إضافة قيد ==========
     if (req.method === 'POST') {
       const { date, description, reference, lines } = req.body;
       if (!lines || !Array.isArray(lines) || lines.length === 0)
@@ -95,7 +96,7 @@ module.exports = async (req, res) => {
       }));
       await supabase.from('journal_lines').insert(linesToInsert);
 
-      // تحديث المخزون والعملاء والموردين (نفس المنطق السابق)
+      // تحديث المخزون والعملاء والموردين
       for (const line of lines) {
         if (line.item_id && parseFloat(line.quantity_change) !== 0) {
           const qtyChange = parseFloat(line.quantity_change);
@@ -123,17 +124,14 @@ module.exports = async (req, res) => {
       return res.json(entry);
     }
 
-    // ========== حذف قيد ==========
     if (req.method === 'DELETE') {
       const entryId = req.query.id;
       if (!entryId) return res.status(400).json({ error: 'معرف القيد مطلوب' });
 
-      // التحقق من ملكية القيد
       const { data: entry, error: fetchError } = await supabase
         .from('journal_entries').select('id').eq('id', entryId).eq('user_id', userId).single();
       if (fetchError || !entry) return res.status(404).json({ error: 'القيد غير موجود' });
 
-      // إعادة تأثير المخزون والعملاء والموردين (عكس العملية)
       const { data: lines } = await supabase
         .from('journal_lines').select('*').eq('entry_id', entryId);
       

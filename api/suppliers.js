@@ -8,7 +8,7 @@ const supabase = createClient(
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -39,7 +39,7 @@ module.exports = async (req, res) => {
 
   try {
     let initData;
-    if (req.method === 'GET') {
+    if (req.method === 'GET' || req.method === 'DELETE') {
       initData = req.query.initData;
     } else {
       initData = req.body?.initData;
@@ -47,33 +47,28 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      // جلب الموردين مع حساب الرصيد الفعلي من حركاتهم
       const { data: suppliers, error } = await supabase
         .from('suppliers')
         .select('*')
         .eq('user_id', userId)
         .order('name');
-
       if (error) throw error;
 
-      // لكل مورد، احسب صافي الحركة (مدين - دائن)
       for (let sup of suppliers) {
         const { data: lines } = await supabase
           .from('journal_lines')
           .select('debit, credit')
           .eq('supplier_id', sup.id);
-
-        const totalDebit = lines?.reduce((sum, l) => sum + parseFloat(l.debit), 0) || 0;
-        const totalCredit = lines?.reduce((sum, l) => sum + parseFloat(l.credit), 0) || 0;
-        // في حالة الموردين: الرصيد الدائن (الالتزام) = دائن - مدين
+        const totalDebit = lines?.reduce((s, l) => s + parseFloat(l.debit), 0) || 0;
+        const totalCredit = lines?.reduce((s, l) => s + parseFloat(l.credit), 0) || 0;
         sup.balance = totalCredit - totalDebit;
       }
-
       return res.json(suppliers);
-    } else if (req.method === 'POST') {
+    }
+
+    if (req.method === 'POST') {
       const { name, phone, address } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المورد مطلوب' });
-
       const { data, error } = await supabase
         .from('suppliers')
         .insert({
@@ -85,12 +80,37 @@ module.exports = async (req, res) => {
         })
         .select()
         .single();
-
       if (error) throw error;
       return res.json(data);
-    } else {
-      return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    if (req.method === 'PUT') {
+      const { id, name, phone, address } = req.body;
+      if (!id) return res.status(400).json({ error: 'معرف المورد مطلوب' });
+      const { data, error } = await supabase
+        .from('suppliers')
+        .update({ name, phone, address })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'DELETE') {
+      const supplierId = req.query.id;
+      if (!supplierId) return res.status(400).json({ error: 'معرف المورد مطلوب' });
+      const { error } = await supabase
+        .from('suppliers')
+        .delete()
+        .eq('id', supplierId)
+        .eq('user_id', userId);
+      if (error) throw error;
+      return res.json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
     res.status(500).json({ error: err.message });

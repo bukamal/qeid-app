@@ -43,55 +43,19 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
     return json;
   }
 }
-
 // ==================== لوحة التحكم ====================
 async function loadDashboard() {
   try {
-    const entries = await apiCall('/entries', 'GET');
     const items = await apiCall('/items', 'GET');
     const customers = await apiCall('/customers', 'GET');
     const suppliers = await apiCall('/suppliers', 'GET');
     const invoices = await apiCall('/invoices', 'GET');
     document.getElementById('tab-content').innerHTML = `
-      <div class="card">📊 القيود: ${entries.length}</div>
       <div class="card">📦 المواد: ${items.length}</div>
       <div class="card">👥 العملاء: ${customers.length}</div>
       <div class="card">🏭 الموردين: ${suppliers.length}</div>
       <div class="card">🧾 الفواتير: ${invoices.length}</div>
     `;
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
-}
-
-// ==================== عرض القيود (مع زر الحذف) ====================
-async function loadJournal() {
-  try {
-    const entries = await apiCall('/entries', 'GET');
-    let html = '';
-    if (entries.length === 0) {
-      html = '<div class="card">لا توجد قيود</div>';
-    } else {
-      entries.forEach(e => {
-        html += `<div class="card">
-          <strong>${e.reference || 'بدون رقم'}</strong> – ${e.date}<br>
-          ${e.description || ''}
-          <div style="font-size:0.9em; margin-top:5px;">`;
-        e.journal_lines.forEach(line => {
-          let detail = `${line.account?.name || 'حساب ' + line.account_id}: ${line.debit > 0 ? 'مدين ' + line.debit : 'دائن ' + line.credit}`;
-          if (line.item) detail += ` | ${line.item.name}`;
-          if (line.customer) detail += ` | العميل: ${line.customer.name}`;
-          if (line.supplier) detail += ` | المورد: ${line.supplier.name}`;
-          html += detail + '<br>';
-        });
-        html += `</div>
-          <div class="card-actions">
-            <button class="btn-danger" onclick="deleteEntry(${e.id})">🗑️ حذف القيد</button>
-          </div>
-        </div>`;
-      });
-    }
-    document.getElementById('tab-content').innerHTML = html;
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
@@ -156,7 +120,6 @@ function attachCustomersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
-
 // نموذج تعديل عميل
 function showEditCustomerModal(custId) {
   const customer = customersCache.find(c => c.id === custId);
@@ -251,7 +214,6 @@ function attachSuppliersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
-
 // نموذج تعديل مورد
 function showEditSupplierModal(supId) {
   const supplier = suppliersCache.find(s => s.id === supId);
@@ -387,7 +349,6 @@ function attachItemsEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
-
 // نموذج تعديل مادة (جميع الحقول)
 function showEditItemModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
@@ -440,169 +401,474 @@ function showEditItemModal(itemId) {
     document.body.removeChild(overlay);
   };
 }
-// ==================== نموذج إضافة قيد ====================
-let accountsCache = [];
-async function loadAddEntryForm() {
+// ==================== فاتورة مبيعات سريعة ====================
+async function loadSaleInvoiceForm() {
+  await loadInvoiceFormByType('sale');
+}
+
+// ==================== فاتورة مشتريات سريعة ====================
+async function loadPurchaseInvoiceForm() {
+  await loadInvoiceFormByType('purchase');
+}
+
+// دالة مشتركة لإنشاء فاتورة بنوع محدد
+async function loadInvoiceFormByType(type) {
   try {
-    const [accounts, items, customers, suppliers] = await Promise.all([
-      apiCall('/accounts', 'GET'),
-      apiCall('/items', 'GET'),
+    const [customers, suppliers, items] = await Promise.all([
       apiCall('/customers', 'GET'),
-      apiCall('/suppliers', 'GET')
+      apiCall('/suppliers', 'GET'),
+      apiCall('/items', 'GET')
     ]);
-    accountsCache = accounts;
     itemsCache = items;
     customersCache = customers;
     suppliersCache = suppliers;
 
-    let accountOptions = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    let itemOptions = '<option value="">بدون مادة</option>' + items.map(i => `<option value="${i.id}">${i.name} (${i.quantity})</option>`).join('');
-    let customerOptions = '<option value="">بدون عميل</option>' + customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    let supplierOptions = '<option value="">بدون مورد</option>' + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-
-    const html = `
+    let html = `
       <div class="card">
-        <h3>إضافة قيد جديد</h3>
-        <input id="entry-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
-        <input id="entry-ref" placeholder="الرقم المرجعي (اختياري)" class="input-field" />
-        <input id="entry-desc" placeholder="الوصف" class="input-field" />
-        <div id="lines-container">
-          <div class="line-row" data-index="0">
-            <select class="input-field account-select">${accountOptions}</select>
-            <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
-            <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
-            <select class="input-field item-select">${itemOptions}</select>
+        <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
+        <input type="hidden" id="inv-type" value="${type}" />
+        ${type === 'sale' ? `
+          <select id="inv-customer" class="input-field">
+            <option value="">اختر عميل</option>
+            ${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+          </select>
+        ` : `
+          <select id="inv-supplier" class="input-field">
+            <option value="">اختر مورد</option>
+            ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+          </select>
+        `}
+        <input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
+        <input id="inv-ref" placeholder="الرقم المرجعي" class="input-field" />
+        <textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea>
+        <h4>البنود</h4>
+        <div id="inv-lines-container">
+          <div class="line-row">
+            <select class="input-field item-select">
+              <option value="">اختر مادة</option>
+              ${items.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
+            </select>
             <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
-            <select class="input-field customer-select">${customerOptions}</select>
-            <select class="input-field supplier-select">${supplierOptions}</select>
+            <input type="number" step="0.01" placeholder="السعر" class="input-field price-input" />
+            <input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly />
             <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
           </div>
         </div>
-        <button id="btn-add-line" class="btn-secondary">+ إضافة سطر</button>
-        <button id="btn-save-entry" class="btn-primary">حفظ القيد</button>
+        <button id="btn-add-inv-line" class="btn-secondary">+ بند</button>
+        <button id="btn-save-invoice" class="btn-primary">حفظ الفاتورة</button>
       </div>
     `;
     document.getElementById('tab-content').innerHTML = html;
-    attachEntryEvents();
-    updateRemoveButtons();
+    attachInvoiceEvents();
   } catch (err) {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-let lineIndex = 1;
-function attachEntryEvents() {
-  document.getElementById('btn-add-line')?.addEventListener('click', () => {
-    const container = document.getElementById('lines-container');
-    const accountOptions = accountsCache.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    const itemOptions = '<option value="">بدون مادة</option>' + itemsCache.map(i => `<option value="${i.id}">${i.name} (${i.quantity})</option>`).join('');
-    const customerOptions = '<option value="">بدون عميل</option>' + customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    const supplierOptions = '<option value="">بدون مورد</option>' + suppliersCache.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
-    const newLine = document.createElement('div');
-    newLine.className = 'line-row';
-    newLine.dataset.index = lineIndex++;
-    newLine.innerHTML = `
-      <select class="input-field account-select">${accountOptions}</select>
-      <input type="number" step="0.01" placeholder="مدين" class="input-field debit-input" />
-      <input type="number" step="0.01" placeholder="دائن" class="input-field credit-input" />
-      <select class="input-field item-select">${itemOptions}</select>
-      <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
-      <select class="input-field customer-select">${customerOptions}</select>
-      <select class="input-field supplier-select">${supplierOptions}</select>
-      <button class="btn-remove-line btn-secondary">✕</button>
-    `;
-    container.appendChild(newLine);
-    updateRemoveButtons();
-  });
-
-  document.getElementById('lines-container')?.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-remove-line')) {
-      const lineRow = e.target.closest('.line-row');
-      if (document.querySelectorAll('.line-row').length > 1) {
-        lineRow.remove();
-        updateRemoveButtons();
-      }
-    }
-  });
-
-  document.getElementById('btn-save-entry')?.addEventListener('click', async () => {
-    const date = document.getElementById('entry-date').value;
-    const reference = document.getElementById('entry-ref').value.trim();
-    const description = document.getElementById('entry-desc').value.trim();
-    if (!date || !description) return alert('التاريخ والوصف مطلوبان');
-
-    const lines = [];
-    let totalDebit = 0, totalCredit = 0;
-    document.querySelectorAll('.line-row').forEach(row => {
-      const accountId = row.querySelector('.account-select').value;
-      const debit = parseFloat(row.querySelector('.debit-input').value) || 0;
-      const credit = parseFloat(row.querySelector('.credit-input').value) || 0;
-      const itemId = row.querySelector('.item-select').value || null;
-      const qtyChange = parseFloat(row.querySelector('.qty-input').value) || 0;
-      const customerId = row.querySelector('.customer-select').value || null;
-      const supplierId = row.querySelector('.supplier-select').value || null;
-
-      if (!accountId) return;
-      lines.push({
-        account_id: accountId,
-        debit,
-        credit,
-        item_id: itemId,
-        quantity_change: qtyChange,
-        customer_id: customerId,
-        supplier_id: supplierId
-      });
-      totalDebit += debit;
-      totalCredit += credit;
-    });
-
-    if (lines.length < 2) return alert('أضف سطرين على الأقل');
-    if (Math.abs(totalDebit - totalCredit) > 0.01) return alert('المبلغ المدين يجب أن يساوي المبلغ الدائن');
-
-    try {
-      await apiCall('/entries', 'POST', { date, description, reference, lines });
-      alert('تم حفظ القيد بنجاح');
-      itemsCache = await apiCall('/items', 'GET');
-      customersCache = await apiCall('/customers', 'GET');
-      suppliersCache = await apiCall('/suppliers', 'GET');
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelector('.tab[data-tab="journal"]').classList.add('active');
-      loadJournal();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
-  });
-}
-function updateRemoveButtons() {
-  const rows = document.querySelectorAll('.line-row');
+// دوال مساعدة للفواتير (attachInvoiceEvents و updateInvoiceRemoveButtons)
+function updateInvoiceRemoveButtons() {
+  const rows = document.querySelectorAll('#inv-lines-container .line-row');
   rows.forEach(row => {
     const btn = row.querySelector('.btn-remove-line');
     if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
   });
 }
-// ==================== التقارير ====================
-async function loadReports() {
-  let html = `
-    <div class="card"><h2>التقارير</h2></div>
-    <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
-    <div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div>
-    <div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div>
-    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام (حركة حساب)</div>
-    <div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div>
-    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>
-  `;
-  document.getElementById('tab-content').innerHTML = html;
-  document.querySelectorAll('.report-link').forEach(el => {
-    el.addEventListener('click', () => {
-      const report = el.dataset.report;
-      if (report === 'trial_balance') loadTrialBalance();
-      else if (report === 'income_statement') loadIncomeStatement();
-      else if (report === 'balance_sheet') loadBalanceSheet();
-      else if (report === 'account_ledger') loadAccountLedgerForm();
-      else if (report === 'customer_statement') loadCustomerStatementForm();
-      else if (report === 'supplier_statement') loadSupplierStatementForm();
+// ==================== عرض جميع الفواتير مع التعديل والطباعة والحذف ====================
+let invoicesCache = [];
+async function loadInvoices() {
+  try {
+    const [invoices, customers, suppliers, items] = await Promise.all([
+      apiCall('/invoices', 'GET'),
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET'),
+      apiCall('/items', 'GET')
+    ]);
+    invoicesCache = invoices;
+    customersCache = customers;
+    suppliersCache = suppliers;
+    itemsCache = items;
+
+    let html = `<div class="card"><h2>جميع الفواتير</h2></div>`;
+    if (invoices.length === 0) {
+      html += '<div class="card">لا توجد فواتير</div>';
+    } else {
+      html += invoices.map(inv => `
+        <div class="card">
+          <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
+          ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
+          الإجمالي: ${inv.total}
+          <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || '-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
+          <div class="card-actions">
+            <button class="btn-secondary edit-invoice-btn" data-invoice-id="${inv.id}">✏️ تعديل</button>
+            <button class="btn-primary print-invoice-btn" data-invoice-id="${inv.id}">🖨️ طباعة / PDF</button>
+            <button class="btn-danger delete-invoice-btn" data-invoice-id="${inv.id}">🗑️ حذف</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    // ربط أزرار التعديل
+    document.querySelectorAll('.edit-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        const invoice = invoicesCache.find(inv => inv.id === id);
+        if (invoice) showEditInvoiceModal(invoice);
+      });
     });
+    // ربط أزرار الطباعة
+    document.querySelectorAll('.print-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        const invoice = invoicesCache.find(inv => inv.id === id);
+        if (invoice) printInvoice(invoice);
+      });
+    });
+    // ربط أزرار الحذف
+    document.querySelectorAll('.delete-invoice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.target.dataset.invoiceId);
+        deleteInvoice(id);
+      });
+    });
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+// دالة attachInvoiceEvents كاملة
+function attachInvoiceEvents() {
+  const typeSelect = document.getElementById('inv-type');
+  const customerBlock = document.getElementById('inv-customer-block');
+  const supplierBlock = document.getElementById('inv-supplier-block');
+  if (typeSelect) {
+    if (customerBlock && supplierBlock) {
+      typeSelect.addEventListener('change', () => {
+        if (typeSelect.value === 'sale') {
+          customerBlock.style.display = 'block';
+          supplierBlock.style.display = 'none';
+        } else {
+          customerBlock.style.display = 'none';
+          supplierBlock.style.display = 'block';
+        }
+      });
+    }
+  }
+
+  document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
+    const container = document.getElementById('inv-lines-container');
+    const newLine = document.createElement('div');
+    newLine.className = 'line-row';
+    newLine.innerHTML = `
+      <select class="input-field item-select">
+        <option value="">اختر مادة</option>
+        ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
+      </select>
+      <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
+      <input type="number" step="0.01" placeholder="السعر" class="input-field price-input" />
+      <input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly />
+      <button class="btn-remove-line btn-secondary">✕</button>
+    `;
+    container.appendChild(newLine);
+    updateInvoiceRemoveButtons();
+    attachLineEvents(newLine);
   });
+
+  document.getElementById('inv-lines-container')?.addEventListener('click', (e) => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const row = e.target.closest('.line-row');
+      if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) {
+        row.remove();
+        updateInvoiceRemoveButtons();
+      }
+    }
+  });
+
+  function attachLineEvents(row) {
+    const qty = row.querySelector('.qty-input');
+    const price = row.querySelector('.price-input');
+    const total = row.querySelector('.total-input');
+    const calculate = () => {
+      const q = parseFloat(qty.value) || 0;
+      const p = parseFloat(price.value) || 0;
+      total.value = (q * p).toFixed(2);
+    };
+    qty?.addEventListener('input', calculate);
+    price?.addEventListener('input', calculate);
+  }
+
+  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
+
+  document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
+    const type = document.getElementById('inv-type').value;
+    const customerId = document.getElementById('inv-customer')?.value || null;
+    const supplierId = document.getElementById('inv-supplier')?.value || null;
+    const date = document.getElementById('inv-date').value;
+    const reference = document.getElementById('inv-ref').value.trim();
+    const notes = document.getElementById('inv-notes').value.trim();
+
+    const lines = [];
+    document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+      const itemId = row.querySelector('.item-select').value || null;
+      const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
+      const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
+      const total = parseFloat(row.querySelector('.total-input').value) || 0;
+      if (itemId || quantity > 0) {
+        lines.push({
+          item_id: itemId,
+          description: itemId ? '' : 'بند',
+          quantity,
+          unit_price: unitPrice,
+          total
+        });
+      }
+    });
+
+    if (lines.length === 0) return alert('أضف بنداً واحداً على الأقل');
+    if ((type === 'sale' && !customerId) || (type === 'purchase' && !supplierId))
+      return alert('يجب اختيار العميل (للبيع) أو المورد (للشراء)');
+
+    try {
+      await apiCall('/invoices', 'POST', {
+        type,
+        customer_id: customerId,
+        supplier_id: supplierId,
+        date,
+        reference,
+        notes,
+        lines
+      });
+      alert('تم حفظ الفاتورة بنجاح');
+      loadInvoices();
+    } catch (err) {
+      alert('خطأ: ' + err.message);
+    }
+  });
+
+  updateInvoiceRemoveButtons();
+}
+// نموذج تعديل فاتورة (Modal)
+function showEditInvoiceModal(invoice) {
+  const type = invoice.type;
+  const itemsOpt = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+  const customersOpt = customersCache.map(c => `<option value="${c.id}" ${c.id === invoice.customer_id ? 'selected' : ''}>${c.name}</option>`).join('');
+  const suppliersOpt = suppliersCache.map(s => `<option value="${s.id}" ${s.id === invoice.supplier_id ? 'selected' : ''}>${s.name}</option>`).join('');
+
+  let linesHtml = '';
+  invoice.invoice_lines.forEach(line => {
+    linesHtml += `
+      <div class="line-row">
+        <select class="input-field item-select">
+          <option value="">اختر مادة</option>
+          ${itemsCache.map(i => `<option value="${i.id}" ${i.id === line.item_id ? 'selected' : ''}>${i.name}</option>`).join('')}
+        </select>
+        <input type="number" step="any" class="input-field qty-input" value="${line.quantity}" />
+        <input type="number" step="0.01" class="input-field price-input" value="${line.unit_price}" />
+        <input type="number" step="0.01" class="input-field total-input" value="${line.total}" readonly />
+        <button class="btn-remove-line btn-secondary">✕</button>
+      </div>`;
+  });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:600px; max-height:90vh; overflow-y:auto;">
+      <h3>تعديل الفاتورة</h3>
+      <input type="hidden" id="edit-inv-id" value="${invoice.id}" />
+      <select id="edit-inv-type" class="input-field">
+        <option value="sale" ${type === 'sale' ? 'selected' : ''}>بيع</option>
+        <option value="purchase" ${type === 'purchase' ? 'selected' : ''}>شراء</option>
+      </select>
+      <div id="edit-customer-block" style="display:${type==='sale'?'block':'none'}">
+        <select id="edit-inv-customer" class="input-field">
+          <option value="">اختر عميل</option>
+          ${customersOpt}
+        </select>
+      </div>
+      <div id="edit-supplier-block" style="display:${type==='purchase'?'block':'none'}">
+        <select id="edit-inv-supplier" class="input-field">
+          <option value="">اختر مورد</option>
+          ${suppliersOpt}
+        </select>
+      </div>
+      <input id="edit-inv-date" type="date" class="input-field" value="${invoice.date}" />
+      <input id="edit-inv-ref" class="input-field" value="${invoice.reference || ''}" />
+      <textarea id="edit-inv-notes" class="input-field">${invoice.notes || ''}</textarea>
+      <h4>البنود</h4>
+      <div id="edit-inv-lines">${linesHtml}</div>
+      <button id="btn-add-edit-line" class="btn-secondary">+ بند</button>
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-invoice-edit">حفظ التعديلات</button>
+        <button class="btn-secondary" id="cancel-invoice-edit">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // أحداث التبديل بين عميل ومورد
+  document.getElementById('edit-inv-type').addEventListener('change', function() {
+    document.getElementById('edit-customer-block').style.display = this.value === 'sale' ? 'block' : 'none';
+    document.getElementById('edit-supplier-block').style.display = this.value === 'purchase' ? 'block' : 'none';
+  });
+
+  // إضافة بند جديد
+  document.getElementById('btn-add-edit-line').addEventListener('click', () => {
+    const newLine = document.createElement('div');
+    newLine.className = 'line-row';
+    newLine.innerHTML = `
+      <select class="input-field item-select">
+        <option value="">اختر مادة</option>
+        ${itemsOpt}
+      </select>
+      <input type="number" step="any" class="input-field qty-input" placeholder="الكمية" />
+      <input type="number" step="0.01" class="input-field price-input" placeholder="السعر" />
+      <input type="number" step="0.01" class="input-field total-input" placeholder="الإجمالي" readonly />
+      <button class="btn-remove-line btn-secondary">✕</button>
+    `;
+    document.getElementById('edit-inv-lines').appendChild(newLine);
+    attachLineEvents(newLine);
+  });
+
+  // حذف بند
+  document.getElementById('edit-inv-lines').addEventListener('click', (e) => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const row = e.target.closest('.line-row');
+      if (document.querySelectorAll('#edit-inv-lines .line-row').length > 1) {
+        row.remove();
+      }
+    }
+  });
+
+  // حساب الإجمالي لكل بند
+  document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => attachLineEvents(row));
+
+  function attachLineEvents(row) {
+    const qty = row.querySelector('.qty-input');
+    const price = row.querySelector('.price-input');
+    const total = row.querySelector('.total-input');
+    const calc = () => { total.value = ((parseFloat(qty.value)||0) * (parseFloat(price.value)||0)).toFixed(2); };
+    qty?.addEventListener('input', calc);
+    price?.addEventListener('input', calc);
+  }
+
+  // حفظ التعديلات
+  document.getElementById('save-invoice-edit').onclick = async () => {
+    const id = parseInt(document.getElementById('edit-inv-id').value);
+    const type = document.getElementById('edit-inv-type').value;
+    const customerId = document.getElementById('edit-inv-customer')?.value || null;
+    const supplierId = document.getElementById('edit-inv-supplier')?.value || null;
+    const date = document.getElementById('edit-inv-date').value;
+    const reference = document.getElementById('edit-inv-ref').value.trim();
+    const notes = document.getElementById('edit-inv-notes').value.trim();
+
+    const lines = [];
+    document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => {
+      const itemId = row.querySelector('.item-select').value || null;
+      const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
+      const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
+      const total = parseFloat(row.querySelector('.total-input').value) || 0;
+      if (itemId || quantity > 0) {
+        lines.push({ item_id: itemId, description: '', quantity, unit_price: unitPrice, total });
+      }
+    });
+    if (lines.length === 0) return alert('أضف بنداً على الأقل');
+    if ((type === 'sale' && !customerId) || (type === 'purchase' && !supplierId)) {
+      return alert('يجب اختيار العميل أو المورد');
+    }
+    try {
+      await apiCall('/invoices', 'PUT', { id, type, customer_id: customerId, supplier_id: supplierId, date, reference, notes, lines });
+      document.body.removeChild(overlay);
+      alert('تم تعديل الفاتورة بنجاح');
+      loadInvoices();
+    } catch (e) { alert('خطأ: ' + e.message); }
+  };
+
+  document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
+}
+// دالة الطباعة
+function printInvoice(invoice) {
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  if (!printWindow) { alert('الرجاء السماح بفتح النوافذ المنبثقة'); return; }
+  const content = `
+    <html dir="rtl">
+    <head><title>فاتورة ${invoice.reference || ''}</title>
+    <style>
+      body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+      th { background: #f0f0f0; }
+      .print-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+      @media print { .print-btn { display: none; } }
+    </style></head>
+    <body>
+      <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
+      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+      <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
+      <table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+      ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+      </table>
+      <h3>الإجمالي: ${invoice.total}</h3>
+      <p>${invoice.notes || ''}</p>
+      <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+    </body></html>
+  `;
+  printWindow.document.write(content);
+  printWindow.document.close();
+}
+
+// ==================== مربع حوار تأكيدي ====================
+function confirmDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <p>${message}</p>
+        <div class="modal-actions">
+          <button class="btn-danger" id="modal-confirm">نعم، احذف</button>
+          <button class="btn-secondary" id="modal-cancel">إلغاء</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
+    document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
+  });
+}
+// ==================== دوال الحذف العامة ====================
+async function deleteItem(itemId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟')) return;
+  try {
+    await apiCall(`/items?id=${itemId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadItems();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteCustomer(custId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا العميل؟')) return;
+  try {
+    await apiCall(`/customers?id=${custId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadCustomers();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteSupplier(supId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذه المورد؟')) return;
+  try {
+    await apiCall(`/suppliers?id=${supId}`, 'DELETE');
+    alert('تم الحذف بنجاح');
+    loadSuppliers();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
+// حذف فاتورة
+async function deleteInvoice(invId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟')) return;
+  try {
+    await apiCall(`/invoices?id=${invId}`, 'DELETE');
+    alert('تم حذف الفاتورة بنجاح');
+    loadInvoices();
+  } catch (e) { alert('خطأ: ' + e.message); }
 }
 // ==================== التقارير ====================
 async function loadReports() {
@@ -797,310 +1063,6 @@ async function loadSupplierStatementForm() {
     });
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-// ==================== الفواتير (مع طباعة صحيحة) ====================
-let invoicesCache = [];
-async function loadInvoices() {
-  try {
-    const [invoices, customers, suppliers, items] = await Promise.all([
-      apiCall('/invoices', 'GET'),
-      apiCall('/customers', 'GET'),
-      apiCall('/suppliers', 'GET'),
-      apiCall('/items', 'GET')
-    ]);
-    invoicesCache = invoices;
-    let html = `
-      <div class="card">
-        <h2>الفواتير</h2>
-        <button id="btn-add-invoice" class="btn-primary">+ فاتورة جديدة</button>
-      </div>
-      <div id="invoice-form" class="card" style="display:none;">
-        <h3>فاتورة جديدة</h3>
-        <select id="inv-type" class="input-field">
-          <option value="sale">بيع</option>
-          <option value="purchase">شراء</option>
-        </select>
-        <div id="inv-customer-block">
-          <select id="inv-customer" class="input-field">
-            <option value="">اختر عميل</option>
-            ${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-          </select>
-        </div>
-        <div id="inv-supplier-block" style="display:none;">
-          <select id="inv-supplier" class="input-field">
-            <option value="">اختر مورد</option>
-            ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-          </select>
-        </div>
-        <input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
-        <input id="inv-ref" placeholder="الرقم المرجعي" class="input-field" />
-        <textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea>
-        <h4>البنود</h4>
-        <div id="inv-lines-container">
-          <div class="line-row">
-            <select class="input-field item-select">
-              <option value="">اختر مادة</option>
-              ${items.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
-            </select>
-            <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
-            <input type="number" step="0.01" placeholder="السعر" class="input-field price-input" />
-            <input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly />
-            <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
-          </div>
-        </div>
-        <button id="btn-add-inv-line" class="btn-secondary">+ بند</button>
-        <button id="btn-save-invoice" class="btn-primary">حفظ الفاتورة</button>
-      </div>
-    `;
-
-    if (invoices.length === 0) {
-      html += '<div class="card">لا توجد فواتير</div>';
-    } else {
-      html += invoices.map(inv => `
-        <div class="card">
-          <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
-          ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
-          الإجمالي: ${inv.total}
-          <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || '-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
-          <div class="card-actions">
-            <button class="btn-primary print-invoice-btn" data-invoice-id="${inv.id}">🖨️ طباعة / PDF</button>
-          </div>
-        </div>
-      `).join('');
-    }
-    document.getElementById('tab-content').innerHTML = html;
-    attachInvoiceEvents();
-    // ربط أزرار الطباعة
-    document.querySelectorAll('.print-invoice-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        const invoice = invoicesCache.find(inv => inv.id === id);
-        if (invoice) printInvoice(invoice);
-      });
-    });
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
-}
-
-function attachInvoiceEvents() {
-  const typeSelect = document.getElementById('inv-type');
-  const customerBlock = document.getElementById('inv-customer-block');
-  const supplierBlock = document.getElementById('inv-supplier-block');
-  typeSelect?.addEventListener('change', () => {
-    if (typeSelect.value === 'sale') {
-      customerBlock.style.display = 'block';
-      supplierBlock.style.display = 'none';
-    } else {
-      customerBlock.style.display = 'none';
-      supplierBlock.style.display = 'block';
-    }
-  });
-
-  document.getElementById('btn-add-invoice')?.addEventListener('click', () => {
-    document.getElementById('invoice-form').style.display = 'block';
-  });
-
-  document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
-    const container = document.getElementById('inv-lines-container');
-    const newLine = document.createElement('div');
-    newLine.className = 'line-row';
-    newLine.innerHTML = `
-      <select class="input-field item-select">
-        <option value="">اختر مادة</option>
-        ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
-      </select>
-      <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
-      <input type="number" step="0.01" placeholder="السعر" class="input-field price-input" />
-      <input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly />
-      <button class="btn-remove-line btn-secondary">✕</button>
-    `;
-    container.appendChild(newLine);
-    updateInvoiceRemoveButtons();
-    attachLineEvents(newLine);
-  });
-
-  document.getElementById('inv-lines-container')?.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-remove-line')) {
-      const row = e.target.closest('.line-row');
-      if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) {
-        row.remove();
-        updateInvoiceRemoveButtons();
-      }
-    }
-  });
-
-  function attachLineEvents(row) {
-    const qty = row.querySelector('.qty-input');
-    const price = row.querySelector('.price-input');
-    const total = row.querySelector('.total-input');
-    const calculate = () => {
-      const q = parseFloat(qty.value) || 0;
-      const p = parseFloat(price.value) || 0;
-      total.value = (q * p).toFixed(2);
-    };
-    qty?.addEventListener('input', calculate);
-    price?.addEventListener('input', calculate);
-  }
-
-  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
-
-  document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
-    const type = document.getElementById('inv-type').value;
-    const customerId = document.getElementById('inv-customer')?.value || null;
-    const supplierId = document.getElementById('inv-supplier')?.value || null;
-    const date = document.getElementById('inv-date').value;
-    const reference = document.getElementById('inv-ref').value.trim();
-    const notes = document.getElementById('inv-notes').value.trim();
-
-    const lines = [];
-    document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
-      const itemId = row.querySelector('.item-select').value || null;
-      const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
-      const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
-      const total = parseFloat(row.querySelector('.total-input').value) || 0;
-      if (itemId || quantity > 0) {
-        lines.push({
-          item_id: itemId,
-          description: itemId ? '' : 'بند',
-          quantity,
-          unit_price: unitPrice,
-          total
-        });
-      }
-    });
-
-    if (lines.length === 0) return alert('أضف بنداً واحداً على الأقل');
-    if ((type === 'sale' && !customerId) || (type === 'purchase' && !supplierId))
-      return alert('يجب اختيار العميل (للبيع) أو المورد (للشراء)');
-
-    try {
-      await apiCall('/invoices', 'POST', {
-        type,
-        customer_id: customerId,
-        supplier_id: supplierId,
-        date,
-        reference,
-        notes,
-        lines
-      });
-      alert('تم حفظ الفاتورة بنجاح');
-      loadInvoices();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
-  });
-
-  updateInvoiceRemoveButtons();
-}
-
-function updateInvoiceRemoveButtons() {
-  const rows = document.querySelectorAll('#inv-lines-container .line-row');
-  rows.forEach(row => {
-    const btn = row.querySelector('.btn-remove-line');
-    if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
-  });
-}
-
-// دالة الطباعة المحسّنة
-function printInvoice(invoice) {
-  // إنشاء نافذة جديدة
-  const printWindow = window.open('', '_blank', 'width=800,height=600');
-  if (!printWindow) {
-    alert('الرجاء السماح بفتح النوافذ المنبثقة');
-    return;
-  }
-
-  // بناء محتوى HTML
-  const content = `
-    <html dir="rtl">
-    <head>
-      <title>فاتورة ${invoice.reference || ''}</title>
-      <style>
-        body { font-family: 'Tajawal', sans-serif; padding: 20px; color: #000; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-        th { background: #f0f0f0; }
-        .print-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
-        @media print {
-          .print-btn { display: none; }
-        }
-      </style>
-    </head>
-    <body>
-      <h2>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h2>
-      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
-      <p>${invoice.customer ? 'العميل: ' + invoice.customer.name : ''} ${invoice.supplier ? 'المورد: ' + invoice.supplier.name : ''}</p>
-      <table>
-        <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
-        ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
-      </table>
-      <h3>الإجمالي: ${invoice.total}</h3>
-      <p>${invoice.notes || ''}</p>
-      <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-    </body>
-    </html>
-  `;
-
-  printWindow.document.write(content);
-  printWindow.document.close(); // ضروري لبعض المتصفحات
-}
-
-// ==================== مربع حوار تأكيدي ====================
-function confirmDialog(message) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal-box">
-        <p>${message}</p>
-        <div class="modal-actions">
-          <button class="btn-danger" id="modal-confirm">نعم، احذف</button>
-          <button class="btn-secondary" id="modal-cancel">إلغاء</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
-    document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
-  });
-}
-
-// ==================== دوال الحذف والتعديل (تبقى كما هي) ====================
-async function deleteEntry(entryId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذا القيد؟ سيتم عكس تأثيره على المخزون والأرصدة.')) return;
-  try {
-    await apiCall(`/entries?id=${entryId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadJournal();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
-async function deleteItem(itemId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟')) return;
-  try {
-    await apiCall(`/items?id=${itemId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadItems();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
-async function deleteCustomer(custId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذا العميل؟')) return;
-  try {
-    await apiCall(`/customers?id=${custId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadCustomers();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
-async function deleteSupplier(supId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذا المورد؟')) return;
-  try {
-    await apiCall(`/suppliers?id=${supId}`, 'DELETE');
-    alert('تم الحذف بنجاح');
-    loadSuppliers();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
 
 // ==================== توجيه التبويبات ====================
 document.addEventListener('click', (e) => {
@@ -1109,9 +1071,9 @@ document.addEventListener('click', (e) => {
     e.target.classList.add('active');
     const tab = e.target.dataset.tab;
     if (tab === 'dashboard') loadDashboard();
-    else if (tab === 'journal') loadJournal();
-    else if (tab === 'add-entry') loadAddEntryForm();
     else if (tab === 'items') loadItems();
+    else if (tab === 'sale-invoice') loadSaleInvoiceForm();
+    else if (tab === 'purchase-invoice') loadPurchaseInvoiceForm();
     else if (tab === 'customers') loadCustomers();
     else if (tab === 'suppliers') loadSuppliers();
     else if (tab === 'invoices') loadInvoices();
