@@ -896,11 +896,10 @@ function showEditInvoiceModal(invoice) {
   document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
 }
 
-// دالة الطباعة
+// دالة الطباعة (محسّنة)
 function printInvoice(invoice) {
-  const printWindow = window.open('', '_blank', 'width=800,height=600');
-  if (!printWindow) { alert('الرجاء السماح بفتح النوافذ المنبثقة'); return; }
-  const content = `
+  // تحضير HTML الفاتورة
+  const invoiceHTML = `
     <html dir="rtl">
     <head><title>فاتورة ${invoice.reference || ''}</title>
     <style>
@@ -908,7 +907,6 @@ function printInvoice(invoice) {
       table { width: 100%; border-collapse: collapse; margin-top: 10px; }
       th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
       th { background: #f0f0f0; }
-      .print-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
       @media print { .print-btn { display: none; } }
     </style></head>
     <body>
@@ -919,31 +917,46 @@ function printInvoice(invoice) {
       ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
       </table>
       <h3>الإجمالي: ${invoice.total}</h3>
+      <p>المدفوع: ${invoice.paid || 0}</p>
+      <p>الباقي: ${invoice.balance || 0}</p>
       <p>${invoice.notes || ''}</p>
-      <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-    </body></html>
+      <p style="text-align:center; margin-top:20px; color:gray;">سيتم فتح نافذة الطباعة تلقائياً...</p>
+      <script>
+        // محاولة الطباعة تلقائياً بعد تحميل الصفحة
+        window.onload = function() {
+          setTimeout(function() {
+            window.print();
+          }, 500);
+        };
+      </script>
+    </body>
+    </html>
   `;
-  printWindow.document.write(content);
-  printWindow.document.close();
-}
 
-function confirmDialog(message) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal-box">
-        <p>${message}</p>
-        <div class="modal-actions">
-          <button class="btn-danger" id="modal-confirm">نعم، احذف</button>
-          <button class="btn-secondary" id="modal-cancel">إلغاء</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
-    document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
-  });
+  // الطريقة الأساسية: فتح نافذة جديدة
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  if (printWindow) {
+    printWindow.document.write(invoiceHTML);
+    printWindow.document.close();
+  } else {
+    // الطريقة الاحتياطية: استخدام iframe مخفي
+    alert('تعذر فتح نافذة منفصلة، سيتم الطباعة داخل التطبيق.');
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.top = '0';
+    iframe.style.left = '0';
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = 'none';
+    iframe.style.zIndex = '9999';
+    document.body.appendChild(iframe);
+    iframe.contentWindow.document.write(invoiceHTML);
+    iframe.contentWindow.document.close();
+    // إزالة الإطار بعد الطباعة
+    iframe.contentWindow.onafterprint = function() {
+      document.body.removeChild(iframe);
+    };
+  }
 }
 
 async function deleteItem(itemId) {
