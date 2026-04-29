@@ -58,20 +58,15 @@ h1 {
   letter-spacing: -0.5px;
 }
 
-/* التبويبات */
+/* التبويبات - عرض كامل مع التفاف وبدون شريط تمرير */
 nav {
   display: flex;
   gap: 6px;
   margin-bottom: 16px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: var(--primary) transparent;
-  padding-bottom: 4px;
+  flex-wrap: wrap;
 }
 .tab {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   padding: 10px 16px;
   background: var(--secondary);
   border: none;
@@ -260,15 +255,6 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .modal-box p { margin-bottom: 20px; font-size: 1.1rem; font-weight: 500; }
 .modal-actions { display: flex; gap: 10px; justify-content: center; }
 .modal-box .input-field { margin: 8px 0; text-align: right; }
-
-/* شريط التمرير الناعم للتبويبات */
-nav::-webkit-scrollbar {
-  height: 4px;
-}
-nav::-webkit-scrollbar-thumb {
-  background: var(--primary);
-  border-radius: 4px;
-}
 
 /* أزرار البطاقات */
 .card-actions { margin-top: 12px; display: flex; gap: 8px; }
