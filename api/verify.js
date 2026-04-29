@@ -19,8 +19,7 @@ function verifyTelegramData(initData) {
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
   params.delete('hash');
-  const pairs = Array.from(params.entries());
-  pairs.sort((a, b) => a[0].localeCompare(b[0]));
+  const pairs = Array.from(params.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
   const computedHash = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
   return computedHash === hash;
@@ -36,20 +35,28 @@ module.exports = async (req, res) => {
     if (!initData || !verifyTelegramData(initData)) {
       return res.status(401).json({ error: 'بيانات تيليجرام غير صالحة' });
     }
+
     const params = new URLSearchParams(initData);
     const user = JSON.parse(params.get('user'));
 
-    // تسجيل/تحديث المستخدم
-    const { error: userError } = await supabase
+    // فحص المستخدمين المسموح لهم
+    const allowedUsers = process.env.ALLOWED_USERS || '';
+    const allowedIds = allowedUsers.split(',').map(id => id.trim()).filter(Boolean);
+    if (allowedIds.length > 0 && !allowedIds.includes(String(user.id))) {
+      return res.status(403).json({ verified: false, error: 'غير مصرح لك باستخدام التطبيق' });
+    }
+
+    // تسجيل/تحديث المستخدم في Supabase
+    const { error } = await supabase
       .from('users')
       .upsert({ id: user.id, first_name: user.first_name, username: user.username }, { onConflict: 'id' });
 
-    if (userError) {
-      console.error('Supabase user error:', userError);
-      return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + userError.message });
+    if (error) {
+      console.error('Supabase user error:', error);
+      return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + error.message });
     }
 
-    // إنشاء الحسابات الافتراضية إذا لم تكن موجودة
+    // إنشاء الحسابات الافتراضية (نفس الكود السابق)
     const defaultAccounts = [
       { name: 'الصندوق', type: 'asset' },
       { name: 'المبيعات', type: 'income' },
@@ -58,7 +65,6 @@ module.exports = async (req, res) => {
       { name: 'مصاريف عامة', type: 'expense' },
       { name: 'رأس المال', type: 'equity' }
     ];
-
     for (const acc of defaultAccounts) {
       const { data: existing } = await supabase
         .from('accounts')
@@ -66,7 +72,6 @@ module.exports = async (req, res) => {
         .eq('user_id', user.id)
         .eq('name', acc.name)
         .maybeSingle();
-
       if (!existing) {
         await supabase.from('accounts').insert({
           user_id: user.id,

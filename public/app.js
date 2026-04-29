@@ -1331,7 +1331,7 @@ async function verifyUser() {
       document.getElementById('main').style.display = 'block';
       loadDashboard();
     } else {
-      throw new Error('فشل التحقق من الهوية');
+      showError(data.error || 'غير مصرح لك باستخدام التطبيق');
     }
   } catch (err) {
     showError(err.message);
