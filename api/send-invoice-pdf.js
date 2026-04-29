@@ -1,7 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-const fetch = require('node-fetch');
+const FormData = require('form-data');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -38,7 +38,6 @@ module.exports = async (req, res) => {
     if (!invoiceId) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
     const userId = await getUserId(initData);
 
-    // جلب الفاتورة مع بيانات العميل/المورد والبنود
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
       .select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))')
@@ -47,20 +46,15 @@ module.exports = async (req, res) => {
       .single();
     if (invError || !invoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-    // حساب المدفوع والباقي
     const { data: payments } = await supabase.from('payments').select('amount').eq('invoice_id', invoiceId);
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // إنشاء PDF باستخدام pdfkit
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
-    const pdfPromise = new Promise((resolve, reject) => {
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-    });
+    const pdfPromise = new Promise(resolve => { doc.on('end', () => resolve(Buffer.concat(chunks))); });
 
-    // ترويسة
     doc.fontSize(20).text('الراجحي للمحاسبة', { align: 'center' });
     doc.moveDown();
     doc.fontSize(14).text(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`, { align: 'center' });
@@ -72,7 +66,6 @@ module.exports = async (req, res) => {
     if (invoice.supplier?.name) doc.text(`المورد: ${invoice.supplier.name}`);
     doc.moveDown();
 
-    // جدول البنود
     const tableTop = doc.y;
     doc.fontSize(11).text('المادة', 50, tableTop, { continued: true });
     doc.text('الكمية', 250, tableTop, { continued: true });
@@ -102,8 +95,7 @@ module.exports = async (req, res) => {
     doc.end();
     const pdfBuffer = await pdfPromise;
 
-    // إرسال الملف عبر Telegram Bot API
-    const formData = new (require('form-data'))();
+    const formData = new FormData();
     formData.append('chat_id', userId);
     formData.append('document', pdfBuffer, {
       filename: `فاتورة-${invoice.reference || invoice.id}.pdf`,
@@ -111,6 +103,7 @@ module.exports = async (req, res) => {
     });
     formData.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
 
+    // استخدام fetch المضمن في Node 18+
     const tgResponse = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
       method: 'POST',
       body: formData,
