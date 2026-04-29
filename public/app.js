@@ -422,9 +422,7 @@ function updateInvoiceRemoveButtons() {
   });
 }
 
-// دالة attachInvoiceEvents كاملة (مع منع تكرار المادة وتعبئة السعر تلقائياً)
 function attachInvoiceEvents(invoiceType) {
-  // دالة مساعدة: فحص تكرار المادة في الأسطر عدا السطر الحالي
   function isItemDuplicate(itemId, currentRow) {
     if (!itemId) return false;
     let found = false;
@@ -436,7 +434,6 @@ function attachInvoiceEvents(invoiceType) {
     return found;
   }
 
-  // دالة مساعدة: تعبئة السعر تلقائياً عند اختيار مادة
   function autoFillPrice(selectElement, priceInput) {
     const itemId = selectElement.value;
     if (!itemId) {
@@ -456,7 +453,6 @@ function attachInvoiceEvents(invoiceType) {
     }
   }
 
-  // حدث إضافة سطر جديد
   document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
     const container = document.getElementById('inv-lines-container');
     const newLine = document.createElement('div');
@@ -488,7 +484,6 @@ function attachInvoiceEvents(invoiceType) {
     });
   });
 
-  // حدث حذف سطر
   document.getElementById('inv-lines-container')?.addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-remove-line')) {
       const row = e.target.closest('.line-row');
@@ -499,7 +494,6 @@ function attachInvoiceEvents(invoiceType) {
     }
   });
 
-  // ربط أحداث حساب الإجمالي وتعبئة السعر
   function attachLineEvents(row) {
     const qty = row.querySelector('.qty-input');
     const price = row.querySelector('.price-input');
@@ -526,7 +520,6 @@ function attachInvoiceEvents(invoiceType) {
 
   document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
 
-  // حفظ الفاتورة مع فحص نهائي
   document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
     const type = document.getElementById('inv-type').value;
     const entityValue = document.getElementById('inv-entity').value;
@@ -594,12 +587,10 @@ async function loadSaleInvoiceForm() {
   await loadInvoiceFormByType('sale');
 }
 
-// ==================== فاتورة مشتريات سريعة ====================
 async function loadPurchaseInvoiceForm() {
   await loadInvoiceFormByType('purchase');
 }
 
-// دالة مشتركة لإنشاء فاتورة بنوع محدد
 async function loadInvoiceFormByType(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([
@@ -656,7 +647,7 @@ async function loadInvoiceFormByType(type) {
   }
 }
 
-// ==================== عرض جميع الفواتير مع التعديل والطباعة والحذف ====================
+// ==================== عرض جميع الفواتير ====================
 let invoicesCache = [];
 async function loadInvoices() {
   try {
@@ -690,7 +681,6 @@ async function loadInvoices() {
       `).join('');
     }
     document.getElementById('tab-content').innerHTML = html;
-    // ربط أزرار التعديل
     document.querySelectorAll('.edit-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = parseInt(e.target.dataset.invoiceId);
@@ -698,7 +688,6 @@ async function loadInvoices() {
         if (invoice) showEditInvoiceModal(invoice);
       });
     });
-    // ربط أزرار الطباعة
     document.querySelectorAll('.print-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = parseInt(e.target.dataset.invoiceId);
@@ -706,34 +695,6 @@ async function loadInvoices() {
         if (invoice) printInvoice(invoice);
       });
     });
-    // ربط أزرار الحذف
-    document.querySelectorAll('.delete-invoice-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        deleteInvoice(id);
-      });
-    });
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
-}
-    // ربط أزرار التعديل
-    document.querySelectorAll('.edit-invoice-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        const invoice = invoicesCache.find(inv => inv.id === id);
-        if (invoice) showEditInvoiceModal(invoice);
-      });
-    });
-    // ربط أزرار الطباعة
-    document.querySelectorAll('.print-invoice-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = parseInt(e.target.dataset.invoiceId);
-        const invoice = invoicesCache.find(inv => inv.id === id);
-        if (invoice) printInvoice(invoice);
-      });
-    });
-    // ربط أزرار الحذف
     document.querySelectorAll('.delete-invoice-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = parseInt(e.target.dataset.invoiceId);
@@ -745,14 +706,13 @@ async function loadInvoices() {
   }
 }
 
-// نموذج تعديل فاتورة (Modal) مع منع تكرار المادة وتعبئة السعر تلقائياً
+// نموذج تعديل فاتورة (Modal)
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
   const itemsOpt = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
   const customersOpt = customersCache.map(c => `<option value="${c.id}" ${c.id === invoice.customer_id ? 'selected' : ''}>${c.name}</option>`).join('');
   const suppliersOpt = suppliersCache.map(s => `<option value="${s.id}" ${s.id === invoice.supplier_id ? 'selected' : ''}>${s.name}</option>`).join('');
 
-  // دالة فحص تكرار المادة
   function isEditItemDuplicate(itemId, currentRow) {
     if (!itemId) return false;
     let found = false;
@@ -764,7 +724,6 @@ function showEditInvoiceModal(invoice) {
     return found;
   }
 
-  // دالة تعبئة السعر تلقائياً
   function autoFillPrice(selectElement, priceInput) {
     const itemId = selectElement.value;
     if (!itemId) {
@@ -835,13 +794,11 @@ function showEditInvoiceModal(invoice) {
   `;
   document.body.appendChild(overlay);
 
-  // التبديل بين عميل ومورد
   document.getElementById('edit-inv-type').addEventListener('change', function() {
     document.getElementById('edit-customer-block').style.display = this.value === 'sale' ? 'block' : 'none';
     document.getElementById('edit-supplier-block').style.display = this.value === 'purchase' ? 'block' : 'none';
   });
 
-  // إضافة بند جديد مع فحص التكرار وتعبئة السعر
   document.getElementById('btn-add-edit-line').addEventListener('click', () => {
     const newLine = document.createElement('div');
     newLine.className = 'line-row';
@@ -870,7 +827,6 @@ function showEditInvoiceModal(invoice) {
     });
   });
 
-  // حذف بند
   document.getElementById('edit-inv-lines').addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-remove-line')) {
       const row = e.target.closest('.line-row');
@@ -902,7 +858,6 @@ function showEditInvoiceModal(invoice) {
 
   document.querySelectorAll('#edit-inv-lines .line-row').forEach(row => attachLineEvents(row));
 
-  // حفظ التعديلات مع فحص التكرار
   document.getElementById('save-invoice-edit').onclick = async () => {
     const id = parseInt(document.getElementById('edit-inv-id').value);
     const type = document.getElementById('edit-inv-type').value;
@@ -972,7 +927,6 @@ function printInvoice(invoice) {
   printWindow.document.close();
 }
 
-// ==================== مربع حوار تأكيدي ====================
 function confirmDialog(message) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -992,7 +946,6 @@ function confirmDialog(message) {
   });
 }
 
-// ==================== دوال الحذف العامة ====================
 async function deleteItem(itemId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟')) return;
   try {
@@ -1020,7 +973,6 @@ async function deleteSupplier(supId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// حذف فاتورة
 async function deleteInvoice(invId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟')) return;
   try {
@@ -1030,7 +982,7 @@ async function deleteInvoice(invId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// ==================== التصنيفات ====================
+// التصنيفات
 async function loadCategories() {
   try {
     const categories = await apiCall('/categories', 'GET');
@@ -1122,7 +1074,7 @@ async function deleteCategory(catId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// ==================== الدفعات ====================
+// الدفعات
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([
@@ -1265,7 +1217,7 @@ async function deletePayment(paymentId) {
   } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// ==================== التقارير ====================
+// التقارير
 async function loadReports() {
   let html = `
     <div class="card"><h2>التقارير</h2></div>
@@ -1290,7 +1242,6 @@ async function loadReports() {
   });
 }
 
-// ميزان المراجعة
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance', 'GET');
@@ -1315,7 +1266,6 @@ async function loadTrialBalance() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// قائمة الدخل
 async function loadIncomeStatement() {
   try {
     const data = await apiCall('/reports?type=income_statement', 'GET');
@@ -1338,7 +1288,6 @@ async function loadIncomeStatement() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// الميزانية العمومية
 async function loadBalanceSheet() {
   try {
     const data = await apiCall('/reports?type=balance_sheet', 'GET');
@@ -1363,7 +1312,6 @@ async function loadBalanceSheet() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// نموذج الأستاذ العام
 async function loadAccountLedgerForm() {
   try {
     const accounts = await apiCall('/accounts', 'GET');
@@ -1399,7 +1347,6 @@ async function loadAccountLedgerForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// كشف حساب عميل
 async function loadCustomerStatementForm() {
   try {
     const customers = await apiCall('/customers', 'GET');
@@ -1429,7 +1376,6 @@ async function loadCustomerStatementForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// كشف حساب مورد
 async function loadSupplierStatementForm() {
   try {
     const suppliers = await apiCall('/suppliers', 'GET');
@@ -1459,7 +1405,7 @@ async function loadSupplierStatementForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// ==================== توجيه التبويبات ====================
+// توجيه التبويبات
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1478,7 +1424,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ==================== بدء التطبيق ====================
+// بدء التطبيق
 async function verifyUser() {
   try {
     const data = await apiCall('/verify', 'POST');
