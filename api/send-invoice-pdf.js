@@ -2,6 +2,7 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const FormData = require('form-data');
+const fetch = require('node-fetch');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -87,7 +88,6 @@ module.exports = async (req, res) => {
     form.append('document', pdfBuffer, { filename: `فاتورة-${invoice.reference || invoice.id}.pdf`, contentType: 'application/pdf' });
     form.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
 
-    const fetch = require('node-fetch');
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
       method: 'POST',
       body: form,
