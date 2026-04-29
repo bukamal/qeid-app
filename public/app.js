@@ -1064,6 +1064,99 @@ async function loadSupplierStatementForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
+// ==================== التصنيفات ====================
+async function loadCategories() {
+  try {
+    const categories = await apiCall('/categories', 'GET');
+    let html = `
+      <div class="card"><h2>التصنيفات</h2><button id="btn-add-category-tab" class="btn-primary">+ إضافة تصنيف</button></div>
+      <div id="category-form" class="card" style="display:none;">
+        <h3>إضافة تصنيف جديد</h3>
+        <input id="category-name" placeholder="اسم التصنيف" class="input-field" />
+        <button id="btn-save-category" class="btn-primary">حفظ</button>
+        <button id="btn-cancel-category" class="btn-secondary">إلغاء</button>
+      </div>
+    `;
+    if (categories.length === 0) {
+      html += '<div class="card">لا توجد تصنيفات</div>';
+    } else {
+      html += categories.map(cat => `
+        <div class="card">
+          <strong>${cat.name}</strong>
+          <div class="card-actions">
+            <button class="btn-secondary" onclick="showEditCategoryModal(${cat.id})">✏️ تعديل</button>
+            <button class="btn-danger" onclick="deleteCategory(${cat.id})">🗑️ حذف</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    attachCategoryEvents();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
+function attachCategoryEvents() {
+  document.getElementById('btn-add-category-tab')?.addEventListener('click', () => {
+    document.getElementById('category-form').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-category')?.addEventListener('click', () => {
+    document.getElementById('category-form').style.display = 'none';
+  });
+  document.getElementById('btn-save-category')?.addEventListener('click', async () => {
+    const name = document.getElementById('category-name').value.trim();
+    if (!name) return alert('اسم التصنيف مطلوب');
+    try {
+      await apiCall('/categories', 'POST', { name });
+      document.getElementById('category-form').style.display = 'none';
+      loadCategories();
+    } catch (err) { alert('خطأ: ' + err.message); }
+  });
+}
+
+function showEditCategoryModal(catId) {
+  // الحصول على اسم التصنيف الحالي من api
+  apiCall('/categories', 'GET').then(categories => {
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <h3>تعديل التصنيف</h3>
+        <input id="edit-cat-name" class="input-field" value="${cat.name}" />
+        <div class="modal-actions">
+          <button class="btn-primary" id="save-cat-edit">حفظ</button>
+          <button class="btn-secondary" id="cancel-cat-edit">إلغاء</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('save-cat-edit').onclick = async () => {
+      const name = document.getElementById('edit-cat-name').value.trim();
+      if (!name) return alert('الاسم مطلوب');
+      try {
+        await apiCall('/categories', 'PUT', { id: catId, name });
+        document.body.removeChild(overlay);
+        loadCategories();
+      } catch (e) { alert('خطأ: ' + e.message); }
+    };
+    document.getElementById('cancel-cat-edit').onclick = () => {
+      document.body.removeChild(overlay);
+    };
+  });
+}
+
+async function deleteCategory(catId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا التصنيف؟ قد تبقى المواد المرتبطة به بدون تصنيف.')) return;
+  try {
+    await apiCall(`/categories?id=${catId}`, 'DELETE');
+    alert('تم حذف التصنيف بنجاح');
+    loadCategories();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
 // ==================== توجيه التبويبات ====================
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
@@ -1078,6 +1171,7 @@ document.addEventListener('click', (e) => {
     else if (tab === 'suppliers') loadSuppliers();
     else if (tab === 'invoices') loadInvoices();
     else if (tab === 'reports') loadReports();
+    else if (tab === 'categories') loadCategories();
   }
 });
 
