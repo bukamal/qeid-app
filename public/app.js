@@ -455,6 +455,8 @@ async function loadInvoiceFormByType(type) {
           </div>
         </div>
         <button id="btn-add-inv-line" class="btn-secondary">+ بند</button>
+        <h4>المدفوعات</h4>
+        <input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" value="0" />
         <button id="btn-save-invoice" class="btn-primary">حفظ الفاتورة</button>
       </div>
     `;
@@ -465,7 +467,7 @@ async function loadInvoiceFormByType(type) {
   }
 }
 
-// دوال مساعدة للفواتير (attachInvoiceEvents و updateInvoiceRemoveButtons)
+// دوال مساعدة للفواتير
 function updateInvoiceRemoveButtons() {
   const rows = document.querySelectorAll('#inv-lines-container .line-row');
   rows.forEach(row => {
@@ -604,6 +606,7 @@ function attachInvoiceEvents() {
     const date = document.getElementById('inv-date').value;
     const reference = document.getElementById('inv-ref').value.trim();
     const notes = document.getElementById('inv-notes').value.trim();
+    const paidAmount = parseFloat(document.getElementById('inv-paid')?.value) || 0;
 
     const lines = [];
     document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
@@ -634,7 +637,8 @@ function attachInvoiceEvents() {
         date,
         reference,
         notes,
-        lines
+        lines,
+        paid_amount: paidAmount
       });
       alert('تم حفظ الفاتورة بنجاح');
       loadInvoices();
@@ -853,7 +857,7 @@ async function deleteCustomer(custId) {
 }
 
 async function deleteSupplier(supId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذه المورد؟')) return;
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا المورد؟')) return;
   try {
     await apiCall(`/suppliers?id=${supId}`, 'DELETE');
     alert('تم الحذف بنجاح');
@@ -870,200 +874,6 @@ async function deleteInvoice(invId) {
     loadInvoices();
   } catch (e) { alert('خطأ: ' + e.message); }
 }
-// ==================== التقارير ====================
-async function loadReports() {
-  let html = `
-    <div class="card"><h2>التقارير</h2></div>
-    <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
-    <div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div>
-    <div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div>
-    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام (حركة حساب)</div>
-    <div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div>
-    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>
-  `;
-  document.getElementById('tab-content').innerHTML = html;
-  document.querySelectorAll('.report-link').forEach(el => {
-    el.addEventListener('click', () => {
-      const report = el.dataset.report;
-      if (report === 'trial_balance') loadTrialBalance();
-      else if (report === 'income_statement') loadIncomeStatement();
-      else if (report === 'balance_sheet') loadBalanceSheet();
-      else if (report === 'account_ledger') loadAccountLedgerForm();
-      else if (report === 'customer_statement') loadCustomerStatementForm();
-      else if (report === 'supplier_statement') loadSupplierStatementForm();
-    });
-  });
-}
-
-// ميزان المراجعة
-async function loadTrialBalance() {
-  try {
-    const data = await apiCall('/reports?type=trial_balance', 'GET');
-    let rows = data.map(r => `
-      <tr>
-        <td>${r.name}</td>
-        <td>${r.total_debit.toFixed(2)}</td>
-        <td>${r.total_credit.toFixed(2)}</td>
-        <td style="color:${r.balance >= 0 ? 'green' : 'red'}">${r.balance.toFixed(2)}</td>
-      </tr>
-    `).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>ميزان المراجعة</h3>
-        <table class="report-table">
-          <tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>
-          ${rows}
-        </table>
-      </div>
-    `;
-  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
-}
-
-// قائمة الدخل
-async function loadIncomeStatement() {
-  try {
-    const data = await apiCall('/reports?type=income_statement', 'GET');
-    let incomeRows = data.income.map(i => `<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td></tr>`).join('');
-    let expenseRows = data.expenses.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>قائمة الدخل</h3>
-        <h4>الإيرادات</h4>
-        <table class="report-table">${incomeRows}</table>
-        <strong>إجمالي الإيرادات: ${data.total_income.toFixed(2)}</strong>
-        <h4>المصروفات</h4>
-        <table class="report-table">${expenseRows}</table>
-        <strong>إجمالي المصروفات: ${data.total_expenses.toFixed(2)}</strong>
-        <hr>
-        <h2>صافي الربح: ${data.net_profit.toFixed(2)}</h2>
-      </div>
-    `;
-  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
-}
-
-// الميزانية العمومية
-async function loadBalanceSheet() {
-  try {
-    const data = await apiCall('/reports?type=balance_sheet', 'GET');
-    let assetRows = data.assets.map(a => `<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td></tr>`).join('');
-    let liabRows = data.liabilities.map(l => `<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td></tr>`).join('');
-    let equityRows = data.equity.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>الميزانية العمومية</h3>
-        <h4>الأصول</h4>
-        <table class="report-table">${assetRows}</table>
-        <strong>إجمالي الأصول: ${data.total_assets.toFixed(2)}</strong>
-        <h4>الخصوم</h4>
-        <table class="report-table">${liabRows}</table>
-        <strong>إجمالي الخصوم: ${data.total_liabilities.toFixed(2)}</strong>
-        <h4>حقوق الملكية</h4>
-        <table class="report-table">${equityRows}</table>
-        <strong>إجمالي حقوق الملكية: ${data.total_equity.toFixed(2)}</strong>
-      </div>
-    `;
-  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
-}
-
-// نموذج الأستاذ العام
-async function loadAccountLedgerForm() {
-  try {
-    const accounts = await apiCall('/accounts', 'GET');
-    let options = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>الأستاذ العام</h3>
-        <select id="ledger-account" class="input-field">${options}</select>
-        <button id="btn-ledger" class="btn-primary">عرض الحركات</button>
-        <div id="ledger-result" style="margin-top:15px;"></div>
-      </div>
-    `;
-    document.getElementById('btn-ledger').addEventListener('click', async () => {
-      const accountId = document.getElementById('ledger-account').value;
-      if (!accountId) return;
-      try {
-        const lines = await apiCall(`/reports?type=account_ledger&account_id=${accountId}`, 'GET');
-        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
-        lines.forEach(l => {
-          html += `<tr>
-            <td>${l.date || ''}</td>
-            <td>${l.description || ''}</td>
-            <td>${(l.debit || 0).toFixed(2)}</td>
-            <td>${(l.credit || 0).toFixed(2)}</td>
-            <td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td>
-          </tr>`;
-        });
-        html += '</table>';
-        document.getElementById('ledger-result').innerHTML = html;
-      } catch (e) { document.getElementById('ledger-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
-    });
-  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
-}
-
-// كشف حساب عميل
-async function loadCustomerStatementForm() {
-  try {
-    const customers = await apiCall('/customers', 'GET');
-    let options = customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>كشف حساب عميل</h3>
-        <select id="statement-customer" class="input-field">${options}</select>
-        <button id="btn-customer-statement" class="btn-primary">عرض الكشف</button>
-        <div id="statement-result"></div>
-      </div>
-    `;
-    document.getElementById('btn-customer-statement').addEventListener('click', async () => {
-      const id = document.getElementById('statement-customer').value;
-      if (!id) return;
-      try {
-        const lines = await apiCall(`/reports?type=customer_statement&customer_id=${id}`, 'GET');
-        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
-        lines.forEach(l => {
-          html += `<tr><td>${l.date || ''}</td><td>${l.description || ''}</td><td>${(l.debit || 0).toFixed(2)}</td><td>${(l.credit || 0).toFixed(2)}</td><td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td></tr>`;
-        });
-        html += '</table>';
-        document.getElementById('statement-result').innerHTML = html;
-      } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
-    });
-  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
-}
-
-// كشف حساب مورد
-async function loadSupplierStatementForm() {
-  try {
-    const suppliers = await apiCall('/suppliers', 'GET');
-    let options = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
-        <h3>كشف حساب مورد</h3>
-        <select id="statement-supplier" class="input-field">${options}</select>
-        <button id="btn-supplier-statement" class="btn-primary">عرض الكشف</button>
-        <div id="statement-result"></div>
-      </div>
-    `;
-    document.getElementById('btn-supplier-statement').addEventListener('click', async () => {
-      const id = document.getElementById('statement-supplier').value;
-      if (!id) return;
-      try {
-        const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`, 'GET');
-        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
-        lines.forEach(l => {
-          html += `<tr><td>${l.date || ''}</td><td>${l.description || ''}</td><td>${(l.debit || 0).toFixed(2)}</td><td>${(l.credit || 0).toFixed(2)}</td><td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td></tr>`;
-        });
-        html += '</table>';
-        document.getElementById('statement-result').innerHTML = html;
-      } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
-    });
-  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
-}
-
 // ==================== الدفعات ====================
 async function loadPayments() {
   try {
@@ -1206,100 +1016,198 @@ async function deletePayment(paymentId) {
     loadPayments();
   } catch (e) { alert('خطأ: ' + e.message); }
 }
+// ==================== التقارير ====================
+async function loadReports() {
+  let html = `
+    <div class="card"><h2>التقارير</h2></div>
+    <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
+    <div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div>
+    <div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div>
+    <div class="card report-link" data-report="account_ledger">📒 الأستاذ العام (حركة حساب)</div>
+    <div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div>
+    <div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>
+  `;
+  document.getElementById('tab-content').innerHTML = html;
+  document.querySelectorAll('.report-link').forEach(el => {
+    el.addEventListener('click', () => {
+      const report = el.dataset.report;
+      if (report === 'trial_balance') loadTrialBalance();
+      else if (report === 'income_statement') loadIncomeStatement();
+      else if (report === 'balance_sheet') loadBalanceSheet();
+      else if (report === 'account_ledger') loadAccountLedgerForm();
+      else if (report === 'customer_statement') loadCustomerStatementForm();
+      else if (report === 'supplier_statement') loadSupplierStatementForm();
+    });
+  });
+}
 
-// ==================== التصنيفات ====================
-async function loadCategories() {
+// ميزان المراجعة
+async function loadTrialBalance() {
   try {
-    const categories = await apiCall('/categories', 'GET');
-    let html = `
-      <div class="card"><h2>التصنيفات</h2><button id="btn-add-category-tab" class="btn-primary">+ إضافة تصنيف</button></div>
-      <div id="category-form" class="card" style="display:none;">
-        <h3>إضافة تصنيف جديد</h3>
-        <input id="category-name" placeholder="اسم التصنيف" class="input-field" />
-        <button id="btn-save-category" class="btn-primary">حفظ</button>
-        <button id="btn-cancel-category" class="btn-secondary">إلغاء</button>
+    const data = await apiCall('/reports?type=trial_balance', 'GET');
+    let rows = data.map(r => `
+      <tr>
+        <td>${r.name}</td>
+        <td>${r.total_debit.toFixed(2)}</td>
+        <td>${r.total_credit.toFixed(2)}</td>
+        <td style="color:${r.balance >= 0 ? 'green' : 'red'}">${r.balance.toFixed(2)}</td>
+      </tr>
+    `).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>ميزان المراجعة</h3>
+        <table class="report-table">
+          <tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>
+          ${rows}
+        </table>
       </div>
     `;
-    if (categories.length === 0) {
-      html += '<div class="card">لا توجد تصنيفات</div>';
-    } else {
-      html += categories.map(cat => `
-        <div class="card">
-          <strong>${cat.name}</strong>
-          <div class="card-actions">
-            <button class="btn-secondary" onclick="showEditCategoryModal(${cat.id})">✏️ تعديل</button>
-            <button class="btn-danger" onclick="deleteCategory(${cat.id})">🗑️ حذف</button>
-          </div>
-        </div>
-      `).join('');
-    }
-    document.getElementById('tab-content').innerHTML = html;
-    attachCategoryEvents();
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-function attachCategoryEvents() {
-  document.getElementById('btn-add-category-tab')?.addEventListener('click', () => {
-    document.getElementById('category-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-category')?.addEventListener('click', () => {
-    document.getElementById('category-form').style.display = 'none';
-  });
-  document.getElementById('btn-save-category')?.addEventListener('click', async () => {
-    const name = document.getElementById('category-name').value.trim();
-    if (!name) return alert('اسم التصنيف مطلوب');
-    try {
-      await apiCall('/categories', 'POST', { name });
-      document.getElementById('category-form').style.display = 'none';
-      loadCategories();
-    } catch (err) { alert('خطأ: ' + err.message); }
-  });
-}
-
-function showEditCategoryModal(catId) {
-  // الحصول على اسم التصنيف الحالي من api
-  apiCall('/categories', 'GET').then(categories => {
-    const cat = categories.find(c => c.id === catId);
-    if (!cat) return;
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal-box">
-        <h3>تعديل التصنيف</h3>
-        <input id="edit-cat-name" class="input-field" value="${cat.name}" />
-        <div class="modal-actions">
-          <button class="btn-primary" id="save-cat-edit">حفظ</button>
-          <button class="btn-secondary" id="cancel-cat-edit">إلغاء</button>
-        </div>
+// قائمة الدخل
+async function loadIncomeStatement() {
+  try {
+    const data = await apiCall('/reports?type=income_statement', 'GET');
+    let incomeRows = data.income.map(i => `<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td></tr>`).join('');
+    let expenseRows = data.expenses.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>قائمة الدخل</h3>
+        <h4>الإيرادات</h4>
+        <table class="report-table">${incomeRows}</table>
+        <strong>إجمالي الإيرادات: ${data.total_income.toFixed(2)}</strong>
+        <h4>المصروفات</h4>
+        <table class="report-table">${expenseRows}</table>
+        <strong>إجمالي المصروفات: ${data.total_expenses.toFixed(2)}</strong>
+        <hr>
+        <h2>صافي الربح: ${data.net_profit.toFixed(2)}</h2>
       </div>
     `;
-    document.body.appendChild(overlay);
-    document.getElementById('save-cat-edit').onclick = async () => {
-      const name = document.getElementById('edit-cat-name').value.trim();
-      if (!name) return alert('الاسم مطلوب');
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+
+// الميزانية العمومية
+async function loadBalanceSheet() {
+  try {
+    const data = await apiCall('/reports?type=balance_sheet', 'GET');
+    let assetRows = data.assets.map(a => `<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td></tr>`).join('');
+    let liabRows = data.liabilities.map(l => `<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td></tr>`).join('');
+    let equityRows = data.equity.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الميزانية العمومية</h3>
+        <h4>الأصول</h4>
+        <table class="report-table">${assetRows}</table>
+        <strong>إجمالي الأصول: ${data.total_assets.toFixed(2)}</strong>
+        <h4>الخصوم</h4>
+        <table class="report-table">${liabRows}</table>
+        <strong>إجمالي الخصوم: ${data.total_liabilities.toFixed(2)}</strong>
+        <h4>حقوق الملكية</h4>
+        <table class="report-table">${equityRows}</table>
+        <strong>إجمالي حقوق الملكية: ${data.total_equity.toFixed(2)}</strong>
+      </div>
+    `;
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+// نموذج الأستاذ العام
+async function loadAccountLedgerForm() {
+  try {
+    const accounts = await apiCall('/accounts', 'GET');
+    let options = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الأستاذ العام</h3>
+        <select id="ledger-account" class="input-field">${options}</select>
+        <button id="btn-ledger" class="btn-primary">عرض الحركات</button>
+        <div id="ledger-result" style="margin-top:15px;"></div>
+      </div>
+    `;
+    document.getElementById('btn-ledger').addEventListener('click', async () => {
+      const accountId = document.getElementById('ledger-account').value;
+      if (!accountId) return;
       try {
-        await apiCall('/categories', 'PUT', { id: catId, name });
-        document.body.removeChild(overlay);
-        loadCategories();
-      } catch (e) { alert('خطأ: ' + e.message); }
-    };
-    document.getElementById('cancel-cat-edit').onclick = () => {
-      document.body.removeChild(overlay);
-    };
-  });
+        const lines = await apiCall(`/reports?type=account_ledger&account_id=${accountId}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => {
+          html += `<tr>
+            <td>${l.date || ''}</td>
+            <td>${l.description || ''}</td>
+            <td>${(l.debit || 0).toFixed(2)}</td>
+            <td>${(l.credit || 0).toFixed(2)}</td>
+            <td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        document.getElementById('ledger-result').innerHTML = html;
+      } catch (e) { document.getElementById('ledger-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
+    });
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-async function deleteCategory(catId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذا التصنيف؟ قد تبقى المواد المرتبطة به بدون تصنيف.')) return;
+// كشف حساب عميل
+async function loadCustomerStatementForm() {
   try {
-    await apiCall(`/categories?id=${catId}`, 'DELETE');
-    alert('تم حذف التصنيف بنجاح');
-    loadCategories();
-  } catch (e) { alert('خطأ: ' + e.message); }
+    const customers = await apiCall('/customers', 'GET');
+    let options = customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>كشف حساب عميل</h3>
+        <select id="statement-customer" class="input-field">${options}</select>
+        <button id="btn-customer-statement" class="btn-primary">عرض الكشف</button>
+        <div id="statement-result"></div>
+      </div>
+    `;
+    document.getElementById('btn-customer-statement').addEventListener('click', async () => {
+      const id = document.getElementById('statement-customer').value;
+      if (!id) return;
+      try {
+        const lines = await apiCall(`/reports?type=customer_statement&customer_id=${id}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => {
+          html += `<tr><td>${l.date || ''}</td><td>${l.description || ''}</td><td>${(l.debit || 0).toFixed(2)}</td><td>${(l.credit || 0).toFixed(2)}</td><td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td></tr>`;
+        });
+        html += '</table>';
+        document.getElementById('statement-result').innerHTML = html;
+      } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
+    });
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
+// كشف حساب مورد
+async function loadSupplierStatementForm() {
+  try {
+    const suppliers = await apiCall('/suppliers', 'GET');
+    let options = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>كشف حساب مورد</h3>
+        <select id="statement-supplier" class="input-field">${options}</select>
+        <button id="btn-supplier-statement" class="btn-primary">عرض الكشف</button>
+        <div id="statement-result"></div>
+      </div>
+    `;
+    document.getElementById('btn-supplier-statement').addEventListener('click', async () => {
+      const id = document.getElementById('statement-supplier').value;
+      if (!id) return;
+      try {
+        const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`, 'GET');
+        let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => {
+          html += `<tr><td>${l.date || ''}</td><td>${l.description || ''}</td><td>${(l.debit || 0).toFixed(2)}</td><td>${(l.credit || 0).toFixed(2)}</td><td style="font-weight:bold; color:${l.balance >= 0 ? 'green' : 'red'}">${(l.balance || 0).toFixed(2)}</td></tr>`;
+        });
+        html += '</table>';
+        document.getElementById('statement-result').innerHTML = html;
+      } catch (e) { document.getElementById('statement-result').innerHTML = `<div style="color:red;">⚠️ ${e.message}</div>`; }
+    });
+  } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
 // ==================== توجيه التبويبات ====================
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
@@ -1312,13 +1220,12 @@ document.addEventListener('click', (e) => {
     else if (tab === 'purchase-invoice') loadPurchaseInvoiceForm();
     else if (tab === 'customers') loadCustomers();
     else if (tab === 'suppliers') loadSuppliers();
-    else if (tab === 'invoices') loadInvoices();
-    else if (tab === 'reports') loadReports();
     else if (tab === 'categories') loadCategories();
     else if (tab === 'payments') loadPayments();
+    else if (tab === 'invoices') loadInvoices();
+    else if (tab === 'reports') loadReports();
   }
 });
-
 // ==================== بدء التطبيق ====================
 async function verifyUser() {
   try {
