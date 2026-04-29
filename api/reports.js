@@ -43,7 +43,6 @@ module.exports = async (req, res) => {
     const reportType = req.query.type;
 
     if (reportType === 'trial_balance') {
-      // 1) إجمالي فواتير المبيعات (الإيرادات)
       const { data: salesInvoices } = await supabase
         .from('invoices')
         .select('total')
@@ -51,7 +50,6 @@ module.exports = async (req, res) => {
         .eq('type', 'sale');
       const totalSales = salesInvoices?.reduce((s, inv) => s + parseFloat(inv.total), 0) || 0;
 
-      // 2) إجمالي فواتير المشتريات (المصروفات)
       const { data: purchaseInvoices } = await supabase
         .from('invoices')
         .select('total')
@@ -59,7 +57,6 @@ module.exports = async (req, res) => {
         .eq('type', 'purchase');
       const totalPurchases = purchaseInvoices?.reduce((s, inv) => s + parseFloat(inv.total), 0) || 0;
 
-      // 3) إجمالي الدفعات المستلمة (مدينة للصندوق)
       const { data: paymentsIn } = await supabase
         .from('payments')
         .select('amount')
@@ -67,7 +64,6 @@ module.exports = async (req, res) => {
         .not('customer_id', 'is', null);
       const totalReceived = paymentsIn?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
 
-      // 4) إجمالي الدفعات المنفقة (دائنة للصندوق)
       const { data: paymentsOut } = await supabase
         .from('payments')
         .select('amount')
@@ -75,10 +71,8 @@ module.exports = async (req, res) => {
         .not('supplier_id', 'is', null);
       const totalPaid = paymentsOut?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
 
-      // 5) رصيد الصندوق = المستلم - المنفق
       const cashBalance = totalReceived - totalPaid;
 
-      // 6) أرصدة العملاء والموردين من جدولهم مباشرة
       const { data: customers } = await supabase
         .from('customers')
         .select('name, balance')
@@ -88,7 +82,6 @@ module.exports = async (req, res) => {
         .select('name, balance')
         .eq('user_id', userId);
 
-      // 7) حساب رأس المال = الأصول - الخصوم
       const totalCustomerBalance = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
       const totalSupplierBalance = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
       const totalAssets = cashBalance + totalCustomerBalance;
@@ -176,15 +169,116 @@ module.exports = async (req, res) => {
     else if (reportType === 'account_ledger') {
       const accountId = req.query.account_id;
       if (!accountId) return res.status(400).json({ error: 'account_id مطلوب' });
-      // في النظام الحالي، يمكننا عرض حركات الفواتير والدفعات كدفتر أستاذ مبسط
-      // لكننا سنعيد قائمة فارغة مع تنبيه للتطوير المستقبلي
-      return res.json([]);
+
+      const { data: accounts } = await supabase
+        .from('accounts')
+        .select('id, name, type')
+        .eq('user_id', userId);
+      const allAccounts = accounts || [];
+      const account = allAccounts.find(a => a.id == accountId);
+      if (!account) return res.json([]);
+
+      const accountName = account.name;
+      let lines = [];
+
+      if (accountName === 'الصندوق') {
+        const { data: customerPayments } = await supabase
+          .from('payments')
+          .select('amount, payment_date, notes, customer_id, customer:customers(name)')
+          .eq('user_id', userId)
+          .not('customer_id', 'is', null)
+          .order('payment_date', { ascending: true });
+        customerPayments?.forEach(p => {
+          lines.push({ date: p.payment_date, description: `دفعة من ${p.customer?.name || ''} - ${p.notes || ''}`, debit: p.amount, credit: 0 });
+        });
+        const { data: supplierPayments } = await supabase
+          .from('payments')
+          .select('amount, payment_date, notes, supplier_id, supplier:suppliers(name)')
+          .eq('user_id', userId)
+          .not('supplier_id', 'is', null)
+          .order('payment_date', { ascending: true });
+        supplierPayments?.forEach(p => {
+          lines.push({ date: p.payment_date, description: `دفعة إلى ${p.supplier?.name || ''} - ${p.notes || ''}`, debit: 0, credit: p.amount });
+        });
+      } 
+      else if (accountName === 'المبيعات') {
+        const { data: sales } = await supabase
+          .from('invoices')
+          .select('date, reference, total')
+          .eq('user_id', userId)
+          .eq('type', 'sale')
+          .order('date', { ascending: true });
+        sales?.forEach(inv => {
+          lines.push({ date: inv.date, description: `فاتورة بيع ${inv.reference || ''}`, debit: 0, credit: inv.total });
+        });
+      } 
+      else if (accountName === 'المشتريات') {
+        const { data: purchases } = await supabase
+          .from('invoices')
+          .select('date, reference, total')
+          .eq('user_id', userId)
+          .eq('type', 'purchase')
+          .order('date', { ascending: true });
+        purchases?.forEach(inv => {
+          lines.push({ date: inv.date, description: `فاتورة شراء ${inv.reference || ''}`, debit: inv.total, credit: 0 });
+        });
+      } 
+      else if (accountName === 'ذمم مدينة - عملاء' || accountName === 'ذمم مدينة') {
+        const { data: custInvoices } = await supabase
+          .from('invoices')
+          .select('date, reference, total, customer_id, customer:customers(name)')
+          .eq('user_id', userId)
+          .eq('type', 'sale')
+          .not('customer_id', 'is', null)
+          .order('date', { ascending: true });
+        custInvoices?.forEach(inv => {
+          lines.push({ date: inv.date, description: `فاتورة بيع ${inv.reference || ''} - ${inv.customer?.name || ''}`, debit: inv.total, credit: 0 });
+        });
+        const { data: custPayments } = await supabase
+          .from('payments')
+          .select('amount, payment_date, notes, customer_id, customer:customers(name)')
+          .eq('user_id', userId)
+          .not('customer_id', 'is', null)
+          .order('payment_date', { ascending: true });
+        custPayments?.forEach(p => {
+          lines.push({ date: p.payment_date, description: `دفعة من ${p.customer?.name || ''} - ${p.notes || ''}`, debit: 0, credit: p.amount });
+        });
+      } 
+      else if (accountName === 'ذمم دائنة - موردين' || accountName === 'ذمم دائنة') {
+        const { data: suppInvoices } = await supabase
+          .from('invoices')
+          .select('date, reference, total, supplier_id, supplier:suppliers(name)')
+          .eq('user_id', userId)
+          .eq('type', 'purchase')
+          .not('supplier_id', 'is', null)
+          .order('date', { ascending: true });
+        suppInvoices?.forEach(inv => {
+          lines.push({ date: inv.date, description: `فاتورة شراء ${inv.reference || ''} - ${inv.supplier?.name || ''}`, debit: 0, credit: inv.total });
+        });
+        const { data: suppPayments } = await supabase
+          .from('payments')
+          .select('amount, payment_date, notes, supplier_id, supplier:suppliers(name)')
+          .eq('user_id', userId)
+          .not('supplier_id', 'is', null)
+          .order('payment_date', { ascending: true });
+        suppPayments?.forEach(p => {
+          lines.push({ date: p.payment_date, description: `دفعة إلى ${p.supplier?.name || ''} - ${p.notes || ''}`, debit: p.amount, credit: 0 });
+        });
+      }
+
+      lines.sort((a, b) => a.date.localeCompare(b.date) || (a.description || '').localeCompare(b.description || ''));
+      let runningBalance = 0;
+      lines.forEach(l => {
+        runningBalance += (l.debit || 0) - (l.credit || 0);
+        l.balance = runningBalance;
+      });
+
+      return res.json(lines);
     } 
     else if (reportType === 'customer_statement') {
       const customerId = req.query.customer_id;
       if (!customerId) return res.status(400).json({ error: 'customer_id مطلوب' });
 
-      // نجلب الفواتير والدفعات الخاصة بهذا العميل
       const { data: invoices } = await supabase
         .from('invoices')
         .select('id, date, reference, total, type')
@@ -215,7 +309,6 @@ module.exports = async (req, res) => {
           balance: 0
         });
       });
-      // ترتيب حسب التاريخ
       lines.sort((a, b) => a.date.localeCompare(b.date));
       let running = 0;
       lines.forEach(l => {
@@ -261,7 +354,6 @@ module.exports = async (req, res) => {
       lines.sort((a, b) => a.date.localeCompare(b.date));
       let running = 0;
       lines.forEach(l => {
-        // للمورد: الرصيد = دائن - مدين
         running += l.credit - l.debit;
         l.balance = running;
       });
