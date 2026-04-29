@@ -43,6 +43,7 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
     return json;
   }
 }
+
 // ==================== لوحة التحكم ====================
 async function loadDashboard() {
   try {
@@ -60,6 +61,7 @@ async function loadDashboard() {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
+
 // ==================== العملاء ====================
 let customersCache = [];
 async function loadCustomers() {
@@ -120,6 +122,7 @@ function attachCustomersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
+
 // نموذج تعديل عميل
 function showEditCustomerModal(custId) {
   const customer = customersCache.find(c => c.id === custId);
@@ -154,6 +157,7 @@ function showEditCustomerModal(custId) {
     document.body.removeChild(overlay);
   };
 }
+
 // ==================== الموردين ====================
 let suppliersCache = [];
 async function loadSuppliers() {
@@ -214,6 +218,7 @@ function attachSuppliersEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
+
 // نموذج تعديل مورد
 function showEditSupplierModal(supId) {
   const supplier = suppliersCache.find(s => s.id === supId);
@@ -248,6 +253,7 @@ function showEditSupplierModal(supId) {
     document.body.removeChild(overlay);
   };
 }
+
 // ==================== المواد ====================
 let itemsCache = [];
 let categoriesCache = [];
@@ -349,6 +355,7 @@ function attachItemsEvents() {
     } catch (err) { alert('خطأ: ' + err.message); }
   });
 }
+
 // نموذج تعديل مادة (جميع الحقول)
 function showEditItemModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
@@ -401,6 +408,7 @@ function showEditItemModal(itemId) {
     document.body.removeChild(overlay);
   };
 }
+
 // ==================== فاتورة مبيعات سريعة ====================
 async function loadSaleInvoiceForm() {
   await loadInvoiceFormByType('sale');
@@ -423,21 +431,22 @@ async function loadInvoiceFormByType(type) {
     customersCache = customers;
     suppliersCache = suppliers;
 
+    let entityOptions = '';
+    if (type === 'sale') {
+      entityOptions = `<option value="cash">عميل نقدي</option>` +
+        customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    } else {
+      entityOptions = `<option value="cash">مورد نقدي</option>` +
+        suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    }
+
     let html = `
       <div class="card">
         <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
         <input type="hidden" id="inv-type" value="${type}" />
-        ${type === 'sale' ? `
-          <select id="inv-customer" class="input-field">
-            <option value="">اختر عميل</option>
-            ${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-          </select>
-        ` : `
-          <select id="inv-supplier" class="input-field">
-            <option value="">اختر مورد</option>
-            ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-          </select>
-        `}
+        <select id="inv-entity" class="input-field">
+          ${entityOptions}
+        </select>
         <input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
         <input id="inv-ref" placeholder="الرقم المرجعي" class="input-field" />
         <textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea>
@@ -475,6 +484,7 @@ function updateInvoiceRemoveButtons() {
     if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
   });
 }
+
 // ==================== عرض جميع الفواتير مع التعديل والطباعة والحذف ====================
 let invoicesCache = [];
 async function loadInvoices() {
@@ -536,119 +546,7 @@ async function loadInvoices() {
     document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
   }
 }
-// دالة attachInvoiceEvents كاملة
-function attachInvoiceEvents() {
-  const typeSelect = document.getElementById('inv-type');
-  const customerBlock = document.getElementById('inv-customer-block');
-  const supplierBlock = document.getElementById('inv-supplier-block');
-  if (typeSelect) {
-    if (customerBlock && supplierBlock) {
-      typeSelect.addEventListener('change', () => {
-        if (typeSelect.value === 'sale') {
-          customerBlock.style.display = 'block';
-          supplierBlock.style.display = 'none';
-        } else {
-          customerBlock.style.display = 'none';
-          supplierBlock.style.display = 'block';
-        }
-      });
-    }
-  }
 
-  document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
-    const container = document.getElementById('inv-lines-container');
-    const newLine = document.createElement('div');
-    newLine.className = 'line-row';
-    newLine.innerHTML = `
-      <select class="input-field item-select">
-        <option value="">اختر مادة</option>
-        ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
-      </select>
-      <input type="number" step="any" placeholder="الكمية" class="input-field qty-input" />
-      <input type="number" step="0.01" placeholder="السعر" class="input-field price-input" />
-      <input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly />
-      <button class="btn-remove-line btn-secondary">✕</button>
-    `;
-    container.appendChild(newLine);
-    updateInvoiceRemoveButtons();
-    attachLineEvents(newLine);
-  });
-
-  document.getElementById('inv-lines-container')?.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-remove-line')) {
-      const row = e.target.closest('.line-row');
-      if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) {
-        row.remove();
-        updateInvoiceRemoveButtons();
-      }
-    }
-  });
-
-  function attachLineEvents(row) {
-    const qty = row.querySelector('.qty-input');
-    const price = row.querySelector('.price-input');
-    const total = row.querySelector('.total-input');
-    const calculate = () => {
-      const q = parseFloat(qty.value) || 0;
-      const p = parseFloat(price.value) || 0;
-      total.value = (q * p).toFixed(2);
-    };
-    qty?.addEventListener('input', calculate);
-    price?.addEventListener('input', calculate);
-  }
-
-  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => attachLineEvents(row));
-
-  document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
-    const type = document.getElementById('inv-type').value;
-    const customerId = document.getElementById('inv-customer')?.value || null;
-    const supplierId = document.getElementById('inv-supplier')?.value || null;
-    const date = document.getElementById('inv-date').value;
-    const reference = document.getElementById('inv-ref').value.trim();
-    const notes = document.getElementById('inv-notes').value.trim();
-    const paidAmount = parseFloat(document.getElementById('inv-paid')?.value) || 0;
-
-    const lines = [];
-    document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
-      const itemId = row.querySelector('.item-select').value || null;
-      const quantity = parseFloat(row.querySelector('.qty-input').value) || 0;
-      const unitPrice = parseFloat(row.querySelector('.price-input').value) || 0;
-      const total = parseFloat(row.querySelector('.total-input').value) || 0;
-      if (itemId || quantity > 0) {
-        lines.push({
-          item_id: itemId,
-          description: itemId ? '' : 'بند',
-          quantity,
-          unit_price: unitPrice,
-          total
-        });
-      }
-    });
-
-    if (lines.length === 0) return alert('أضف بنداً واحداً على الأقل');
-    if ((type === 'sale' && !customerId) || (type === 'purchase' && !supplierId))
-      return alert('يجب اختيار العميل (للبيع) أو المورد (للشراء)');
-
-    try {
-      await apiCall('/invoices', 'POST', {
-        type,
-        customer_id: customerId,
-        supplier_id: supplierId,
-        date,
-        reference,
-        notes,
-        lines,
-        paid_amount: paidAmount
-      });
-      alert('تم حفظ الفاتورة بنجاح');
-      loadInvoices();
-    } catch (err) {
-      alert('خطأ: ' + err.message);
-    }
-  });
-
-  updateInvoiceRemoveButtons();
-}
 // نموذج تعديل فاتورة (Modal)
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
@@ -774,9 +672,6 @@ function showEditInvoiceModal(invoice) {
       }
     });
     if (lines.length === 0) return alert('أضف بنداً على الأقل');
-    if ((type === 'sale' && !customerId) || (type === 'purchase' && !supplierId)) {
-      return alert('يجب اختيار العميل أو المورد');
-    }
     try {
       await apiCall('/invoices', 'PUT', { id, type, customer_id: customerId, supplier_id: supplierId, date, reference, notes, lines });
       document.body.removeChild(overlay);
@@ -787,6 +682,7 @@ function showEditInvoiceModal(invoice) {
 
   document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
 }
+
 // دالة الطباعة
 function printInvoice(invoice) {
   const printWindow = window.open('', '_blank', 'width=800,height=600');
@@ -837,6 +733,7 @@ function confirmDialog(message) {
     document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
   });
 }
+
 // ==================== دوال الحذف العامة ====================
 async function deleteItem(itemId) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟')) return;
@@ -874,6 +771,99 @@ async function deleteInvoice(invId) {
     loadInvoices();
   } catch (e) { alert('خطأ: ' + e.message); }
 }
+
+// ==================== التصنيفات ====================
+async function loadCategories() {
+  try {
+    const categories = await apiCall('/categories', 'GET');
+    let html = `
+      <div class="card"><h2>التصنيفات</h2><button id="btn-add-category-tab" class="btn-primary">+ إضافة تصنيف</button></div>
+      <div id="category-form" class="card" style="display:none;">
+        <h3>إضافة تصنيف جديد</h3>
+        <input id="category-name" placeholder="اسم التصنيف" class="input-field" />
+        <button id="btn-save-category" class="btn-primary">حفظ</button>
+        <button id="btn-cancel-category" class="btn-secondary">إلغاء</button>
+      </div>
+    `;
+    if (categories.length === 0) {
+      html += '<div class="card">لا توجد تصنيفات</div>';
+    } else {
+      html += categories.map(cat => `
+        <div class="card">
+          <strong>${cat.name}</strong>
+          <div class="card-actions">
+            <button class="btn-secondary" onclick="showEditCategoryModal(${cat.id})">✏️ تعديل</button>
+            <button class="btn-danger" onclick="deleteCategory(${cat.id})">🗑️ حذف</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    attachCategoryEvents();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
+function attachCategoryEvents() {
+  document.getElementById('btn-add-category-tab')?.addEventListener('click', () => {
+    document.getElementById('category-form').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-category')?.addEventListener('click', () => {
+    document.getElementById('category-form').style.display = 'none';
+  });
+  document.getElementById('btn-save-category')?.addEventListener('click', async () => {
+    const name = document.getElementById('category-name').value.trim();
+    if (!name) return alert('اسم التصنيف مطلوب');
+    try {
+      await apiCall('/categories', 'POST', { name });
+      document.getElementById('category-form').style.display = 'none';
+      loadCategories();
+    } catch (err) { alert('خطأ: ' + err.message); }
+  });
+}
+
+function showEditCategoryModal(catId) {
+  apiCall('/categories', 'GET').then(categories => {
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <h3>تعديل التصنيف</h3>
+        <input id="edit-cat-name" class="input-field" value="${cat.name}" />
+        <div class="modal-actions">
+          <button class="btn-primary" id="save-cat-edit">حفظ</button>
+          <button class="btn-secondary" id="cancel-cat-edit">إلغاء</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('save-cat-edit').onclick = async () => {
+      const name = document.getElementById('edit-cat-name').value.trim();
+      if (!name) return alert('الاسم مطلوب');
+      try {
+        await apiCall('/categories', 'PUT', { id: catId, name });
+        document.body.removeChild(overlay);
+        loadCategories();
+      } catch (e) { alert('خطأ: ' + e.message); }
+    };
+    document.getElementById('cancel-cat-edit').onclick = () => {
+      document.body.removeChild(overlay);
+    };
+  });
+}
+
+async function deleteCategory(catId) {
+  if (!await confirmDialog('هل أنت متأكد من حذف هذا التصنيف؟ قد تبقى المواد المرتبطة به بدون تصنيف.')) return;
+  try {
+    await apiCall(`/categories?id=${catId}`, 'DELETE');
+    alert('تم حذف التصنيف بنجاح');
+    loadCategories();
+  } catch (e) { alert('خطأ: ' + e.message); }
+}
+
 // ==================== الدفعات ====================
 async function loadPayments() {
   try {
@@ -1016,6 +1006,7 @@ async function deletePayment(paymentId) {
     loadPayments();
   } catch (e) { alert('خطأ: ' + e.message); }
 }
+
 // ==================== التقارير ====================
 async function loadReports() {
   let html = `
@@ -1113,6 +1104,7 @@ async function loadBalanceSheet() {
     `;
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
 // نموذج الأستاذ العام
 async function loadAccountLedgerForm() {
   try {
@@ -1209,98 +1201,6 @@ async function loadSupplierStatementForm() {
   } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
-// ==================== التصنيفات ====================
-async function loadCategories() {
-  try {
-    const categories = await apiCall('/categories', 'GET');
-    let html = `
-      <div class="card"><h2>التصنيفات</h2><button id="btn-add-category-tab" class="btn-primary">+ إضافة تصنيف</button></div>
-      <div id="category-form" class="card" style="display:none;">
-        <h3>إضافة تصنيف جديد</h3>
-        <input id="category-name" placeholder="اسم التصنيف" class="input-field" />
-        <button id="btn-save-category" class="btn-primary">حفظ</button>
-        <button id="btn-cancel-category" class="btn-secondary">إلغاء</button>
-      </div>
-    `;
-    if (categories.length === 0) {
-      html += '<div class="card">لا توجد تصنيفات</div>';
-    } else {
-      html += categories.map(cat => `
-        <div class="card">
-          <strong>${cat.name}</strong>
-          <div class="card-actions">
-            <button class="btn-secondary" onclick="showEditCategoryModal(${cat.id})">✏️ تعديل</button>
-            <button class="btn-danger" onclick="deleteCategory(${cat.id})">🗑️ حذف</button>
-          </div>
-        </div>
-      `).join('');
-    }
-    document.getElementById('tab-content').innerHTML = html;
-    attachCategoryEvents();
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
-}
-
-function attachCategoryEvents() {
-  document.getElementById('btn-add-category-tab')?.addEventListener('click', () => {
-    document.getElementById('category-form').style.display = 'block';
-  });
-  document.getElementById('btn-cancel-category')?.addEventListener('click', () => {
-    document.getElementById('category-form').style.display = 'none';
-  });
-  document.getElementById('btn-save-category')?.addEventListener('click', async () => {
-    const name = document.getElementById('category-name').value.trim();
-    if (!name) return alert('اسم التصنيف مطلوب');
-    try {
-      await apiCall('/categories', 'POST', { name });
-      document.getElementById('category-form').style.display = 'none';
-      loadCategories();
-    } catch (err) { alert('خطأ: ' + err.message); }
-  });
-}
-
-function showEditCategoryModal(catId) {
-  apiCall('/categories', 'GET').then(categories => {
-    const cat = categories.find(c => c.id === catId);
-    if (!cat) return;
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal-box">
-        <h3>تعديل التصنيف</h3>
-        <input id="edit-cat-name" class="input-field" value="${cat.name}" />
-        <div class="modal-actions">
-          <button class="btn-primary" id="save-cat-edit">حفظ</button>
-          <button class="btn-secondary" id="cancel-cat-edit">إلغاء</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    document.getElementById('save-cat-edit').onclick = async () => {
-      const name = document.getElementById('edit-cat-name').value.trim();
-      if (!name) return alert('الاسم مطلوب');
-      try {
-        await apiCall('/categories', 'PUT', { id: catId, name });
-        document.body.removeChild(overlay);
-        loadCategories();
-      } catch (e) { alert('خطأ: ' + e.message); }
-    };
-    document.getElementById('cancel-cat-edit').onclick = () => {
-      document.body.removeChild(overlay);
-    };
-  });
-}
-
-async function deleteCategory(catId) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذا التصنيف؟ قد تبقى المواد المرتبطة به بدون تصنيف.')) return;
-  try {
-    await apiCall(`/categories?id=${catId}`, 'DELETE');
-    alert('تم حذف التصنيف بنجاح');
-    loadCategories();
-  } catch (e) { alert('خطأ: ' + e.message); }
-}
-
 // ==================== توجيه التبويبات ====================
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('tab')) {
@@ -1319,6 +1219,7 @@ document.addEventListener('click', (e) => {
     else if (tab === 'reports') loadReports();
   }
 });
+
 // ==================== بدء التطبيق ====================
 async function verifyUser() {
   try {
