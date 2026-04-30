@@ -1,10 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,18 +16,14 @@ function verifyTelegramData(initData) {
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
   params.delete('hash');
-  const pairs = Array.from(params.entries());
-  pairs.sort((a, b) => a[0].localeCompare(b[0]));
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
-  const computedHash = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
-  return computedHash === hash;
+  const pairs = Array.from(params.entries()).sort((a,b) => a[0].localeCompare(b[0]));
+  const dataCheckString = pairs.map(([k,v]) => `${k}=${v}`).join('\n');
+  return crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex') === hash;
 }
 
 async function getUserId(initData) {
   if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
-  const params = new URLSearchParams(initData);
-  const user = JSON.parse(params.get('user'));
-  return user.id;
+  return JSON.parse(new URLSearchParams(initData).get('user')).id;
 }
 
 module.exports = async (req, res) => {
@@ -38,50 +31,48 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    let initData;
-    if (req.method === 'GET' || req.method === 'DELETE') {
-      initData = req.query.initData;
-    } else {
-      initData = req.body?.initData;
-    }
+    let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
     const userId = await getUserId(initData);
 
+    // تحديد الجدول المطلوب بناءً على المسار
+    const isCustomers = req.url.includes('/customers');
+    const table = isCustomers ? 'customers' : 'suppliers';
+    const nameField = 'name';
+    const balanceSign = isCustomers ? 1 : -1; // العملاء: مدين - دائن، الموردون: دائن - مدين
+
+    // === GET ===
     if (req.method === 'GET') {
-      // نقرأ الرصيد المخزن مباشرة من حقل balance
-      const { data: suppliers, error } = await supabase
-        .from('suppliers')
+      const { data, error } = await supabase
+        .from(table)
         .select('*')
         .eq('user_id', userId)
         .order('name');
       if (error) throw error;
 
-      // الرصيد جاهز ولا حاجة لحسابه من journal_lines
-      return res.json(suppliers);
+      // لا حاجة لإعادة حساب الرصيد، لأنه يُحدّث من الفواتير والدفعات مباشرة.
+      // فقط نرجع البيانات كما هي.
+      return res.json(data);
     }
 
+    // === POST ===
     if (req.method === 'POST') {
       const { name, phone, address } = req.body;
-      if (!name) return res.status(400).json({ error: 'اسم المورد مطلوب' });
+      if (!name) return res.status(400).json({ error: 'الاسم مطلوب' });
       const { data, error } = await supabase
-        .from('suppliers')
-        .insert({
-          user_id: userId,
-          name,
-          phone: phone || null,
-          address: address || null,
-          balance: 0
-        })
+        .from(table)
+        .insert({ user_id: userId, name, phone: phone || null, address: address || null, balance: 0 })
         .select()
         .single();
       if (error) throw error;
       return res.json(data);
     }
 
+    // === PUT ===
     if (req.method === 'PUT') {
       const { id, name, phone, address } = req.body;
-      if (!id) return res.status(400).json({ error: 'معرف المورد مطلوب' });
+      if (!id) return res.status(400).json({ error: 'المعرف مطلوب' });
       const { data, error } = await supabase
-        .from('suppliers')
+        .from(table)
         .update({ name, phone, address })
         .eq('id', id)
         .eq('user_id', userId)
@@ -91,13 +82,14 @@ module.exports = async (req, res) => {
       return res.json(data);
     }
 
+    // === DELETE ===
     if (req.method === 'DELETE') {
-      const supplierId = req.query.id;
-      if (!supplierId) return res.status(400).json({ error: 'معرف المورد مطلوب' });
+      const entityId = req.query.id;
+      if (!entityId) return res.status(400).json({ error: 'المعرف مطلوب' });
       const { error } = await supabase
-        .from('suppliers')
+        .from(table)
         .delete()
-        .eq('id', supplierId)
+        .eq('id', entityId)
         .eq('user_id', userId);
       if (error) throw error;
       return res.json({ success: true });
