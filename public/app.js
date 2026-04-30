@@ -1,5 +1,4 @@
-const tg = window.Telegram.WebApp;
-tg.ready(); tg.expand();
+const tg = window.Telegram.WebApp; tg.ready(); tg.expand();
 if (tg.colorScheme === 'dark') document.body.classList.add('dark');
 tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.colorScheme === 'dark'); });
 const initData = tg.initData, user = tg.initDataUnsafe?.user, apiBase = '/api';
@@ -123,8 +122,8 @@ async function loadItems() {
   try {
     const [items, categories] = await Promise.all([apiCall('/items', 'GET'), apiCall('/categories', 'GET')]); itemsCache = items; categoriesCache = categories;
     let html = `<div class="card"><h2>المواد</h2><button id="btn-add-item" class="btn-primary">+ إضافة مادة</button></div>`;
-    if (!items.length) html += '<div class="card">لا توجد مواد مضافة بعد</div>';
-    else html += items.map(i => `<div class="card item-row"><strong>${i.name}</strong> <span style="float:left;font-size:0.9em">${i.item_type||'مخزون'}</span><br>📂 ${i.category?.name||'بدون تصنيف'} | 🛒 شراء:${i.purchase_price} | 💰 بيع:${i.selling_price}<div class="card-actions"><button class="btn-secondary" onclick="showEditItemModal(${i.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteItem(${i.id})">🗑️ حذف</button></div></div>`).join('');
+    if (!items.length) html += '<div class="card">لا توجد مواد</div>';
+    else html += items.map(i => `<div class="card"><strong>${i.name}</strong> <span style="float:left;font-size:0.9em">${i.item_type||'مخزون'}</span><br>📂 ${i.category?.name||'بدون تصنيف'} | 🛒 شراء:${i.purchase_price} | 💰 بيع:${i.selling_price}<div class="card-actions"><button class="btn-secondary" onclick="showEditItemModal(${i.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteItem(${i.id})">🗑️ حذف</button></div></div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
@@ -132,9 +131,9 @@ async function loadItems() {
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box"><h3>إضافة مادة جديدة</h3><label class="form-label">اسم المادة</label><input id="add-item-name" class="input-field" /><label class="form-label">التصنيف</label><select id="add-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select><div style="display:flex;gap:8px;margin:5px 0"><input id="add-item-new-category" class="input-field" placeholder="تصنيف جديد" style="flex:2"/><button id="btn-add-category-in-modal" class="btn-secondary" style="flex:1">أضف تصنيف</button></div><label class="form-label">نوع المادة</label><select id="add-item-type" class="input-field"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select><label class="form-label">سعر الشراء</label><input id="add-item-purchase" type="number" step="0.01" class="input-field" value="0"/><label class="form-label">سعر البيع</label><input id="add-item-selling" type="number" step="0.01" class="input-field" value="0"/><div class="modal-actions"><button class="btn-primary" id="save-add-item">حفظ</button><button class="btn-secondary" id="cancel-add-item">إلغاء</button></div></div>`;
+  overlay.innerHTML = `<div class="modal-box"><h3>إضافة مادة</h3><label class="form-label">اسم المادة</label><input id="add-item-name" class="input-field" /><label class="form-label">التصنيف</label><select id="add-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select><div style="display:flex;gap:8px;margin:5px 0"><input id="add-item-new-category" class="input-field" placeholder="تصنيف جديد" style="flex:2"/><button id="btn-add-cat-in-modal" class="btn-secondary" style="flex:1">أضف تصنيف</button></div><label class="form-label">نوع المادة</label><select id="add-item-type" class="input-field"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select><label class="form-label">سعر الشراء</label><input id="add-item-purchase" type="number" step="0.01" class="input-field" value="0"/><label class="form-label">سعر البيع</label><input id="add-item-selling" type="number" step="0.01" class="input-field" value="0"/><div class="modal-actions"><button class="btn-primary" id="save-add-item">حفظ</button><button class="btn-secondary" id="cancel-add-item">إلغاء</button></div></div>`;
   document.body.appendChild(overlay);
-  document.getElementById('btn-add-category-in-modal').onclick = async () => {
+  document.getElementById('btn-add-cat-in-modal').onclick = async () => {
     const cn = document.getElementById('add-item-new-category').value.trim(); if (!cn) return alert('أدخل اسم التصنيف');
     try { const nc = await apiCall('/categories', 'POST', { name: cn }); const sel = document.getElementById('add-item-category'); const opt = document.createElement('option'); opt.value = nc.id; opt.textContent = nc.name; sel.appendChild(opt); sel.value = nc.id; document.getElementById('add-item-new-category').value = ''; categoriesCache.push(nc); } catch (e) { alert('خطأ: '+e.message); }
   };
@@ -214,14 +213,31 @@ async function loadInvoices() {
     document.getElementById('tab-content').innerHTML = html;
     document.querySelectorAll('.edit-invoice-btn').forEach(btn => btn.addEventListener('click', e => { const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId)); if (inv) showEditInvoiceModal(inv); }));
     document.querySelectorAll('.print-invoice-btn').forEach(btn => btn.addEventListener('click', e => { const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId)); if (inv) printInvoice(inv); }));
-    document.querySelectorAll('.pdf-invoice-btn').forEach(btn => btn.addEventListener('click', async e => {
-      const id = parseInt(e.target.dataset.invoiceId);
-      btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...';
-      try { await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); alert('تم إرسال الفاتورة PDF عبر البوت ✅'); } catch (ex) { alert('فشل الإرسال: '+ex.message); }
-      finally { btn.disabled = false; btn.textContent = '📥 PDF'; }
-    }));
+    document.querySelectorAll('.pdf-invoice-btn').forEach(btn => btn.addEventListener('click', e => { const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId)); if (inv) downloadPDF(inv); }));
     document.querySelectorAll('.delete-invoice-btn').forEach(btn => btn.addEventListener('click', e => deleteInvoice(parseInt(e.target.dataset.invoiceId))));
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+}
+function downloadPDF(invoice) {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:40px;background:white;font-family:Tajawal,sans-serif;direction:rtl;color:#000';
+  div.innerHTML = `<h2 style="text-align:center;color:#2563eb">الراجحي للمحاسبة</h2><h3 style="text-align:center">فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h3><p style="text-align:center">التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>${invoice.customer?.name?`<p>العميل: ${invoice.customer.name}</p>`:''}${invoice.supplier?.name?`<p>المورد: ${invoice.supplier.name}</p>`:''}<table style="width:100%;border-collapse:collapse;margin-top:20px"><tr style="background:#f0f0f0"><th style="border:1px solid #ccc;padding:8px">المادة</th><th style="border:1px solid #ccc;padding:8px">الكمية</th><th style="border:1px solid #ccc;padding:8px">السعر</th><th style="border:1px solid #ccc;padding:8px">الإجمالي</th></tr>${invoice.invoice_lines?.map(l=>`<tr><td style="border:1px solid #ddd;padding:8px">${l.item?.name||'-'}</td><td style="border:1px solid #ddd;padding:8px">${l.quantity}</td><td style="border:1px solid #ddd;padding:8px">${l.unit_price}</td><td style="border:1px solid #ddd;padding:8px">${l.total}</td></tr>`).join('')}</table><div style="text-align:left;margin-top:20px"><p><strong>الإجمالي: ${invoice.total}</strong></p><p>المدفوع: ${invoice.paid||0}</p><p style="color:red"><strong>الباقي: ${invoice.balance||0}</strong></p></div>${invoice.notes?`<p style="margin-top:15px">ملاحظات: ${invoice.notes}</p>`:''}`;
+  document.body.appendChild(div);
+  html2canvas(div, { scale: 2, backgroundColor: '#fff', logging: false }).then(canvas => {
+    document.body.removeChild(div);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const w = 210, h = (canvas.height * w) / canvas.width;
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
+    pdf.save(`فاتورة-${invoice.reference||invoice.id}.pdf`);
+  }).catch(e => { document.body.removeChild(div); alert('فشل PDF: '+e.message); });
+}
+function printInvoice(invoice) {
+  if (!invoice) return alert('بيانات غير متوفرة');
+  const rows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name||'-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')||'';
+  const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${invoice.reference||''}</title><style>body{font-family:Tajawal,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f0f0f0}@media print{.no-print{display:none}}</style></head><body><h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2><p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p><p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''} ${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p><table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${rows}</table><h3>الإجمالي: ${invoice.total}</h3><p>المدفوع: ${invoice.paid||0} | الباقي: ${invoice.balance||0}</p><p>${invoice.notes||''}</p><button class="no-print" onclick="window.print()">🖨️ طباعة</button><script>setTimeout(()=>window.print(),800);</script></body></html>`;
+  const w = window.open('','_blank','width=800,height=600');
+  if (w) { w.document.write(html); w.document.close(); }
+  else { alert('سيتم عرض الفاتورة للطباعة'); const ifr = document.createElement('iframe'); ifr.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;'; document.body.appendChild(ifr); ifr.contentWindow.document.write(html); ifr.contentWindow.document.close(); try { ifr.contentWindow.onafterprint = () => document.body.removeChild(ifr); } catch(e) {} }
 }
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
@@ -247,14 +263,6 @@ function showEditInvoiceModal(invoice) {
     try { await apiCall('/invoices','PUT', { id, type, customer_id:cust, supplier_id:supp, date, reference:ref, notes, lines }); document.body.removeChild(overlay); alert('تم تعديل الفاتورة'); loadInvoices(); } catch (e) { alert('خطأ: '+e.message); }
   };
   document.getElementById('cancel-invoice-edit').onclick = () => document.body.removeChild(overlay);
-}
-function printInvoice(invoice) {
-  if (!invoice) return alert('بيانات غير متوفرة');
-  const rows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name||'-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')||'';
-  const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${invoice.reference||''}</title><style>body{font-family:Tajawal,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f0f0f0}@media print{.no-print{display:none}}</style></head><body><h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2><p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p><p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''} ${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p><table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${rows}</table><h3>الإجمالي: ${invoice.total}</h3><p>المدفوع: ${invoice.paid||0} | الباقي: ${invoice.balance||0}</p><p>${invoice.notes||''}</p><button class="no-print" onclick="window.print()">🖨️ طباعة</button><script>setTimeout(()=>window.print(),800);</script></body></html>`;
-  const w = window.open('','_blank','width=800,height=600');
-  if (w) { w.document.write(html); w.document.close(); }
-  else { alert('سيتم عرض الفاتورة للطباعة'); const ifr = document.createElement('iframe'); ifr.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;'; document.body.appendChild(ifr); ifr.contentWindow.document.write(html); ifr.contentWindow.document.close(); try { ifr.contentWindow.onafterprint = () => document.body.removeChild(ifr); } catch(e) {} }
 }
 function confirmDialog(msg) { return new Promise(resolve => { const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = `<div class="modal-box"><p>${msg}</p><div class="modal-actions"><button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button></div></div>`; document.body.appendChild(overlay); document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); }; document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); }; }); }
 async function deleteItem(id) { if (!await confirmDialog('متأكد من حذف المادة؟')) return; try { await apiCall(`/items?id=${id}`,'DELETE'); alert('تم الحذف'); loadItems(); } catch(e) { alert('خطأ: '+e.message); } }
