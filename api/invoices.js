@@ -79,7 +79,6 @@ module.exports = async (req, res) => {
       await supabase.from('invoice_lines').insert(linesToInsert);
 
       let amountPaid = parseFloat(paid_amount) || 0;
-      if (!finalCustomerId && !finalSupplierId) amountPaid = total;
       if (amountPaid > 0) {
         await supabase.from('payments').insert({
           user_id: userId, invoice_id: invoice.id,
