@@ -147,6 +147,28 @@ module.exports = async (req, res) => {
           const price = parseFloat(line.item?.purchase_price) || 0;
           lines.push({ date: line.invoice?.date, description: `بيع ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: 0, credit: qty * price });
         });
+      } else if (accountName === 'رأس المال') {
+        // تجميع صافي الربح الشهري (المبيعات - المشتريات)
+        const { data: allInvoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId).order('date', { ascending: true });
+        const monthlyProfit = {};
+        allInvoices?.forEach(inv => {
+          if (!inv.date) return;
+          const key = inv.date.substring(0,7); // YYYY-MM
+          if (!monthlyProfit[key]) monthlyProfit[key] = 0;
+          if (inv.type === 'sale') monthlyProfit[key] += parseFloat(inv.total||0);
+          else if (inv.type === 'purchase') monthlyProfit[key] -= parseFloat(inv.total||0);
+        });
+        const months = Object.keys(monthlyProfit).sort();
+        months.forEach(month => {
+          const profit = monthlyProfit[month];
+          if (profit === 0) return;
+          lines.push({
+            date: `${month}-01`,
+            description: profit > 0 ? 'زيادة رأس المال (أرباح)' : 'نقص رأس المال (خسائر)',
+            debit: profit < 0 ? -profit : 0,
+            credit: profit > 0 ? profit : 0
+          });
+        });
       } else if (accountName === 'ذمم مدينة - عملاء' || accountName === 'ذمم مدينة') {
         const { data: custInvoices } = await supabase.from('invoices').select('date, reference, total, customer_id, customer:customers(name)').eq('user_id', userId).eq('type', 'sale').not('customer_id', 'is', null).order('date', { ascending: true });
         custInvoices?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة ${inv.customer?.name || ''} ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
