@@ -1,4 +1,8 @@
 const tg = window.Telegram.WebApp; tg.ready(); tg.expand();
+if (tg.colorScheme === 'dark') document.body.classList.add('dark');
+tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.colorScheme === 'dark'); });
+const initData = tg.initData, user = tg.initDataUnsafe?.user, apiBase = '/api';
+
 const cache = {};
 const CACHE_DURATION = 120000; // 60 ثانية
 
@@ -20,12 +24,9 @@ function clearCache() {
     delete cache[key];
   }
 }
-if (tg.colorScheme === 'dark') document.body.classList.add('dark');
-tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.colorScheme === 'dark'); });
-const initData = tg.initData, user = tg.initDataUnsafe?.user, apiBase = '/api';
+
 function showLoading(msg) { document.getElementById('loading').textContent = msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
 function showError(msg) { document.getElementById('loading').textContent = '❌ ' + msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
-
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
   if (method === 'GET' || method === 'DELETE') {
@@ -60,7 +61,6 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   return json;
 }
 
-}
 async function loadDashboard() {
   try {
     const [items, customers, suppliers, invoices, monthly, daily, summary] = await Promise.all([
