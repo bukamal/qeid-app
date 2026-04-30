@@ -33,43 +33,39 @@ module.exports = async (req, res) => {
   try {
     const initData = req.query.initData;
     const userId = await getUserId(initData);
+    const today = new Date().toISOString().split('T')[0];
 
-    // 1. صافي الربح
+    // 1. صافي الربح (كل الفواتير)
     const { data: invoices } = await supabase
       .from('invoices')
       .select('type, total')
       .eq('user_id', userId);
-
     const totalSales = invoices?.filter(inv => inv.type === 'sale')
       .reduce((s, inv) => s + parseFloat(inv.total||0), 0) || 0;
     const totalPurchases = invoices?.filter(inv => inv.type === 'purchase')
       .reduce((s, inv) => s + parseFloat(inv.total||0), 0) || 0;
     const netProfit = totalSales - totalPurchases;
 
-    // 2. رصيد الصندوق
+    // 2. رصيد الصندوق (كل الفترات)
     const { data: payments } = await supabase
       .from('payments')
       .select('amount, customer_id, supplier_id')
       .eq('user_id', userId);
-
     const received = payments?.filter(p => p.customer_id)
       .reduce((s, p) => s + parseFloat(p.amount||0), 0) || 0;
     const paid = payments?.filter(p => p.supplier_id)
       .reduce((s, p) => s + parseFloat(p.amount||0), 0) || 0;
-
     const { data: cashInvoices } = await supabase
       .from('invoices')
       .select('total, type')
       .eq('user_id', userId)
       .is('customer_id', null)
       .is('supplier_id', null);
-
     let cashSales = 0, cashPurchases = 0;
     cashInvoices?.forEach(inv => {
       if (inv.type === 'sale') cashSales += parseFloat(inv.total||0);
       else if (inv.type === 'purchase') cashPurchases += parseFloat(inv.total||0);
     });
-
     const cashBalance = (received + cashSales) - (paid + cashPurchases);
 
     // 3. الذمم المدينة
@@ -86,11 +82,47 @@ module.exports = async (req, res) => {
       .eq('user_id', userId);
     const payables = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance||0), 0) || 0;
 
+    // 5. رصيد الصندوق اليومي
+    // دفعات من العملاء اليوم
+    const { data: todayCustomerPayments } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('user_id', userId)
+      .not('customer_id', 'is', null)
+      .eq('payment_date', today);
+    const todayReceived = todayCustomerPayments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
+
+    // دفعات للموردين اليوم
+    const { data: todaySupplierPayments } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('user_id', userId)
+      .not('supplier_id', 'is', null)
+      .eq('payment_date', today);
+    const todayPaid = todaySupplierPayments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
+
+    // فواتير نقدية اليوم
+    const { data: todayCashInvoices } = await supabase
+      .from('invoices')
+      .select('total, type')
+      .eq('user_id', userId)
+      .is('customer_id', null)
+      .is('supplier_id', null)
+      .eq('date', today);
+    let todayCashSales = 0, todayCashPurchases = 0;
+    todayCashInvoices?.forEach(inv => {
+      if (inv.type === 'sale') todayCashSales += parseFloat(inv.total||0);
+      else if (inv.type === 'purchase') todayCashPurchases += parseFloat(inv.total||0);
+    });
+
+    const dailyCashBalance = (todayReceived + todayCashSales) - (todayPaid + todayCashPurchases);
+
     res.json({
       net_profit: netProfit,
       cash_balance: cashBalance,
       receivables: receivables,
-      payables: payables
+      payables: payables,
+      daily_cash_balance: dailyCashBalance
     });
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });

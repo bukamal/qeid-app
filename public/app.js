@@ -30,7 +30,12 @@ async function loadDashboard() {
     const totalSales = invoices.filter(inv => inv.type === 'sale').reduce((s, inv) => s + (inv.total || 0), 0);
     const totalPurchases = invoices.filter(inv => inv.type === 'purchase').reduce((s, inv) => s + (inv.total || 0), 0);
     document.getElementById('tab-content').innerHTML = `
-      <div class="summary-strip">
+        <div class="summary-item daily-cash">
+  <div class="summary-icon">📅</div>
+  <div class="summary-label">رصيد الصندوق اليومي</div>
+  <div class="summary-value ${summary.daily_cash_balance >= 0 ? 'positive' : 'negative'}">${summary.daily_cash_balance.toFixed(2)}</div>
+</div>
+        <div class="summary-strip">
         <div class="summary-item profit"><div class="summary-icon">💰</div><div class="summary-label">صافي الربح</div><div class="summary-value ${summary.net_profit >= 0 ? 'positive' : 'negative'}">${summary.net_profit.toFixed(2)}</div></div>
         <div class="summary-item cash"><div class="summary-icon">🏦</div><div class="summary-label">رصيد الصندوق</div><div class="summary-value ${summary.cash_balance >= 0 ? 'positive' : 'negative'}">${summary.cash_balance.toFixed(2)}</div></div>
         <div class="summary-item receivables"><div class="summary-icon">📥</div><div class="summary-label">الذمم المدينة</div><div class="summary-value">${summary.receivables.toFixed(2)}</div></div>

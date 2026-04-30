@@ -151,6 +151,7 @@ select.input-field {
 .summary-item.cash { border-top-color: #10b981; }
 .summary-item.receivables { border-top-color: #f59e0b; }
 .summary-item.payables { border-top-color: #8b5cf6; }
+.summary-item.daily-cash { border-top-color: #06b6d4; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .dash-card {
   background: var(--card-bg);
