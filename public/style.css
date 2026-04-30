@@ -121,6 +121,33 @@ select.input-field {
 #tab-content {
   margin-top: 12px;
 }
+/* شريط الملخص السريع */
+.summary-strip {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.summary-item {
+  flex: 1 1 120px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 12px;
+  text-align: center;
+  box-shadow: var(--shadow);
+  border-top: 4px solid var(--border);
+  transition: all 0.2s;
+}
+.summary-item:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.summary-item .summary-icon { font-size: 1.8rem; margin-bottom: 4px; }
+.summary-item .summary-label { font-size: 0.8rem; opacity: 0.8; margin-bottom: 4px; }
+.summary-item .summary-value { font-size: 1.4rem; font-weight: 700; }
+.summary-item .positive { color: #10b981; }
+.summary-item .negative { color: #ef4444; }
+.summary-item.profit { border-top-color: #3b82f6; }
+.summary-item.cash { border-top-color: #10b981; }
+.summary-item.receivables { border-top-color: #f59e0b; }
+.summary-item.payables { border-top-color: #8b5cf6; }
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -219,8 +246,6 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .item-select, .customer-select, .supplier-select { min-width: 110px; }
 .report-link { cursor: pointer; font-weight: 500; transition: background 0.2s, transform 0.2s; border-radius: var(--radius-sm); padding: 2px 4px; }
 .report-link:hover { background: var(--secondary); transform: translateX(-4px); }
-
-/* تحسين جداول التقارير */
 .report-table-wrapper {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -228,6 +253,7 @@ textarea.input-field { resize: vertical; min-height: 70px; }
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
   background: var(--card-bg);
+  border: 1px solid var(--border);
 }
 .report-table {
   width: 100%;
@@ -235,6 +261,8 @@ textarea.input-field { resize: vertical; min-height: 70px; }
   border-collapse: collapse;
   font-size: 0.85rem;
   white-space: nowrap;
+  direction: rtl;
+  text-align: right;
 }
 .report-table th {
   background: var(--secondary);
@@ -242,23 +270,21 @@ textarea.input-field { resize: vertical; min-height: 70px; }
   color: var(--text);
   padding: 10px 12px;
   text-align: right;
-  border-bottom: 2px solid var(--border);
+  border-bottom: 2px solid var(--primary);
   position: sticky;
   top: 0;
+  z-index: 1;
 }
 .report-table td {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   text-align: right;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .report-table tr:last-child td { border-bottom: none; }
 .report-table tr:hover td { background: var(--secondary-hover); }
-.report-table .number {
-  font-variant-numeric: tabular-nums;
-  text-align: left;
-  direction: ltr;
-}
-
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.45);

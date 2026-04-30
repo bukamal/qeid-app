@@ -20,15 +20,43 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
     return json;
   }
 }
+
 async function loadDashboard() {
   try {
-    const [items, customers, suppliers, invoices, monthly, daily] = await Promise.all([
+    const [items, customers, suppliers, invoices, monthly, daily, summary] = await Promise.all([
       apiCall('/items', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/invoices', 'GET'),
-      apiCall('/reports?type=monthly_summary', 'GET'), apiCall('/reports?type=daily_profit', 'GET')
+      apiCall('/reports?type=monthly_summary', 'GET'), apiCall('/reports?type=daily_profit', 'GET'),
+      apiCall('/summary', 'GET')
     ]);
+
     const totalSales = invoices.filter(inv => inv.type === 'sale').reduce((s, inv) => s + (inv.total || 0), 0);
     const totalPurchases = invoices.filter(inv => inv.type === 'purchase').reduce((s, inv) => s + (inv.total || 0), 0);
+
     document.getElementById('tab-content').innerHTML = `
+      <!-- شريط الملخص السريع -->
+      <div class="summary-strip">
+        <div class="summary-item profit">
+          <div class="summary-icon">💰</div>
+          <div class="summary-label">صافي الربح</div>
+          <div class="summary-value ${summary.net_profit >= 0 ? 'positive' : 'negative'}">${summary.net_profit.toFixed(2)}</div>
+        </div>
+        <div class="summary-item cash">
+          <div class="summary-icon">🏦</div>
+          <div class="summary-label">رصيد الصندوق</div>
+          <div class="summary-value ${summary.cash_balance >= 0 ? 'positive' : 'negative'}">${summary.cash_balance.toFixed(2)}</div>
+        </div>
+        <div class="summary-item receivables">
+          <div class="summary-icon">📥</div>
+          <div class="summary-label">الذمم المدينة</div>
+          <div class="summary-value">${summary.receivables.toFixed(2)}</div>
+        </div>
+        <div class="summary-item payables">
+          <div class="summary-icon">📤</div>
+          <div class="summary-label">الذمم الدائنة</div>
+          <div class="summary-value">${summary.payables.toFixed(2)}</div>
+        </div>
+      </div>
+
       <div class="dashboard-grid">
         <div class="dash-card items"><span class="dash-icon">📦</span><div class="dash-label">المواد</div><div class="dash-value">${items.length}</div></div>
         <div class="dash-card customers"><span class="dash-icon">👥</span><div class="dash-label">العملاء</div><div class="dash-value">${customers.length}</div></div>
@@ -40,6 +68,7 @@ async function loadDashboard() {
         <div class="chart-container"><h4>المدفوعات الشهرية</h4><canvas id="paymentsChart"></canvas></div>
         <div class="chart-container"><h4>صافي الربح اليومي</h4><canvas id="profitChart"></canvas></div>
       </div>`;
+
     setTimeout(() => {
       const ctx1 = document.getElementById('incomeChart');
       if (ctx1) new Chart(ctx1, { type: 'doughnut', data: { labels: ['مبيعات', 'مشتريات'], datasets: [{ data: [totalSales, totalPurchases], backgroundColor: ['#10b981','#f59e0b'], borderColor: '#fff', borderWidth: 2 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
@@ -53,6 +82,7 @@ async function loadDashboard() {
     }, 100);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 let customersCache = [];
 async function loadCustomers() {
   try {
