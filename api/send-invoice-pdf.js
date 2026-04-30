@@ -1,7 +1,5 @@
-const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-const FormData = require('form-data');
 const https = require('https');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -51,74 +49,58 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    const pdfPromise = new Promise(resolve => { doc.on('end', () => resolve(Buffer.concat(chunks))); });
+    // بناء نص HTML منسق (بدون <pre> لتبسيط التوافق)
+    const lines = invoice.invoice_lines?.map(l => 
+      `<b>${l.item?.name || '-'}</b> | ${l.quantity} × ${l.unit_price} = <b>${l.total}</b>`
+    ).join('\n') || '';
 
-    // ترويسة بالإنجليزية
-    doc.fontSize(20).text('Alrajhi Accounting', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(14).text(`Invoice ${invoice.type === 'sale' ? 'Sale' : 'Purchase'}`, { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`Date: ${invoice.date}`, { align: 'center' });
-    doc.text(`Ref: ${invoice.reference || '-'}`, { align: 'center' });
-    if (invoice.customer?.name) doc.text(`Customer: ${invoice.customer.name}`);
-    if (invoice.supplier?.name) doc.text(`Supplier: ${invoice.supplier.name}`);
-    doc.moveDown();
+    const message = `
+🧾 <b>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</b>
+📅 <b>التاريخ:</b> ${invoice.date}
+🔖 <b>المرجع:</b> ${invoice.reference || '-'}
+${invoice.customer?.name ? `👤 <b>العميل:</b> ${invoice.customer.name}\n` : ''}${invoice.supplier?.name ? `🏭 <b>المورد:</b> ${invoice.supplier.name}\n` : ''}────────────────────
+${lines}
+────────────────────
+💰 <b>الإجمالي:</b> ${invoice.total}
+💵 <b>المدفوع:</b> ${paid}
+📌 <b>الباقي:</b> <b>${balance}</b>
+${invoice.notes ? `📝 <b>ملاحظات:</b> ${invoice.notes}` : ''}
+    `.trim();
 
-    // جدول البنود
-    const tableTop = doc.y;
-    doc.fontSize(11).text('Item', 50, tableTop);
-    doc.text('Qty', 250, tableTop);
-    doc.text('Price', 350, tableTop);
-    doc.text('Total', 450, tableTop);
-    doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-    doc.moveDown(0.5);
-
-    invoice.invoice_lines?.forEach(line => {
-      doc.text(line.item?.name || '-', 50, doc.y);
-      doc.text(String(line.quantity), 250, doc.y);
-      doc.text(String(line.unit_price), 350, doc.y);
-      doc.text(String(line.total), 450, doc.y);
-      doc.moveDown(0.3);
+    const payload = JSON.stringify({
+      chat_id: userId,
+      text: message,
+      parse_mode: 'HTML'
     });
 
-    doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-    doc.moveDown();
-    doc.fontSize(12);
-    doc.text(`Total: ${invoice.total}`, 250, doc.y, { align: 'left' });
-    doc.text(`Paid: ${paid}`, 250, doc.y + 16, { align: 'left' });
-    doc.text(`Balance: ${balance}`, 250, doc.y + 32, { align: 'left' });
-    if (invoice.notes) {
-      doc.moveDown();
-      doc.text(`Notes: ${invoice.notes}`);
-    }
+    const options = {
+      hostname: 'api.telegram.org',
+      path: `/bot${BOT_TOKEN}/sendMessage`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
 
-    doc.end();
-    const pdfBuffer = await pdfPromise;
-
-    // إرسال عبر البوت
-    const form = new FormData();
-    form.append('chat_id', String(userId));
-    form.append('document', pdfBuffer, {
-      filename: `invoice-${invoice.reference || invoice.id}.pdf`,
-      contentType: 'application/pdf'
-    });
-    form.append('caption', `Invoice ${invoice.type === 'sale' ? 'Sale' : 'Purchase'} ${invoice.reference || ''}`);
-
-    const options = { hostname: 'api.telegram.org', path: `/bot${BOT_TOKEN}/sendDocument`, method: 'POST', headers: form.getHeaders() };
     const tgReq = https.request(options, (tgRes) => {
       let data = '';
       tgRes.on('data', chunk => data += chunk);
       tgRes.on('end', () => {
-        const json = JSON.parse(data);
-        if (!json.ok) return res.status(500).json({ error: json.description });
-        res.json({ success: true });
+        try {
+          const json = JSON.parse(data);
+          if (!json.ok) {
+            return res.status(500).json({ error: json.description || 'فشل إرسال الرسالة' });
+          }
+          res.json({ success: true, message: 'تم إرسال الفاتورة عبر البوت' });
+        } catch (e) {
+          res.status(500).json({ error: 'استجابة غير صالحة' });
+        }
       });
     });
     tgReq.on('error', (e) => res.status(500).json({ error: e.message }));
-    form.pipe(tgReq);
+    tgReq.write(payload);
+    tgReq.end();
   } catch (err) {
     console.error(err);
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
