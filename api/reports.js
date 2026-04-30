@@ -54,15 +54,22 @@ module.exports = async (req, res) => {
       const { data: suppliers } = await supabase.from('suppliers').select('name, balance').eq('user_id', userId);
       const totalCustomerBalance = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
       const totalSupplierBalance = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
+
+      // المصاريف العامة من جدول expenses
+      const { data: expensesData } = await supabase.from('expenses').select('amount').eq('user_id', userId);
+      const totalGeneralExpenses = expensesData?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
+
       const totalAssets = cashBalance + totalCustomerBalance;
       const totalLiabilities = totalSupplierBalance;
-      const equity = totalAssets - totalLiabilities;
+      const equity = totalAssets - totalLiabilities - totalGeneralExpenses; // خصم المصاريف من رأس المال
+
       const result = [
         { name: 'الصندوق', type: 'asset', total_debit: totalReceived, total_credit: totalPaid, balance: cashBalance },
         { name: 'ذمم مدينة (عملاء)', type: 'asset', total_debit: totalCustomerBalance, total_credit: 0, balance: totalCustomerBalance },
         { name: 'ذمم دائنة (موردين)', type: 'liability', total_debit: 0, total_credit: totalSupplierBalance, balance: totalSupplierBalance },
         { name: 'المبيعات', type: 'income', total_debit: 0, total_credit: totalSales, balance: totalSales },
         { name: 'المشتريات', type: 'expense', total_debit: totalPurchases, total_credit: 0, balance: totalPurchases },
+        { name: 'مصاريف عامة', type: 'expense', total_debit: totalGeneralExpenses, total_credit: 0, balance: totalGeneralExpenses },
         { name: 'رأس المال', type: 'equity', total_debit: 0, total_credit: equity, balance: equity }
       ];
       return res.json(result);
@@ -77,12 +84,23 @@ module.exports = async (req, res) => {
         const { data: lines } = await supabase.from('invoice_lines').select('quantity, item:items(purchase_price)').in('invoice_id', saleIds);
         if (lines) for (const line of lines) totalCostOfSales += (parseFloat(line.quantity) || 0) * (parseFloat(line.item?.purchase_price) || 0);
       }
+
+      // جلب المصاريف العامة
+      const { data: generalExpenses } = await supabase.from('expenses').select('amount').eq('user_id', userId);
+      const totalGeneralExp = generalExpenses?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
+
+      const totalExpenses = totalCostOfSales + totalGeneralExp;
+      const netProfit = totalIncome - totalExpenses;
+
       return res.json({
         income: [{ name: 'المبيعات', balance: totalIncome }],
         total_income: totalIncome,
-        expenses: [{ name: 'تكلفة المبيعات', balance: totalCostOfSales }],
-        total_expenses: totalCostOfSales,
-        net_profit: totalIncome - totalCostOfSales
+        expenses: [
+          { name: 'تكلفة المبيعات', balance: totalCostOfSales },
+          { name: 'مصاريف عامة', balance: totalGeneralExp }
+        ],
+        total_expenses: totalExpenses,
+        net_profit: netProfit
       });
     }
 
@@ -99,8 +117,14 @@ module.exports = async (req, res) => {
       const { data: suppliers } = await supabase.from('suppliers').select('balance').eq('user_id', userId);
       const receivables = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
       const payables = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
+
+      // خصم المصاريف العامة من رأس المال
+      const { data: expensesData } = await supabase.from('expenses').select('amount').eq('user_id', userId);
+      const totalGeneralExpenses = expensesData?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
+
       const totalAssets = cash + receivables;
-      const equity = totalAssets - payables;
+      const equity = totalAssets - payables - totalGeneralExpenses;
+
       return res.json({
         assets: [{ name: 'الصندوق', balance: cash }, { name: 'ذمم مدينة', balance: receivables }],
         total_assets: totalAssets,
@@ -135,8 +159,8 @@ module.exports = async (req, res) => {
         const { data: purchases } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').eq('expense_type', 'purchase').order('date', { ascending: true });
         purchases?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة شراء ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
       } else if (accountName === 'مصاريف عامة') {
-        const { data: expenses } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').eq('expense_type', 'expense').order('date', { ascending: true });
-        expenses?.forEach(inv => { lines.push({ date: inv.date, description: `مصروف ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
+        const { data: expenses } = await supabase.from('expenses').select('amount, expense_date, description').eq('user_id', userId).order('expense_date', { ascending: true });
+        expenses?.forEach(ex => { lines.push({ date: ex.expense_date, description: ex.description || 'مصروف', debit: ex.amount, credit: 0 }); });
       } else if (accountName === 'المخزون') {
         const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').eq('expense_type', 'purchase').order('date', { ascending: true });
         if (purchaseInvoices && purchaseInvoices.length > 0) {
@@ -170,6 +194,15 @@ module.exports = async (req, res) => {
           if (inv.type === 'sale') monthlyProfit[key] += parseFloat(inv.total||0);
           else if (inv.type === 'purchase') monthlyProfit[key] -= parseFloat(inv.total||0);
         });
+        // خصم المصاريف العامة الشهرية
+        const { data: expensesForCapital } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
+        expensesForCapital?.forEach(ex => {
+          if (!ex.expense_date) return;
+          const key = ex.expense_date.substring(0,7);
+          if (!monthlyProfit[key]) monthlyProfit[key] = 0;
+          monthlyProfit[key] -= parseFloat(ex.amount||0);
+        });
+
         const months = Object.keys(monthlyProfit).sort();
         months.forEach(month => {
           const profit = monthlyProfit[month];
@@ -230,30 +263,35 @@ module.exports = async (req, res) => {
     if (reportType === 'monthly_summary') {
       const { data: invoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId);
       const { data: payments } = await supabase.from('payments').select('amount, payment_date, customer_id, supplier_id').eq('user_id', userId);
+      const { data: expenses } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
       const monthly = {};
       const months = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        months.push(key); monthly[key] = { sales: 0, purchases: 0, payments_in: 0, payments_out: 0 };
+        months.push(key); monthly[key] = { sales: 0, purchases: 0, payments_in: 0, payments_out: 0, expenses: 0 };
       }
       invoices?.forEach(inv => { if (!inv.date) return; const key = inv.date.substring(0,7); if (monthly[key]) { if (inv.type === 'sale') monthly[key].sales += parseFloat(inv.total||0); else if (inv.type === 'purchase') monthly[key].purchases += parseFloat(inv.total||0); } });
       payments?.forEach(p => { if (!p.payment_date) return; const key = p.payment_date.substring(0,7); if (monthly[key]) { if (p.customer_id) monthly[key].payments_in += parseFloat(p.amount||0); if (p.supplier_id) monthly[key].payments_out += parseFloat(p.amount||0); } });
+      expenses?.forEach(ex => { if (!ex.expense_date) return; const key = ex.expense_date.substring(0,7); if (monthly[key]) monthly[key].expenses += parseFloat(ex.amount||0); });
       const labels = months;
       return res.json({
         labels,
         sales: months.map(m => monthly[m].sales),
         purchases: months.map(m => monthly[m].purchases),
-        net_profit: months.map(m => monthly[m].sales - monthly[m].purchases),
+        net_profit: months.map(m => monthly[m].sales - monthly[m].purchases - monthly[m].expenses),
         payments_in: months.map(m => monthly[m].payments_in),
-        payments_out: months.map(m => monthly[m].payments_out)
+        payments_out: months.map(m => monthly[m].payments_out),
+        expenses: months.map(m => monthly[m].expenses)
       });
     }
 
     if (reportType === 'daily_profit') {
       const { data: invoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId).order('date', { ascending: true });
+      const { data: expenses } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
       const daily = {};
       invoices?.forEach(inv => { if (!inv.date) return; const day = inv.date; if (!daily[day]) daily[day] = 0; if (inv.type === 'sale') daily[day] += parseFloat(inv.total||0); else if (inv.type === 'purchase') daily[day] -= parseFloat(inv.total||0); });
+      expenses?.forEach(ex => { if (!ex.expense_date) return; const day = ex.expense_date; if (!daily[day]) daily[day] = 0; daily[day] -= parseFloat(ex.amount||0); });
       const dates = Object.keys(daily).sort();
       return res.json({ dates, profits: dates.map(d => daily[d]) });
     }
