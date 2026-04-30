@@ -430,29 +430,45 @@ function attachInvoiceEvents(invoiceType) {
       pr.value = (invoiceType==='sale' ? item.selling_price : item.purchase_price) || 0;
       const row = sel.closest('.line-row');
       const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
-      if (qty&&tot) tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2);
+      if (qty&&tot) tot.value = Math.round((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)); // بدون فاصلة عشرية
     }
   }
 
-  // ربط الأحداث للأسطر الحالية
+  // ربط الأسطر الأولية
   document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
-    const sel = row.querySelector('.item-select');
-    const pr = row.querySelector('.price-input');
-    // استدعاء فوري لملء السعر إذا كانت هناك مادة محددة مسبقاً
+    const sel = row.querySelector('.item-select'), pr = row.querySelector('.price-input');
     if (sel && pr) autoFillPrice(sel, pr);
-    // ربط حدث التغيير
     sel?.addEventListener('change', function() {
-      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
-        alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return;
-      }
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return; }
       autoFillPrice(this, pr);
     });
-    // ربط حساب الإجمالي
-    const qty = row.querySelector('.qty-input');
-    const tot = row.querySelector('.total-input');
-    const calc = () => { tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2); };
+    const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+    const calc = () => { tot.value = Math.round((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)); };
     qty?.addEventListener('input', calc);
     pr?.addEventListener('input', calc);
+  });
+
+  // زر إضافة سطر
+  document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
+    const container = document.getElementById('inv-lines-container');
+    const newLine = document.createElement('div'); newLine.className = 'line-row';
+    newLine.innerHTML = `
+      <select class="input-field item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select>
+      <div style="flex:1;"><label class="form-label" style="margin-top:0;">الكمية</label><input type="number" step="any" class="input-field qty-input" /></div>
+      <div style="flex:1;"><label class="form-label" style="margin-top:0;">السعر</label><input type="number" step="0.01" class="input-field price-input" /></div>
+      <div style="flex:1;"><label class="form-label" style="margin-top:0;">الإجمالي</label><input type="number" step="0.01" class="input-field total-input" readonly /></div>
+      <button class="btn-remove-line btn-secondary">✕</button>
+    `;
+    container.appendChild(newLine); updateInvoiceRemoveButtons();
+    const sel = newLine.querySelector('.item-select'), pr = newLine.querySelector('.price-input');
+    const qty = newLine.querySelector('.qty-input'), tot = newLine.querySelector('.total-input');
+    sel.addEventListener('change', function() {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return; }
+      autoFillPrice(this, pr);
+    });
+    const calc = () => { tot.value = Math.round((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)); };
+    qty.addEventListener('input', calc);
+    pr.addEventListener('input', calc);
   });
 
   // زر إضافة سطر
@@ -498,12 +514,62 @@ function attachInvoiceEvents(invoiceType) {
 
 async function loadSaleInvoiceForm() { showInvoiceModal('sale'); }
 async function loadPurchaseInvoiceForm() { showInvoiceModal('purchase'); }
+
 async function showInvoiceModal(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/items','GET')]);
     itemsCache=items;customersCache=customers;suppliersCache=suppliers;
     let entOpts = ''; if (type==='sale') entOpts = `<option value="cash">عميل نقدي</option>`+customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); else entOpts = `<option value="cash">مورد نقدي</option>`+suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-    const modalHTML = `<div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;text-align:right;"><h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3><input type="hidden" id="inv-type" value="${type}" /><label class="form-label">${type==='sale'?'العميل':'المورد'}</label><select id="inv-entity" class="input-field">${entOpts}</select><label class="form-label">التاريخ</label><input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><label class="form-label">الرقم المرجعي</label><input id="inv-ref" placeholder="الرقم المرجعي" class="input-field"/><label class="form-label">ملاحظات</label><textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea><h4 style="margin:16px 0 8px;">البنود</h4><div id="inv-lines-container"><div class="line-row"><select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input"/><input type="number" step="0.01" placeholder="السعر" class="input-field price-input"/><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly/><button class="btn-remove-line btn-secondary" style="display:none">✕</button></div></div><button id="btn-add-inv-line" class="btn-secondary">+ بند</button><label class="form-label" style="margin-top:16px;">المبلغ المدفوع</label><input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" value="0"/><div class="modal-actions" style="margin-top:20px;"><button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button><button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button></div></div>`;
+
+    const modalHTML = `
+      <div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;text-align:right;">
+        <h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3>
+        <input type="hidden" id="inv-type" value="${type}" />
+
+        <!-- البنود أولاً -->
+        <h4 style="margin:16px 0 8px;">البنود</h4>
+        <div id="inv-lines-container">
+          <div class="line-row">
+            <select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select>
+            <div style="flex:1;">
+              <label class="form-label" style="margin-top:0;">الكمية</label>
+              <input type="number" step="any" class="input-field qty-input" />
+            </div>
+            <div style="flex:1;">
+              <label class="form-label" style="margin-top:0;">السعر</label>
+              <input type="number" step="0.01" class="input-field price-input" />
+            </div>
+            <div style="flex:1;">
+              <label class="form-label" style="margin-top:0;">الإجمالي</label>
+              <input type="number" step="0.01" class="input-field total-input" readonly />
+            </div>
+            <button class="btn-remove-line btn-secondary" style="display:none;">✕</button>
+          </div>
+        </div>
+        <button id="btn-add-inv-line" class="btn-secondary">+ بند</button>
+
+        <!-- تفاصيل العميل / المورد والتاريخ والمرجع أسفل البنود -->
+        <label class="form-label" style="margin-top:16px;">${type==='sale'?'العميل':'المورد'}</label>
+        <select id="inv-entity" class="input-field">${entOpts}</select>
+
+        <label class="form-label">التاريخ</label>
+        <input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
+
+        <label class="form-label">الرقم المرجعي</label>
+        <input id="inv-ref" placeholder="الرقم المرجعي" class="input-field" />
+
+        <label class="form-label">ملاحظات</label>
+        <textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea>
+
+        <label class="form-label">المبلغ المدفوع</label>
+        <input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" />
+
+        <div class="modal-actions" style="margin-top:20px;">
+          <button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button>
+          <button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button>
+        </div>
+      </div>
+    `;
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = modalHTML; document.body.appendChild(overlay);
     attachInvoiceEvents(type);
     document.getElementById('btn-cancel-invoice').addEventListener('click', () => { document.body.removeChild(overlay); });
@@ -581,7 +647,7 @@ function renderFilteredInvoices() {
       <div class="card">
         <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
         ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
-        الإجمالي: ${inv.total} | المدفوع: ${inv.paid || 0} | الباقي: <strong>${inv.balance || 0}</strong>
+        الإجمالي: ${Math.round(inv.total)} | المدفوع: ${Math.round(inv.paid || 0)} | الباقي: <strong>${Math.round(inv.balance || 0)}</strong>
         <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || '-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
         <div class="card-actions">
           <button class="btn-secondary edit-invoice-btn" data-invoice-id="${inv.id}">✏️ تعديل</button>
