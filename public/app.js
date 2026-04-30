@@ -1,24 +1,65 @@
 const tg = window.Telegram.WebApp; tg.ready(); tg.expand();
+const cache = {};
+const CACHE_DURATION = 120000; // 60 ثانية
+
+function getCached(key) {
+  const entry = cache[key];
+  if (entry && Date.now() - entry.time < CACHE_DURATION) {
+    return entry.data;
+  }
+  delete cache[key];
+  return null;
+}
+
+function setCache(key, data) {
+  cache[key] = { data, time: Date.now() };
+}
+
+function clearCache() {
+  for (const key in cache) {
+    delete cache[key];
+  }
+}
 if (tg.colorScheme === 'dark') document.body.classList.add('dark');
 tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.colorScheme === 'dark'); });
 const initData = tg.initData, user = tg.initDataUnsafe?.user, apiBase = '/api';
 function showLoading(msg) { document.getElementById('loading').textContent = msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
 function showError(msg) { document.getElementById('loading').textContent = '❌ ' + msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
+
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
   if (method === 'GET' || method === 'DELETE') {
-    url += (url.includes('?')?'&':'?') + 'initData=' + encodeURIComponent(initData);
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' } });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
-    return json;
-  } else {
-    const finalBody = { ...body, initData };
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(finalBody) });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
-    return json;
+    url += (url.includes('?') ? '&' : '?') + 'initData=' + encodeURIComponent(initData);
   }
+
+  // إذا كان GET، تحقق من الكاش
+  if (method === 'GET') {
+    const cached = getCached(url);
+    if (cached) return cached;
+  }
+
+  const options = { method, headers: { 'Content-Type': 'application/json' } };
+  if (method !== 'GET' && method !== 'DELETE') {
+    options.body = JSON.stringify({ ...body, initData });
+  }
+
+  const res = await fetch(url, options);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
+
+  // خزن في الكاش إذا كان GET
+  if (method === 'GET') {
+    setCache(url, json);
+  }
+
+  // إذا كان هناك تعديل (POST/PUT/DELETE)، امسح الكاش كاملًا
+  if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+    clearCache();
+  }
+
+  return json;
+}
+
 }
 async function loadDashboard() {
   try {
