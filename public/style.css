@@ -96,7 +96,7 @@ nav {
 .tab:active { cursor: grabbing; }
 .tab.active { background: var(--primary); color: white; box-shadow: var(--shadow-md); font-weight: 600; }
 
-/* حدود علوية ملونة للتبويبات */
+/* حدود علوية ملونة للتبويبات – متناغمة مع بطاقات لوحة التحكم */
 .tab[data-tab="dashboard"] { border-top: 4px solid #3b82f6; }
 .tab[data-tab="items"] { border-top: 4px solid #3b82f6; }
 .tab[data-tab="sale-invoice"] { border-top: 4px solid #10b981; }
