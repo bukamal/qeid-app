@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // تنسيق مناسب لطابعة حرارية 80 مم
+    // تصميم HTML مركزي وأنيق
     const html = `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -58,40 +58,75 @@ module.exports = async (req, res) => {
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
   body {
     font-family: 'Tajawal', sans-serif;
-    width: 72mm;
-    margin: 0 auto;
-    padding: 2mm;
-    font-size: 12px;
-    background: white;
+    background: #f5f5f5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    direction: rtl;
   }
-  .header { text-align: center; margin-bottom: 4mm; }
-  h2 { font-size: 16px; margin: 0; }
-  h3 { font-size: 14px; margin: 2mm 0; }
-  p { margin: 1mm 0; }
-  table { width: 100%; border-collapse: collapse; margin: 3mm 0; }
-  th, td { border: 1px dashed #000; padding: 2mm; text-align: right; font-size: 11px; }
-  th { background: #eee; }
-  .total { text-align: left; margin-top: 3mm; font-weight: bold; }
-  .note { font-style: italic; margin-top: 2mm; }
+  .invoice-box {
+    max-width: 600px;
+    width: 90%;
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 15px;
+  }
+  h2 { color: #2563eb; font-size: 28px; margin: 0; }
+  h3 { font-size: 18px; margin: 10px 0 0; color: #333; }
+  .info { margin: 15px 0; font-size: 15px; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  th { background: #2563eb; color: white; padding: 10px; font-size: 14px; }
+  td { padding: 10px; border-bottom: 1px solid #ddd; font-size: 14px; text-align: right; }
+  .total-section {
+    text-align: left;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 2px solid #2563eb;
+    font-size: 16px;
+  }
+  .total-section p { margin: 5px 0; }
+  .balance { color: #ef4444; font-weight: bold; }
+  .notes { margin-top: 15px; font-style: italic; color: #555; }
+  @media print {
+    body { background: white; }
+    .invoice-box { box-shadow: none; margin: 0; padding: 0; }
+  }
 </style></head>
 <body>
-  <div class="header">
-    <h2>الراجحي للمحاسبة</h2>
-    <h3>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h3>
+  <div class="invoice-box">
+    <div class="header">
+      <h2>الراجحي للمحاسبة</h2>
+      <h3>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h3>
+    </div>
+    <div class="info">
+      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+      ${invoice.customer?.name ? `<p>العميل: ${invoice.customer.name}</p>` : ''}
+      ${invoice.supplier?.name ? `<p>المورد: ${invoice.supplier.name}</p>` : ''}
+    </div>
+    <table>
+      <thead>
+        <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+      </thead>
+      <tbody>
+        ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="total-section">
+      <p><strong>الإجمالي:</strong> ${invoice.total}</p>
+      <p><strong>المدفوع:</strong> ${paid}</p>
+      <p class="balance"><strong>الباقي:</strong> ${balance}</p>
+    </div>
+    ${invoice.notes ? `<p class="notes">ملاحظات: ${invoice.notes}</p>` : ''}
   </div>
-  <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
-  ${invoice.customer?.name ? `<p>العميل: ${invoice.customer.name}</p>` : ''}
-  ${invoice.supplier?.name ? `<p>المورد: ${invoice.supplier.name}</p>` : ''}
-  <table>
-    <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
-    ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
-  </table>
-  <div class="total">
-    <p>الإجمالي: ${invoice.total}</p>
-    <p>المدفوع: ${paid}</p>
-    <p>الباقي: ${balance}</p>
-  </div>
-  ${invoice.notes ? `<p class="note">ملاحظات: ${invoice.notes}</p>` : ''}
 </body></html>`;
 
     const FormData = require('form-data');
