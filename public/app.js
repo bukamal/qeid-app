@@ -301,17 +301,7 @@ async function loadCategories() {
 }
 function showAddCategoryModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal-box">
-      <h3>إضافة تصنيف جديد</h3>
-      <label class="form-label">اسم التصنيف</label>
-      <input id="cat-name" class="input-field" placeholder="اسم التصنيف" />
-      <div class="modal-actions">
-        <button class="btn-primary" id="btn-save-cat">حفظ</button>
-        <button class="btn-secondary" id="btn-cancel-cat">إلغاء</button>
-      </div>
-    </div>
-  `;
+  overlay.innerHTML = `<div class="modal-box"><h3>إضافة تصنيف جديد</h3><label class="form-label">اسم التصنيف</label><input id="cat-name" class="input-field" placeholder="اسم التصنيف" /><div class="modal-actions"><button class="btn-primary" id="btn-save-cat">حفظ</button><button class="btn-secondary" id="btn-cancel-cat">إلغاء</button></div></div>`;
   document.body.appendChild(overlay);
   document.getElementById('btn-save-cat').onclick = async () => {
     const n = document.getElementById('cat-name').value.trim();
@@ -334,70 +324,26 @@ async function loadPayments() {
 }
 function showAddPaymentModal(customers, suppliers, invoices) {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal-box" style="max-width:500px;">
-      <h3>إضافة دفعة جديدة</h3>
-      <label class="form-label">النوع</label>
-      <select id="pmt-type" class="input-field">
-        <option value="customer">من عميل</option>
-        <option value="supplier">إلى مورد</option>
-      </select>
-      <div id="pmt-cust-block">
-        <label class="form-label">العميل</label>
-        <select id="pmt-customer" class="input-field">
-          <option value="">اختر عميل</option>
-          ${customers.map(c => `<option value="${c.id}">${c.name} (${c.balance})</option>`).join('')}
-        </select>
-      </div>
-      <div id="pmt-supp-block" style="display:none;">
-        <label class="form-label">المورد</label>
-        <select id="pmt-supplier" class="input-field">
-          <option value="">اختر مورد</option>
-          ${suppliers.map(s => `<option value="${s.id}">${s.name} (${s.balance})</option>`).join('')}
-        </select>
-      </div>
-      <label class="form-label">الفاتورة (اختياري)</label>
-      <select id="pmt-invoice" class="input-field">
-        <option value="">بدون فاتورة</option>
-      </select>
-      <label class="form-label">المبلغ</label>
-      <input id="pmt-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field" />
-      <label class="form-label">التاريخ</label>
-      <input id="pmt-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
-      <label class="form-label">ملاحظات</label>
-      <textarea id="pmt-notes" placeholder="ملاحظات" class="input-field"></textarea>
-      <div class="modal-actions">
-        <button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button>
-        <button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button>
-      </div>
-    </div>
-  `;
+  overlay.innerHTML = `<div class="modal-box" style="max-width:500px;"><h3>إضافة دفعة جديدة</h3><label class="form-label">النوع</label><select id="pmt-type" class="input-field"><option value="customer">من عميل</option><option value="supplier">إلى مورد</option></select><div id="pmt-cust-block"><label class="form-label">العميل</label><select id="pmt-customer" class="input-field"><option value="">اختر عميل</option>${customers.map(c => `<option value="${c.id}">${c.name} (${c.balance})</option>`).join('')}</select></div><div id="pmt-supp-block" style="display:none;"><label class="form-label">المورد</label><select id="pmt-supplier" class="input-field"><option value="">اختر مورد</option>${suppliers.map(s => `<option value="${s.id}">${s.name} (${s.balance})</option>`).join('')}</select></div><label class="form-label">الفاتورة (اختياري)</label><select id="pmt-invoice" class="input-field"><option value="">بدون فاتورة</option></select><label class="form-label">المبلغ</label><input id="pmt-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field" /><label class="form-label">التاريخ</label><input id="pmt-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" /><label class="form-label">ملاحظات</label><textarea id="pmt-notes" placeholder="ملاحظات" class="input-field"></textarea><div class="modal-actions"><button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button><button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button></div></div>`;
   document.body.appendChild(overlay);
-
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
-  const updateInvList = (type, eId) => {
-    const filt = invoices.filter(inv => type==='customer'? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
-    invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join('');
-  };
-  tSel.addEventListener('change', () => {
-    if (tSel.value==='customer') { cBlock.style.display='block'; sBlock.style.display='none'; updateInvList('customer', cSel.value); }
-    else { cBlock.style.display='none'; sBlock.style.display='block'; updateInvList('supplier', sSel.value); }
-  });
+  const updateInvList = (type, eId) => { const filt = invoices.filter(inv => type==='customer'? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId); invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join(''); };
+  tSel.addEventListener('change', () => { if (tSel.value==='customer') { cBlock.style.display='block'; sBlock.style.display='none'; updateInvList('customer', cSel.value); } else { cBlock.style.display='none'; sBlock.style.display='block'; updateInvList('supplier', sSel.value); } });
   cSel.addEventListener('change', () => updateInvList('customer', cSel.value));
   sSel.addEventListener('change', () => updateInvList('supplier', sSel.value));
-
   document.getElementById('btn-save-pmt').onclick = async () => {
     const type = tSel.value, cust = type==='customer'? (cSel.value||null) : null, supp = type==='supplier'? (sSel.value||null) : null, invId = invSel.value||null, amount = parseFloat(document.getElementById('pmt-amount').value);
     if (!amount || amount<=0) return alert('المبلغ مطلوب'); if (!cust && !supp) return alert('اختر عميلاً أو مورداً');
-    try {
-      await apiCall('/payments','POST',{invoice_id:invId,customer_id:cust,supplier_id:supp,amount,payment_date:document.getElementById('pmt-date').value,notes:document.getElementById('pmt-notes').value.trim()});
-      document.body.removeChild(overlay);
-      alert('تم حفظ الدفعة'); loadPayments();
-    } catch(e) { alert('خطأ: '+e.message); }
+    try { await apiCall('/payments','POST',{invoice_id:invId,customer_id:cust,supplier_id:supp,amount,payment_date:document.getElementById('pmt-date').value,notes:document.getElementById('pmt-notes').value.trim()}); document.body.removeChild(overlay); alert('تم حفظ الدفعة'); loadPayments(); } catch(e) { alert('خطأ: '+e.message); }
   };
   document.getElementById('btn-cancel-pmt').onclick = () => document.body.removeChild(overlay);
 }
-};
+async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`,'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e) { alert('خطأ: '+e.message); } }
+async function loadReports() {
+  let html = `<div class="card"><h2>التقارير</h2></div><div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div><div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div><div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div><div class="card report-link" data-report="account_ledger">📒 الأستاذ العام</div><div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div><div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>`;
+  document.getElementById('tab-content').innerHTML = html;
+  document.querySelectorAll('.report-link').forEach(el => el.addEventListener('click', () => { const r = el.dataset.report; if (r==='trial_balance') loadTrialBalance(); else if (r==='income_statement') loadIncomeStatement(); else if (r==='balance_sheet') loadBalanceSheet(); else if (r==='account_ledger') loadAccountLedgerForm(); else if (r==='customer_statement') loadCustomerStatementForm(); else if (r==='supplier_statement') loadSupplierStatementForm(); }));
+}
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance','GET');
@@ -415,7 +361,6 @@ async function loadTrialBalance() {
       </div>`;
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-
 async function loadIncomeStatement() {
   try {
     const d = await apiCall('/reports?type=income_statement','GET');
@@ -439,7 +384,6 @@ async function loadIncomeStatement() {
       </div>`;
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-
 async function loadBalanceSheet() {
   try {
     const d = await apiCall('/reports?type=balance_sheet','GET');
@@ -468,7 +412,6 @@ async function loadBalanceSheet() {
       </div>`;
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-
 async function loadAccountLedgerForm() {
   try {
     const accounts = await apiCall('/accounts','GET');
@@ -493,7 +436,6 @@ async function loadAccountLedgerForm() {
     });
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-
 async function loadCustomerStatementForm() {
   try {
     const custs = await apiCall('/customers','GET');
@@ -518,7 +460,6 @@ async function loadCustomerStatementForm() {
     });
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-
 async function loadSupplierStatementForm() {
   try {
     const supps = await apiCall('/suppliers','GET');
@@ -543,7 +484,7 @@ async function loadSupplierStatementForm() {
     });
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-async function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
+(function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
 document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
 async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
 verifyUser();
