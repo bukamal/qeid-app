@@ -4,7 +4,7 @@ tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.col
 const initData = tg.initData, user = tg.initDataUnsafe?.user, apiBase = '/api';
 
 const cache = {};
-const CACHE_DURATION = 120000; // 60 ثانية
+const CACHE_DURATION = 20000; // 60 ثانية
 
 function getCached(key) {
   const entry = cache[key];
