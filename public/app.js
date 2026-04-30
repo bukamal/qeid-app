@@ -191,16 +191,31 @@ function attachInvoiceEvents(invoiceType) {
   });
   updateInvoiceRemoveButtons();
 }
-async function loadSaleInvoiceForm() { await loadInvoiceFormByType('sale'); }
-async function loadPurchaseInvoiceForm() { await loadInvoiceFormByType('purchase'); }
-async function loadInvoiceFormByType(type) {
+async function loadSaleInvoiceForm() { showInvoiceModal('sale'); }
+async function loadPurchaseInvoiceForm() { showInvoiceModal('purchase'); }
+async function showInvoiceModal(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/items','GET')]);
     itemsCache=items;customersCache=customers;suppliersCache=suppliers;
     let entOpts = ''; if (type==='sale') entOpts = `<option value="cash">عميل نقدي</option>`+customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); else entOpts = `<option value="cash">مورد نقدي</option>`+suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `<div class="card"><h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3><input type="hidden" id="inv-type" value="${type}"/><select id="inv-entity" class="input-field">${entOpts}</select><input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><input id="inv-ref" placeholder="الرقم المرجعي" class="input-field"/><textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea><h4>البنود</h4><div id="inv-lines-container"><div class="line-row"><select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input"/><input type="number" step="0.01" placeholder="السعر" class="input-field price-input"/><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly/><button class="btn-remove-line btn-secondary" style="display:none">✕</button></div></div><button id="btn-add-inv-line" class="btn-secondary">+ بند</button><h4>المدفوعات</h4><input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" value="0"/><button id="btn-save-invoice" class="btn-primary">حفظ الفاتورة</button></div>`;
+    const modalHTML = `<div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;text-align:right;"><h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3><input type="hidden" id="inv-type" value="${type}" /><label class="form-label">${type==='sale'?'العميل':'المورد'}</label><select id="inv-entity" class="input-field">${entOpts}</select><label class="form-label">التاريخ</label><input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><label class="form-label">الرقم المرجعي</label><input id="inv-ref" placeholder="الرقم المرجعي" class="input-field"/><label class="form-label">ملاحظات</label><textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea><h4 style="margin:16px 0 8px;">البنود</h4><div id="inv-lines-container"><div class="line-row"><select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input"/><input type="number" step="0.01" placeholder="السعر" class="input-field price-input"/><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly/><button class="btn-remove-line btn-secondary" style="display:none">✕</button></div></div><button id="btn-add-inv-line" class="btn-secondary">+ بند</button><label class="form-label" style="margin-top:16px;">المبلغ المدفوع</label><input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" value="0"/><div class="modal-actions" style="margin-top:20px;"><button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button><button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button></div></div>`;
+    const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = modalHTML; document.body.appendChild(overlay);
     attachInvoiceEvents(type);
-  } catch(err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+    document.getElementById('btn-cancel-invoice').addEventListener('click', () => { document.body.removeChild(overlay); });
+    document.getElementById('btn-save-invoice').onclick = async function() {
+      const type = document.getElementById('inv-type').value, entity = document.getElementById('inv-entity').value;
+      let cust=null, supp=null; if (type==='sale') cust = entity==='cash'?null:entity; else supp = entity==='cash'?null:entity;
+      const date = document.getElementById('inv-date').value, ref = document.getElementById('inv-ref').value.trim(), notes = document.getElementById('inv-notes').value.trim(), paid = parseFloat(document.getElementById('inv-paid')?.value)||0;
+      const lines = []; const ids = []; let dup = false;
+      document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+        const id = row.querySelector('.item-select').value||null; if (id) { if (ids.includes(id)) dup=true; ids.push(id); }
+        const qty = parseFloat(row.querySelector('.qty-input').value)||0, price = parseFloat(row.querySelector('.price-input').value)||0, total = parseFloat(row.querySelector('.total-input').value)||0;
+        if (id||qty>0) lines.push({item_id:id, description:id?'':'بند', quantity:qty, unit_price:price, total});
+      });
+      if (dup) return alert('لا يمكن تكرار نفس المادة'); if (!lines.length) return alert('أضف بنداً');
+      try { await apiCall('/invoices','POST',{type,customer_id:cust,supplier_id:supp,date,reference:ref,notes,lines,paid_amount:paid}); document.body.removeChild(overlay); alert('تم حفظ الفاتورة بنجاح'); loadInvoices(); } catch(e) { alert('خطأ: '+e.message); }
+    };
+  } catch(err) { alert('خطأ: '+err.message); }
 }
 let invoicesCache = [];
 async function loadInvoices() {
@@ -260,29 +275,14 @@ function downloadPDF(invoice) {
   div.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:40px;background:white;font-family:Tajawal,sans-serif;direction:rtl;color:#000';
   div.innerHTML = `<h2 style="text-align:center;color:#2563eb">الراجحي للمحاسبة</h2><h3 style="text-align:center">فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h3><p style="text-align:center">التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>${invoice.customer?.name?`<p>العميل: ${invoice.customer.name}</p>`:''}${invoice.supplier?.name?`<p>المورد: ${invoice.supplier.name}</p>`:''}<table style="width:100%;border-collapse:collapse;margin-top:20px"><tr style="background:#f0f0f0"><th style="border:1px solid #ccc;padding:8px">المادة</th><th style="border:1px solid #ccc;padding:8px">الكمية</th><th style="border:1px solid #ccc;padding:8px">السعر</th><th style="border:1px solid #ccc;padding:8px">الإجمالي</th></tr>${invoice.invoice_lines?.map(l=>`<tr><td style="border:1px solid #ddd;padding:8px">${l.item?.name||'-'}</td><td style="border:1px solid #ddd;padding:8px">${l.quantity}</td><td style="border:1px solid #ddd;padding:8px">${l.unit_price}</td><td style="border:1px solid #ddd;padding:8px">${l.total}</td></tr>`).join('')}</table><div style="text-align:left;margin-top:20px"><p><strong>الإجمالي: ${invoice.total}</strong></p><p>المدفوع: ${invoice.paid||0}</p><p style="color:red"><strong>الباقي: ${invoice.balance||0}</strong></p></div>${invoice.notes?`<p style="margin-top:15px">ملاحظات: ${invoice.notes}</p>`:''}`;
   document.body.appendChild(div);
-
   html2canvas(div, { scale: 2, backgroundColor: '#fff', logging: false }).then(canvas => {
     document.body.removeChild(div);
-    // استخراج base64 للصورة (بدون الرأس data:image/png;base64,)
-    const imgBase64 = canvas.toDataURL('image/png').split(',')[1];
-    
-    // إرسال الصورة إلى الخادم لإرسالها عبر البوت
-    fetch('/api/send-invoice-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        invoiceId: invoice.id,
-        imageBase64: imgBase64,
-        initData: initData
-      })
-    }).then(res => res.json()).then(data => {
-      if (data.success) alert('تم إرسال الفاتورة إلى البوت ✅');
-      else alert('فشل الإرسال: ' + (data.error || 'خطأ غير معروف'));
-    }).catch(e => alert('فشل الإرسال: ' + e.message));
-  }).catch(e => {
-    document.body.removeChild(div);
-    alert('فشل التقاط الصورة: ' + e.message);
-  });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const w = 210, h = (canvas.height * w) / canvas.width;
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
+    pdf.save(`فاتورة-${invoice.reference||invoice.id}.pdf`);
+  }).catch(e => { document.body.removeChild(div); alert('فشل PDF: '+e.message); });
 }
 function confirmDialog(msg) { return new Promise(resolve => { const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = `<div class="modal-box"><p>${msg}</p><div class="modal-actions"><button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button></div></div>`; document.body.appendChild(overlay); document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); }; document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); }; }); }
 async function deleteItem(id) { if (!await confirmDialog('متأكد من حذف المادة؟')) return; try { await apiCall(`/items?id=${id}`,'DELETE'); alert('تم الحذف'); loadItems(); } catch(e) { alert('خطأ: '+e.message); } }
