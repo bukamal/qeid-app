@@ -116,6 +116,7 @@ nav {
 .tab[data-tab="suppliers"] { border-top: 4px solid #f59e0b; }
 .tab[data-tab="categories"] { border-top: 4px solid #8b5cf6; }
 .tab[data-tab="payments"] { border-top: 4px solid #ec4899; }
+.tab[data-tab="expenses"] { border-top: 4px solid #ec4899; }
 .tab[data-tab="invoices"] { border-top: 4px solid #8b5cf6; }
 .tab[data-tab="reports"] { border-top: 4px solid #c084fc; }
 select.input-field {
