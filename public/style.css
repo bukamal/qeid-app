@@ -39,6 +39,8 @@ body {
   line-height: 1.6;
   transition: background 0.3s, color 0.3s;
 }
+
+/* Header */
 header {
   background: var(--card-bg);
   padding: 16px;
@@ -49,7 +51,25 @@ header {
   margin-bottom: 16px;
   box-shadow: var(--shadow);
 }
-h1 { font-size: 1.7rem; color: var(--primary); font-weight: 700; }
+h1 {
+  font-size: 1.8rem;
+  color: var(--primary);
+  font-weight: 700;
+  border-top: 4px solid var(--primary);
+  padding-top: 6px;
+}
+#user-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--secondary);
+  padding: 6px 16px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  border-top: 3px solid var(--primary);
+}
+
+/* التبويبات */
 nav {
   display: flex;
   gap: 6px;
@@ -76,7 +96,7 @@ nav {
 .tab:active { cursor: grabbing; }
 .tab.active { background: var(--primary); color: white; box-shadow: var(--shadow-md); font-weight: 600; }
 
-/* حدود علوية ملونة للتبويبات – متناغمة مع بطاقات لوحة التحكم */
+/* حدود علوية ملونة للتبويبات */
 .tab[data-tab="dashboard"] { border-top: 4px solid #3b82f6; }
 .tab[data-tab="items"] { border-top: 4px solid #3b82f6; }
 .tab[data-tab="sale-invoice"] { border-top: 4px solid #10b981; }
