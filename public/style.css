@@ -39,8 +39,6 @@ body {
   line-height: 1.6;
   transition: background 0.3s, color 0.3s;
 }
-
-/* Header */
 header {
   background: var(--card-bg);
   padding: 16px;
@@ -68,8 +66,6 @@ h1 {
   box-shadow: var(--shadow);
   border-top: 3px solid var(--primary);
 }
-
-/* التبويبات */
 nav {
   display: flex;
   gap: 6px;
@@ -95,8 +91,6 @@ nav {
 .tab:hover { background: var(--secondary-hover); transform: translateY(-1px); }
 .tab:active { cursor: grabbing; }
 .tab.active { background: var(--primary); color: white; box-shadow: var(--shadow-md); font-weight: 600; }
-
-/* حدود علوية ملونة للتبويبات */
 .tab[data-tab="dashboard"] { border-top: 4px solid #3b82f6; }
 .tab[data-tab="items"] { border-top: 4px solid #3b82f6; }
 .tab[data-tab="sale-invoice"] { border-top: 4px solid #10b981; }
@@ -107,7 +101,6 @@ nav {
 .tab[data-tab="payments"] { border-top: 4px solid #ec4899; }
 .tab[data-tab="invoices"] { border-top: 4px solid #8b5cf6; }
 .tab[data-tab="reports"] { border-top: 4px solid #c084fc; }
-
 select.input-field {
   appearance: none;
   -webkit-appearance: none;
@@ -118,8 +111,6 @@ select.input-field {
   background-size: 18px;
   padding-left: 36px;
 }
-
-/* بطاقات لوحة التحكم */
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -142,8 +133,6 @@ select.input-field {
 .dash-card.customers { border-top: 4px solid #10b981; }
 .dash-card.suppliers { border-top: 4px solid #f59e0b; }
 .dash-card.invoices { border-top: 4px solid #8b5cf6; }
-
-/* البطاقات العامة */
 .card {
   background: var(--card-bg);
   border-radius: var(--radius);
@@ -154,10 +143,7 @@ select.input-field {
   border-top: 4px solid var(--border);
 }
 .card:hover { box-shadow: var(--shadow-md); }
-
 #loading { text-align: center; padding: 40px; font-size: 1.1rem; }
-
-/* الأزرار */
 .btn-primary {
   background: var(--primary);
   color: white;
@@ -201,8 +187,6 @@ select.input-field {
   transition: all 0.2s ease;
 }
 .btn-danger:hover { background: var(--danger-hover); }
-
-/* حقول الإدخال */
 .input-field {
   width: 100%;
   padding: 12px;
@@ -238,8 +222,6 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .report-table th { background: var(--secondary); font-weight: 600; color: var(--text); }
 .report-table tr:nth-child(even) { background: var(--bg); }
 .report-table tr:hover { background: var(--secondary-hover); }
-
-/* النوافذ المنبثقة */
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.45);
@@ -265,16 +247,21 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .modal-box p { margin-bottom: 20px; font-size: 1.1rem; font-weight: 500; }
 .modal-actions { display: flex; gap: 10px; justify-content: center; margin-top: 15px; }
 .modal-box .input-field { margin: 8px 0; }
-
-/* المخططات */
 .charts-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .chart-container { flex: 1 1 300px; background: var(--card-bg); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); text-align: center; border-top: 4px solid var(--primary); }
 .chart-container canvas { max-height: 250px; }
-
-/* أزرار البطاقات */
 .card-actions { margin-top: 12px; display: flex; gap: 8px; }
 .card-actions button { flex: 1; font-size: 0.9rem; padding: 8px 12px; }
-
+.modal-box h3 {
+  border-top: 4px solid var(--primary);
+  padding-top: 8px;
+  margin-bottom: 16px;
+}
+.modal-box h4 {
+  border-top: 2px solid var(--border);
+  padding-top: 8px;
+  margin-top: 16px;
+}
 @media print {
   body { background: white; padding: 20px; }
   .tab, .btn-primary, .btn-secondary, .btn-danger, .btn-remove-line, .modal-overlay { display: none !important; }
