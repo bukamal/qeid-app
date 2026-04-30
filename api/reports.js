@@ -135,69 +135,34 @@ module.exports = async (req, res) => {
         const { data: purchases } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
         purchases?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة شراء ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
       } else if (accountName === 'المخزون') {
-  // 1. جلب معرفات فواتير الشراء
-  const { data: purchaseInvoices } = await supabase
-    .from('invoices')
-    .select('id, date')
-    .eq('user_id', userId)
-    .eq('type', 'purchase')
-    .order('date', { ascending: true });
-
-  if (purchaseInvoices && purchaseInvoices.length > 0) {
-    const purchaseIds = purchaseInvoices.map(inv => inv.id);
-    const { data: purchaseLines } = await supabase
-      .from('invoice_lines')
-      .select('quantity, item:items(name, purchase_price), invoice_id')
-      .in('invoice_id', purchaseIds)
-      .order('invoice_id', { ascending: true });
-
-    purchaseLines?.forEach(line => {
-      const inv = purchaseInvoices.find(i => i.id === line.invoice_id);
-      const qty = parseFloat(line.quantity) || 0;
-      const price = parseFloat(line.item?.purchase_price) || 0;
-      lines.push({
-        date: inv?.date,
-        description: `شراء ${line.item?.name || 'مادة'} (${qty} × ${price})`,
-        debit: qty * price,
-        credit: 0
-      });
-    });
-  }
-
-  // 2. جلب معرفات فواتير البيع
-  const { data: saleInvoices } = await supabase
-    .from('invoices')
-    .select('id, date')
-    .eq('user_id', userId)
-    .eq('type', 'sale')
-    .order('date', { ascending: true });
-
-  if (saleInvoices && saleInvoices.length > 0) {
-    const saleIds = saleInvoices.map(inv => inv.id);
-    const { data: saleLines } = await supabase
-      .from('invoice_lines')
-      .select('quantity, item:items(name, purchase_price), invoice_id')
-      .in('invoice_id', saleIds)
-      .order('invoice_id', { ascending: true });
-
-    saleLines?.forEach(line => {
-      const inv = saleInvoices.find(i => i.id === line.invoice_id);
-      const qty = parseFloat(line.quantity) || 0;
-      const price = parseFloat(line.item?.purchase_price) || 0;
-      lines.push({
-        date: inv?.date,
-        description: `بيع ${line.item?.name || 'مادة'} (${qty} × ${price})`,
-        debit: 0,
-        credit: qty * price
-      });
-    });
-  } else if (accountName === 'رأس المال') {
-        // تجميع صافي الربح الشهري (المبيعات - المشتريات)
+        const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
+        if (purchaseInvoices && purchaseInvoices.length > 0) {
+          const purchaseIds = purchaseInvoices.map(inv => inv.id);
+          const { data: purchaseLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice_id').in('invoice_id', purchaseIds).order('invoice_id', { ascending: true });
+          purchaseLines?.forEach(line => {
+            const inv = purchaseInvoices.find(i => i.id === line.invoice_id);
+            const qty = parseFloat(line.quantity) || 0;
+            const price = parseFloat(line.item?.purchase_price) || 0;
+            lines.push({ date: inv?.date, description: `شراء ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: qty * price, credit: 0 });
+          });
+        }
+        const { data: saleInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'sale').order('date', { ascending: true });
+        if (saleInvoices && saleInvoices.length > 0) {
+          const saleIds = saleInvoices.map(inv => inv.id);
+          const { data: saleLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice_id').in('invoice_id', saleIds).order('invoice_id', { ascending: true });
+          saleLines?.forEach(line => {
+            const inv = saleInvoices.find(i => i.id === line.invoice_id);
+            const qty = parseFloat(line.quantity) || 0;
+            const price = parseFloat(line.item?.purchase_price) || 0;
+            lines.push({ date: inv?.date, description: `بيع ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: 0, credit: qty * price });
+          });
+        }
+      } else if (accountName === 'رأس المال') {
         const { data: allInvoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId).order('date', { ascending: true });
         const monthlyProfit = {};
         allInvoices?.forEach(inv => {
           if (!inv.date) return;
-          const key = inv.date.substring(0,7); // YYYY-MM
+          const key = inv.date.substring(0,7);
           if (!monthlyProfit[key]) monthlyProfit[key] = 0;
           if (inv.type === 'sale') monthlyProfit[key] += parseFloat(inv.total||0);
           else if (inv.type === 'purchase') monthlyProfit[key] -= parseFloat(inv.total||0);
