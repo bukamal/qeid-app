@@ -90,9 +90,7 @@ nav {
   flex-wrap: wrap;
   transition: transform 0.3s ease;
 }
-nav.nav-hidden {
-  transform: translateY(-85%);
-}
+nav.nav-hidden { transform: translateY(-85%); }
 .tab {
   flex: 1 1 auto;
   padding: 10px 16px;
@@ -184,6 +182,8 @@ select.input-field {
   border-top: 4px solid var(--border);
 }
 .card:hover { box-shadow: var(--shadow-md); }
+.item-card { cursor: pointer; transition: transform 0.1s; }
+.item-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 #loading { text-align: center; padding: 40px; font-size: 1.1rem; }
 .btn-primary {
   background: var(--primary);

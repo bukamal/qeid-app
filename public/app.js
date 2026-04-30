@@ -188,39 +188,56 @@ async function loadItems() {
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
     document.getElementById('items-search').addEventListener('input', renderFilteredItems);
     renderFilteredItems();
-  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
 }
+
 
 function renderFilteredItems() {
   const searchQuery = document.getElementById('items-search')?.value.trim().toLowerCase() || '';
   let filtered = itemsCache;
   if (searchQuery) {
     filtered = filtered.filter(item =>
-      (item.name || '').toLowerCase().includes(searchQuery) ||
-      (item.category?.name || '').toLowerCase().includes(searchQuery) ||
-      (item.item_type || '').toLowerCase().includes(searchQuery) ||
-      String(item.purchase_price).includes(searchQuery) ||
-      String(item.selling_price).includes(searchQuery)
+      (item.name || '').toLowerCase().includes(searchQuery)
     );
   }
 
+  if (!filtered.length) {
+    document.getElementById('items-list').innerHTML = '<div class="card">لا توجد مواد مطابقة</div>';
+    return;
+  }
+
   let listHtml = '';
-  if (filtered.length === 0) {
-    listHtml = '<div class="card">لا توجد مواد مطابقة</div>';
-  } else {
-    listHtml = filtered.map(i => `
-      <div class="card item-row">
-        <strong>${i.name}</strong> 
-        <span style="float:left;font-size:0.9em">${i.item_type||'مخزون'}</span>
-        <br>
-        📂 ${i.category?.name||'بدون تصنيف'} | 🛒 شراء:${i.purchase_price} | 💰 بيع:${i.selling_price}
-        <div class="card-actions">
-          <button class="btn-secondary" onclick="showEditItemModal(${i.id})">✏️ تعديل</button>
-          <button class="btn-danger" onclick="deleteItem(${i.id})">🗑️ حذف</button>
+  filtered.forEach(item => {
+    // حساب الكميات من الفواتير
+    const purchaseQty = invoicesCache
+      .filter(inv => inv.type === 'purchase')
+      .flatMap(inv => inv.invoice_lines || [])
+      .filter(line => line.item_id === item.id)
+      .reduce((sum, line) => sum + (parseFloat(line.quantity) || 0), 0);
+
+    const saleQty = invoicesCache
+      .filter(inv => inv.type === 'sale')
+      .flatMap(inv => inv.invoice_lines || [])
+      .filter(line => line.item_id === item.id)
+      .reduce((sum, line) => sum + (parseFloat(line.quantity) || 0), 0);
+
+    const available = purchaseQty - saleQty;
+    const totalValue = available * (parseFloat(item.purchase_price) || 0);
+
+    listHtml += `
+      <div class="card item-card" onclick="showItemDetailModal(${item.id})">
+        <strong>${item.name}</strong>
+        <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:0.9em;">
+          <span>🛒 مشترى: ${purchaseQty}</span>
+          <span>💰 مباع: ${saleQty}</span>
+          <span>📦 متوفر: ${available}</span>
+          <span>💵 القيمة: ${totalValue.toFixed(2)}</span>
         </div>
       </div>
-    `).join('');
-  }
+    `;
+  });
 
   document.getElementById('items-list').innerHTML = listHtml;
 }
@@ -228,32 +245,180 @@ function renderFilteredItems() {
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box"><h3>إضافة مادة جديدة</h3><label class="form-label">اسم المادة</label><input id="add-item-name" class="input-field" /><label class="form-label">التصنيف</label><select id="add-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select><div style="display:flex;gap:8px;margin:5px 0"><input id="add-item-new-category" class="input-field" placeholder="تصنيف جديد" style="flex:2"/><button id="btn-add-category-in-modal" class="btn-secondary" style="flex:1">أضف تصنيف</button></div><label class="form-label">نوع المادة</label><select id="add-item-type" class="input-field"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select><label class="form-label">سعر الشراء</label><input id="add-item-purchase" type="number" step="0.01" class="input-field" value="0"/><label class="form-label">سعر البيع</label><input id="add-item-selling" type="number" step="0.01" class="input-field" value="0"/><div class="modal-actions"><button class="btn-primary" id="save-add-item">حفظ</button><button class="btn-secondary" id="cancel-add-item">إلغاء</button></div></div>`;
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>إضافة مادة جديدة</h3>
+      <label class="form-label">اسم المادة</label>
+      <input id="add-item-name" class="input-field" />
+      <label class="form-label">التصنيف</label>
+      <select id="add-item-category" class="input-field">
+        <option value="">بدون تصنيف</option>
+        ${catOpts}
+      </select>
+      <div style="display:flex; gap:8px; margin:5px 0;">
+        <input id="add-item-new-category" class="input-field" placeholder="تصنيف جديد" style="flex:2" />
+        <button id="btn-add-category-in-modal" class="btn-secondary" style="flex:1">أضف تصنيف</button>
+      </div>
+      <label class="form-label">نوع المادة</label>
+      <select id="add-item-type" class="input-field">
+        <option value="مخزون">مخزون</option>
+        <option value="منتج نهائي">منتج نهائي</option>
+        <option value="خدمة">خدمة</option>
+      </select>
+      <label class="form-label">سعر الشراء</label>
+      <input id="add-item-purchase" type="number" step="0.01" class="input-field" value="0" />
+      <label class="form-label">سعر البيع</label>
+      <input id="add-item-selling" type="number" step="0.01" class="input-field" value="0" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-add-item">حفظ</button>
+        <button class="btn-secondary" id="cancel-add-item">إلغاء</button>
+      </div>
+    </div>
+  `;
   document.body.appendChild(overlay);
+
   document.getElementById('btn-add-category-in-modal').onclick = async () => {
-    const cn = document.getElementById('add-item-new-category').value.trim(); if (!cn) return alert('أدخل اسم التصنيف');
-    try { const nc = await apiCall('/categories', 'POST', { name: cn }); const sel = document.getElementById('add-item-category'); const opt = document.createElement('option'); opt.value = nc.id; opt.textContent = nc.name; sel.appendChild(opt); sel.value = nc.id; document.getElementById('add-item-new-category').value = ''; categoriesCache.push(nc); } catch (e) { alert('خطأ: '+e.message); }
+    const name = document.getElementById('add-item-new-category').value.trim();
+    if (!name) return alert('أدخل اسم التصنيف');
+    try {
+      const nc = await apiCall('/categories', 'POST', { name });
+      categoriesCache.push(nc);
+      const sel = document.getElementById('add-item-category');
+      const opt = document.createElement('option');
+      opt.value = nc.id; opt.textContent = nc.name;
+      sel.appendChild(opt); sel.value = nc.id;
+      document.getElementById('add-item-new-category').value = '';
+    } catch (e) { alert('خطأ: ' + e.message); }
   };
+
   document.getElementById('save-add-item').onclick = async () => {
-    const n = document.getElementById('add-item-name').value.trim(); if (!n) return alert('اسم المادة مطلوب'); if (itemsCache.some(i => i.name.toLowerCase() === n.toLowerCase())) return alert('توجد مادة بنفس الاسم');
-    const payload = { name: n, category_id: document.getElementById('add-item-category').value || null, item_type: document.getElementById('add-item-type').value, purchase_price: parseFloat(document.getElementById('add-item-purchase').value)||0, selling_price: parseFloat(document.getElementById('add-item-selling').value)||0 };
-    try { await apiCall('/items', 'POST', payload); document.body.removeChild(overlay); loadItems(); } catch (e) { alert('خطأ: '+e.message); }
+    const name = document.getElementById('add-item-name').value.trim();
+    if (!name) return alert('اسم المادة مطلوب');
+    if (itemsCache.some(i => i.name.toLowerCase() === name.toLowerCase())) return alert('توجد مادة بنفس الاسم');
+    const payload = {
+      name,
+      category_id: document.getElementById('add-item-category').value || null,
+      item_type: document.getElementById('add-item-type').value,
+      purchase_price: parseFloat(document.getElementById('add-item-purchase').value) || 0,
+      selling_price: parseFloat(document.getElementById('add-item-selling').value) || 0
+    };
+    try {
+      await apiCall('/items', 'POST', payload);
+      itemsCache = await apiCall('/items', 'GET');
+      document.body.removeChild(overlay);
+      loadItems();
+    } catch (e) { alert('خطأ: ' + e.message); }
   };
+
   document.getElementById('cancel-add-item').onclick = () => document.body.removeChild(overlay);
 }
+
 function showEditItemModal(itemId) {
-  const it = itemsCache.find(i => i.id === itemId); if (!it) return;
+  const it = itemsCache.find(i => i.id === itemId);
+  if (!it) return;
   const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id===it.category_id?'selected':''}>${c.name}</option>`).join('');
-  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box"><h3>تعديل المادة</h3><label class="form-label">اسم المادة</label><input id="edit-item-name" class="input-field" value="${it.name}" /><label class="form-label">التصنيف</label><select id="edit-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select><label class="form-label">نوع المادة</label><select id="edit-item-type" class="input-field"><option value="مخزون" ${it.item_type==='مخزون'?'selected':''}>مخزون</option><option value="منتج نهائي" ${it.item_type==='منتج نهائي'?'selected':''}>منتج نهائي</option><option value="خدمة" ${it.item_type==='خدمة'?'selected':''}>خدمة</option></select><label class="form-label">سعر الشراء</label><input id="edit-item-purchase" type="number" step="0.01" class="input-field" value="${it.purchase_price}"/><label class="form-label">سعر البيع</label><input id="edit-item-selling" type="number" step="0.01" class="input-field" value="${it.selling_price}"/><div class="modal-actions"><button class="btn-primary" id="save-item-edit">حفظ</button><button class="btn-secondary" id="cancel-item-edit">إلغاء</button></div></div>`;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>تعديل المادة</h3>
+      <label class="form-label">اسم المادة</label>
+      <input id="edit-item-name" class="input-field" value="${it.name}" />
+      <label class="form-label">التصنيف</label>
+      <select id="edit-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select>
+      <label class="form-label">نوع المادة</label>
+      <select id="edit-item-type" class="input-field">
+        <option value="مخزون" ${it.item_type==='مخزون'?'selected':''}>مخزون</option>
+        <option value="منتج نهائي" ${it.item_type==='منتج نهائي'?'selected':''}>منتج نهائي</option>
+        <option value="خدمة" ${it.item_type==='خدمة'?'selected':''}>خدمة</option>
+      </select>
+      <label class="form-label">سعر الشراء</label>
+      <input id="edit-item-purchase" type="number" step="0.01" class="input-field" value="${it.purchase_price}" />
+      <label class="form-label">سعر البيع</label>
+      <input id="edit-item-selling" type="number" step="0.01" class="input-field" value="${it.selling_price}" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="save-item-edit">حفظ</button>
+        <button class="btn-secondary" id="cancel-item-edit">إلغاء</button>
+      </div>
+    </div>
+  `;
   document.body.appendChild(overlay);
   document.getElementById('save-item-edit').onclick = async () => {
-    const n = document.getElementById('edit-item-name').value.trim(); if (!n) return alert('الاسم مطلوب');
-    const payload = { id: itemId, name: n, category_id: document.getElementById('edit-item-category').value||null, item_type: document.getElementById('edit-item-type').value, purchase_price: parseFloat(document.getElementById('edit-item-purchase').value)||0, selling_price: parseFloat(document.getElementById('edit-item-selling').value)||0 };
-    try { await apiCall('/items', 'PUT', payload); document.body.removeChild(overlay); loadItems(); } catch (e) { alert('خطأ: '+e.message); }
+    const n = document.getElementById('edit-item-name').value.trim();
+    if (!n) return alert('الاسم مطلوب');
+    const payload = {
+      id: itemId,
+      name: n,
+      category_id: document.getElementById('edit-item-category').value || null,
+      item_type: document.getElementById('edit-item-type').value,
+      purchase_price: parseFloat(document.getElementById('edit-item-purchase').value) || 0,
+      selling_price: parseFloat(document.getElementById('edit-item-selling').value) || 0
+    };
+    try {
+      await apiCall('/items', 'PUT', payload);
+      itemsCache = await apiCall('/items', 'GET');
+      document.body.removeChild(overlay);
+      loadItems();
+    } catch (e) { alert('خطأ: ' + e.message); }
   };
   document.getElementById('cancel-item-edit').onclick = () => document.body.removeChild(overlay);
 }
+
+function showItemDetailModal(itemId) {
+  const item = itemsCache.find(i => i.id === itemId);
+  if (!item) return;
+
+  // حساب الكميات
+  const purchaseQty = invoicesCache
+    .filter(inv => inv.type === 'purchase')
+    .flatMap(inv => inv.invoice_lines || [])
+    .filter(line => line.item_id === itemId)
+    .reduce((sum, line) => sum + (parseFloat(line.quantity) || 0), 0);
+
+  const saleQty = invoicesCache
+    .filter(inv => inv.type === 'sale')
+    .flatMap(inv => inv.invoice_lines || [])
+    .filter(line => line.item_id === itemId)
+    .reduce((sum, line) => sum + (parseFloat(line.quantity) || 0), 0);
+
+  const available = purchaseQty - saleQty;
+  const totalValue = available * (parseFloat(item.purchase_price) || 0);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>${item.name}</h3>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div>🛒 الكمية المشتراة: <b>${purchaseQty}</b></div>
+        <div>💰 الكمية المباعة: <b>${saleQty}</b></div>
+        <div>📦 الكمية المتوفرة: <b>${available}</b></div>
+        <div>💵 القيمة (بسعر الشراء): <b>${totalValue.toFixed(2)}</b></div>
+        <div>🏷️ التصنيف: <b>${item.category?.name || 'بدون'}</b></div>
+        <div>📋 النوع: <b>${item.item_type || '-'}</b></div>
+        <div>🛒 سعر الشراء: <b>${item.purchase_price}</b></div>
+        <div>💰 سعر البيع: <b>${item.selling_price}</b></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="edit-item-from-detail">✏️ تعديل</button>
+        <button class="btn-danger" id="delete-item-from-detail">🗑️ حذف</button>
+        <button class="btn-secondary" id="close-detail">إغلاق</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById('edit-item-from-detail').onclick = () => {
+    document.body.removeChild(overlay);
+    showEditItemModal(itemId);
+  };
+  document.getElementById('delete-item-from-detail').onclick = () => {
+    document.body.removeChild(overlay);
+    deleteItem(itemId);
+  };
+  document.getElementById('close-detail').onclick = () => document.body.removeChild(overlay);
+}
+
 function updateInvoiceRemoveButtons() { document.querySelectorAll('#inv-lines-container .line-row').forEach(row => { const btn = row.querySelector('.btn-remove-line'); if (btn) btn.style.display = document.querySelectorAll('#inv-lines-container .line-row').length > 1 ? 'inline-block' : 'none'; }); }
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r===cur) return; if (r.querySelector('.item-select')?.value===id) found=true; }); return found; }
