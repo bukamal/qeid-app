@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // تصميم HTML مركزي وأنيق
+    // تصميم عمودي مكبر
     const html = `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -58,7 +58,7 @@ module.exports = async (req, res) => {
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
   body {
     font-family: 'Tajawal', sans-serif;
-    background: #f5f5f5;
+    background: #f0f4f8;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -67,38 +67,84 @@ module.exports = async (req, res) => {
     direction: rtl;
   }
   .invoice-box {
-    max-width: 600px;
-    width: 90%;
+    max-width: 700px;
+    width: 95%;
     background: white;
-    padding: 30px;
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
   }
   .header {
     text-align: center;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #2563eb;
-    padding-bottom: 15px;
+    border-bottom: 3px solid #2563eb;
+    padding-bottom: 20px;
   }
-  h2 { color: #2563eb; font-size: 28px; margin: 0; }
-  h3 { font-size: 18px; margin: 10px 0 0; color: #333; }
-  .info { margin: 15px 0; font-size: 15px; line-height: 1.6; }
-  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-  th { background: #2563eb; color: white; padding: 10px; font-size: 14px; }
-  td { padding: 10px; border-bottom: 1px solid #ddd; font-size: 14px; text-align: right; }
-  .total-section {
+  h2 { color: #2563eb; font-size: 36px; margin: 0; }
+  h3 { font-size: 22px; margin: 10px 0 0; color: #333; }
+  .info {
+    font-size: 18px;
+    line-height: 2;
+    background: #f9fafb;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .item-row {
+    display: flex;
+    flex-direction: column;
+    background: #f9fafb;
+    border-radius: 10px;
+    padding: 16px;
+    border-right: 4px solid #2563eb;
+  }
+  .item-header {
+    font-weight: bold;
+    font-size: 20px;
+    color: #1e293b;
+    margin-bottom: 8px;
+  }
+  .item-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 18px;
+    color: #475569;
+  }
+  .item-details span { display: inline-flex; align-items: center; gap: 6px; }
+  .item-total {
+    font-size: 20px;
+    font-weight: bold;
+    color: #2563eb;
+    margin-top: 8px;
     text-align: left;
-    margin-top: 20px;
-    padding-top: 15px;
-    border-top: 2px solid #2563eb;
-    font-size: 16px;
   }
-  .total-section p { margin: 5px 0; }
-  .balance { color: #ef4444; font-weight: bold; }
-  .notes { margin-top: 15px; font-style: italic; color: #555; }
+  .summary {
+    border-top: 3px solid #2563eb;
+    padding-top: 20px;
+    font-size: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .balance { color: #ef4444; font-weight: bold; font-size: 24px; }
+  .notes {
+    background: #fff7ed;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 18px;
+    color: #9a3412;
+  }
   @media print {
     body { background: white; }
-    .invoice-box { box-shadow: none; margin: 0; padding: 0; }
+    .invoice-box { box-shadow: none; }
   }
 </style></head>
 <body>
@@ -108,24 +154,29 @@ module.exports = async (req, res) => {
       <h3>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h3>
     </div>
     <div class="info">
-      <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
-      ${invoice.customer?.name ? `<p>العميل: ${invoice.customer.name}</p>` : ''}
-      ${invoice.supplier?.name ? `<p>المورد: ${invoice.supplier.name}</p>` : ''}
+      <p>📅 التاريخ: ${invoice.date}</p>
+      <p>🔖 المرجع: ${invoice.reference || '-'}</p>
+      ${invoice.customer?.name ? `<p>👤 العميل: ${invoice.customer.name}</p>` : ''}
+      ${invoice.supplier?.name ? `<p>🏭 المورد: ${invoice.supplier.name}</p>` : ''}
     </div>
-    <table>
-      <thead>
-        <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
-      </thead>
-      <tbody>
-        ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
-      </tbody>
-    </table>
-    <div class="total-section">
-      <p><strong>الإجمالي:</strong> ${invoice.total}</p>
+    <div class="items">
+      ${invoice.invoice_lines?.map(l => `
+        <div class="item-row">
+          <div class="item-header">${l.item?.name || '-'}</div>
+          <div class="item-details">
+            <span>📦 الكمية: ${l.quantity}</span>
+            <span>💵 السعر: ${l.unit_price}</span>
+          </div>
+          <div class="item-total">الإجمالي: ${l.total}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="summary">
+      <p><strong>الإجمالي الكلي:</strong> ${invoice.total}</p>
       <p><strong>المدفوع:</strong> ${paid}</p>
       <p class="balance"><strong>الباقي:</strong> ${balance}</p>
     </div>
-    ${invoice.notes ? `<p class="notes">ملاحظات: ${invoice.notes}</p>` : ''}
+    ${invoice.notes ? `<div class="notes">📝 ملاحظات: ${invoice.notes}</div>` : ''}
   </div>
 </body></html>`;
 
