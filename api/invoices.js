@@ -50,56 +50,50 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
-      let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
+      let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount, expense_type } = req.body;
       if (!type || !['sale', 'purchase'].includes(type)) return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
       if (!lines || !Array.isArray(lines) || lines.length === 0) return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
 
       const finalCustomerId = (customer_id && customer_id !== 'cash') ? parseInt(customer_id) : null;
       const finalSupplierId = (supplier_id && supplier_id !== 'cash') ? parseInt(supplier_id) : null;
+      const finalExpenseType = expense_type || 'purchase';
 
       let total = 0;
       for (const line of lines) total += parseFloat(line.total) || 0;
 
       const { data: invoice, error: invError } = await supabase
         .from('invoices')
-        .insert({ user_id: userId, type, customer_id: finalCustomerId, supplier_id: finalSupplierId, date: date || new Date().toISOString().split('T')[0], reference, notes, total, status: 'posted' })
+        .insert({
+          user_id: userId, type, customer_id: finalCustomerId, supplier_id: finalSupplierId,
+          date: date || new Date().toISOString().split('T')[0],
+          reference, notes, total, status: 'posted',
+          expense_type: finalExpenseType
+        })
         .select().single();
       if (invError) throw invError;
 
-      const linesToInsert = lines.map(l => ({ invoice_id: invoice.id, item_id: l.item_id || null, description: l.description, quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0 }));
+      const linesToInsert = lines.map(l => ({
+        invoice_id: invoice.id, item_id: l.item_id || null, description: l.description,
+        quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0
+      }));
       await supabase.from('invoice_lines').insert(linesToInsert);
 
-      // --- المبلغ المدفوع والدفعات التلقائية ---
       let amountPaid = parseFloat(paid_amount) || 0;
-      // إذا كانت الفاتورة نقدية بالكامل (لا عميل ولا مورد)، اعتبر المبلغ مدفوعاً
-      if (!finalCustomerId && !finalSupplierId) {
-        amountPaid = total;
-      }
+      if (!finalCustomerId && !finalSupplierId) amountPaid = total;
       if (amountPaid > 0) {
         await supabase.from('payments').insert({
-          user_id: userId,
-          invoice_id: invoice.id,
-          customer_id: finalCustomerId || null,
-          supplier_id: finalSupplierId || null,
-          amount: amountPaid,
-          payment_date: invoice.date,
-          notes: 'دفعة تلقائية من الفاتورة'
+          user_id: userId, invoice_id: invoice.id,
+          customer_id: finalCustomerId || null, supplier_id: finalSupplierId || null,
+          amount: amountPaid, payment_date: invoice.date, notes: 'دفعة تلقائية من الفاتورة'
         });
       }
 
-      // تحديث رصيد العميل أو المورد (فقط إذا لم تكن cash)
       if (type === 'sale' && finalCustomerId) {
         const { data: cust } = await supabase.from('customers').select('balance').eq('id', finalCustomerId).eq('user_id', userId).single();
-        if (cust) {
-          const newBalance = parseFloat(cust.balance) + total - amountPaid;
-          await supabase.from('customers').update({ balance: newBalance }).eq('id', finalCustomerId).eq('user_id', userId);
-        }
+        if (cust) await supabase.from('customers').update({ balance: parseFloat(cust.balance) + total - amountPaid }).eq('id', finalCustomerId).eq('user_id', userId);
       } else if (type === 'purchase' && finalSupplierId) {
         const { data: sup } = await supabase.from('suppliers').select('balance').eq('id', finalSupplierId).eq('user_id', userId).single();
-        if (sup) {
-          const newBalance = parseFloat(sup.balance) + total - amountPaid;
-          await supabase.from('suppliers').update({ balance: newBalance }).eq('id', finalSupplierId).eq('user_id', userId);
-        }
+        if (sup) await supabase.from('suppliers').update({ balance: parseFloat(sup.balance) + total - amountPaid }).eq('id', finalSupplierId).eq('user_id', userId);
       }
 
       return res.json(invoice);
@@ -116,7 +110,10 @@ module.exports = async (req, res) => {
       let total = 0;
       if (lines && Array.isArray(lines)) {
         for (const line of lines) total += parseFloat(line.total) || 0;
-        const linesToInsert = lines.map(l => ({ invoice_id: id, item_id: l.item_id || null, description: l.description, quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0 }));
+        const linesToInsert = lines.map(l => ({
+          invoice_id: id, item_id: l.item_id || null, description: l.description,
+          quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0, total: parseFloat(l.total) || 0
+        }));
         await supabase.from('invoice_lines').insert(linesToInsert);
       }
       const { data: updated, error: updateError } = await supabase.from('invoices').update({ type, customer_id: finalCustomerId, supplier_id: finalSupplierId, date, reference, notes, total }).eq('id', id).eq('user_id', userId).select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))').single();
