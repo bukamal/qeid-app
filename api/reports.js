@@ -40,25 +40,16 @@ module.exports = async (req, res) => {
       const totalSales = salesInvoices?.reduce((s, inv) => s + parseFloat(inv.total), 0) || 0;
       const { data: purchaseInvoices } = await supabase.from('invoices').select('total').eq('user_id', userId).eq('type', 'purchase');
       const totalPurchases = purchaseInvoices?.reduce((s, inv) => s + parseFloat(inv.total), 0) || 0;
-
       const { data: paymentsIn } = await supabase.from('payments').select('amount').eq('user_id', userId).not('customer_id', 'is', null);
       const totalPaymentsIn = paymentsIn?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
-
       const { data: paymentsOut } = await supabase.from('payments').select('amount').eq('user_id', userId).not('supplier_id', 'is', null);
       const totalPaymentsOut = paymentsOut?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
-
-      // فواتير نقدية (بدون عميل أو مورد) -> دخل مباشر للصندوق
       const { data: cashInvoices } = await supabase.from('invoices').select('total, type').eq('user_id', userId).is('customer_id', null).is('supplier_id', null);
       let cashIncome = 0, cashExpense = 0;
-      cashInvoices?.forEach(inv => {
-        if (inv.type === 'sale') cashIncome += parseFloat(inv.total||0);
-        else if (inv.type === 'purchase') cashExpense += parseFloat(inv.total||0);
-      });
-
+      cashInvoices?.forEach(inv => { if (inv.type === 'sale') cashIncome += parseFloat(inv.total||0); else if (inv.type === 'purchase') cashExpense += parseFloat(inv.total||0); });
       const totalReceived = totalPaymentsIn + cashIncome;
       const totalPaid = totalPaymentsOut + cashExpense;
       const cashBalance = totalReceived - totalPaid;
-
       const { data: customers } = await supabase.from('customers').select('name, balance').eq('user_id', userId);
       const { data: suppliers } = await supabase.from('suppliers').select('name, balance').eq('user_id', userId);
       const totalCustomerBalance = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
@@ -66,7 +57,6 @@ module.exports = async (req, res) => {
       const totalAssets = cashBalance + totalCustomerBalance;
       const totalLiabilities = totalSupplierBalance;
       const equity = totalAssets - totalLiabilities;
-
       const result = [
         { name: 'الصندوق', type: 'asset', total_debit: totalReceived, total_credit: totalPaid, balance: cashBalance },
         { name: 'ذمم مدينة (عملاء)', type: 'asset', total_debit: totalCustomerBalance, total_credit: 0, balance: totalCustomerBalance },
@@ -85,19 +75,14 @@ module.exports = async (req, res) => {
       if (sales && sales.length > 0) {
         const saleIds = sales.map(inv => inv.id);
         const { data: lines } = await supabase.from('invoice_lines').select('quantity, item:items(purchase_price)').in('invoice_id', saleIds);
-        if (lines) {
-          for (const line of lines) {
-            totalCostOfSales += (parseFloat(line.quantity) || 0) * (parseFloat(line.item?.purchase_price) || 0);
-          }
-        }
+        if (lines) for (const line of lines) totalCostOfSales += (parseFloat(line.quantity) || 0) * (parseFloat(line.item?.purchase_price) || 0);
       }
-      const netProfit = totalIncome - totalCostOfSales;
       return res.json({
         income: [{ name: 'المبيعات', balance: totalIncome }],
         total_income: totalIncome,
         expenses: [{ name: 'تكلفة المبيعات', balance: totalCostOfSales }],
         total_expenses: totalCostOfSales,
-        net_profit: netProfit
+        net_profit: totalIncome - totalCostOfSales
       });
     }
 
@@ -106,22 +91,16 @@ module.exports = async (req, res) => {
       const { data: paymentsOut } = await supabase.from('payments').select('amount').eq('user_id', userId).not('supplier_id', 'is', null);
       const totalPaymentsIn = paymentsIn?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
       const totalPaymentsOut = paymentsOut?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
-
       const { data: cashInvoices } = await supabase.from('invoices').select('total, type').eq('user_id', userId).is('customer_id', null).is('supplier_id', null);
       let cashIncome = 0, cashExpense = 0;
-      cashInvoices?.forEach(inv => {
-        if (inv.type === 'sale') cashIncome += parseFloat(inv.total||0);
-        else if (inv.type === 'purchase') cashExpense += parseFloat(inv.total||0);
-      });
+      cashInvoices?.forEach(inv => { if (inv.type === 'sale') cashIncome += parseFloat(inv.total||0); else if (inv.type === 'purchase') cashExpense += parseFloat(inv.total||0); });
       const cash = totalPaymentsIn + cashIncome - totalPaymentsOut - cashExpense;
-
       const { data: customers } = await supabase.from('customers').select('balance').eq('user_id', userId);
       const { data: suppliers } = await supabase.from('suppliers').select('balance').eq('user_id', userId);
       const receivables = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
       const payables = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
       const totalAssets = cash + receivables;
       const equity = totalAssets - payables;
-
       return res.json({
         assets: [{ name: 'الصندوق', balance: cash }, { name: 'ذمم مدينة', balance: receivables }],
         total_assets: totalAssets,
@@ -148,16 +127,26 @@ module.exports = async (req, res) => {
         const { data: supplierPayments } = await supabase.from('payments').select('amount, payment_date, notes, supplier_id, supplier:suppliers(name)').eq('user_id', userId).not('supplier_id', 'is', null).order('payment_date', { ascending: true });
         supplierPayments?.forEach(p => { lines.push({ date: p.payment_date, description: `دفعة إلى ${p.supplier?.name || ''}`, debit: 0, credit: p.amount }); });
         const { data: cashInvoices } = await supabase.from('invoices').select('date, reference, total, type').eq('user_id', userId).is('customer_id', null).is('supplier_id', null).order('date', { ascending: true });
-        cashInvoices?.forEach(inv => {
-          if (inv.type === 'sale') lines.push({ date: inv.date, description: `فاتورة بيع نقدي ${inv.reference || ''}`, debit: inv.total, credit: 0 });
-          else if (inv.type === 'purchase') lines.push({ date: inv.date, description: `فاتورة شراء نقدي ${inv.reference || ''}`, debit: 0, credit: inv.total });
-        });
+        cashInvoices?.forEach(inv => { if (inv.type === 'sale') lines.push({ date: inv.date, description: `فاتورة بيع نقدي ${inv.reference || ''}`, debit: inv.total, credit: 0 }); else if (inv.type === 'purchase') lines.push({ date: inv.date, description: `فاتورة شراء نقدي ${inv.reference || ''}`, debit: 0, credit: inv.total }); });
       } else if (accountName === 'المبيعات') {
         const { data: sales } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'sale').order('date', { ascending: true });
         sales?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة بيع ${inv.reference || ''}`, debit: 0, credit: inv.total }); });
       } else if (accountName === 'المشتريات') {
         const { data: purchases } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
         purchases?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة شراء ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
+      } else if (accountName === 'المخزون') {
+        const { data: purchaseLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice:invoices!inner(date, type)').eq('invoice.user_id', userId).eq('invoice.type', 'purchase').order('date', { ascending: true });
+        purchaseLines?.forEach(line => {
+          const qty = parseFloat(line.quantity) || 0;
+          const price = parseFloat(line.item?.purchase_price) || 0;
+          lines.push({ date: line.invoice?.date, description: `شراء ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: qty * price, credit: 0 });
+        });
+        const { data: saleLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice:invoices!inner(date, type)').eq('invoice.user_id', userId).eq('invoice.type', 'sale').order('date', { ascending: true });
+        saleLines?.forEach(line => {
+          const qty = parseFloat(line.quantity) || 0;
+          const price = parseFloat(line.item?.purchase_price) || 0;
+          lines.push({ date: line.invoice?.date, description: `بيع ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: 0, credit: qty * price });
+        });
       } else if (accountName === 'ذمم مدينة - عملاء' || accountName === 'ذمم مدينة') {
         const { data: custInvoices } = await supabase.from('invoices').select('date, reference, total, customer_id, customer:customers(name)').eq('user_id', userId).eq('type', 'sale').not('customer_id', 'is', null).order('date', { ascending: true });
         custInvoices?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة ${inv.customer?.name || ''} ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
@@ -210,36 +199,29 @@ module.exports = async (req, res) => {
       const monthly = {};
       const months = [];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i);
+        const d = new Date(); d.setMonth(d.getMonth() - i);
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        months.push(key);
-        monthly[key] = { sales: 0, purchases: 0, payments_in: 0, payments_out: 0 };
+        months.push(key); monthly[key] = { sales: 0, purchases: 0, payments_in: 0, payments_out: 0 };
       }
       invoices?.forEach(inv => { if (!inv.date) return; const key = inv.date.substring(0,7); if (monthly[key]) { if (inv.type === 'sale') monthly[key].sales += parseFloat(inv.total||0); else if (inv.type === 'purchase') monthly[key].purchases += parseFloat(inv.total||0); } });
       payments?.forEach(p => { if (!p.payment_date) return; const key = p.payment_date.substring(0,7); if (monthly[key]) { if (p.customer_id) monthly[key].payments_in += parseFloat(p.amount||0); if (p.supplier_id) monthly[key].payments_out += parseFloat(p.amount||0); } });
       const labels = months;
-      const salesData = months.map(m => monthly[m].sales);
-      const purchasesData = months.map(m => monthly[m].purchases);
-      const netProfitData = months.map(m => monthly[m].sales - monthly[m].purchases);
-      const paymentsInData = months.map(m => monthly[m].payments_in);
-      const paymentsOutData = months.map(m => monthly[m].payments_out);
-      return res.json({ labels, sales: salesData, purchases: purchasesData, net_profit: netProfitData, payments_in: paymentsInData, payments_out: paymentsOutData });
+      return res.json({
+        labels,
+        sales: months.map(m => monthly[m].sales),
+        purchases: months.map(m => monthly[m].purchases),
+        net_profit: months.map(m => monthly[m].sales - monthly[m].purchases),
+        payments_in: months.map(m => monthly[m].payments_in),
+        payments_out: months.map(m => monthly[m].payments_out)
+      });
     }
 
     if (reportType === 'daily_profit') {
       const { data: invoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId).order('date', { ascending: true });
       const daily = {};
-      invoices?.forEach(inv => {
-        if (!inv.date) return;
-        const day = inv.date;
-        if (!daily[day]) daily[day] = 0;
-        if (inv.type === 'sale') daily[day] += parseFloat(inv.total || 0);
-        else if (inv.type === 'purchase') daily[day] -= parseFloat(inv.total || 0);
-      });
+      invoices?.forEach(inv => { if (!inv.date) return; const day = inv.date; if (!daily[day]) daily[day] = 0; if (inv.type === 'sale') daily[day] += parseFloat(inv.total||0); else if (inv.type === 'purchase') daily[day] -= parseFloat(inv.total||0); });
       const dates = Object.keys(daily).sort();
-      const profits = dates.map(d => daily[d]);
-      return res.json({ dates, profits });
+      return res.json({ dates, profits: dates.map(d => daily[d]) });
     }
 
     return res.status(400).json({ error: 'نوع تقرير غير معروف' });
