@@ -6,7 +6,6 @@ const https = require('https');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/cairo/static/Cairo-Regular.ttf';
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,10 +27,6 @@ function verifyTelegramData(initData) {
 async function getUserId(initData) {
   if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
   return JSON.parse(new URLSearchParams(initData).get('user')).id;
-}
-
-function reverseText(text) {
-  return text.split('').reverse().join('');
 }
 
 module.exports = async (req, res) => {
@@ -56,44 +51,33 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // تحميل الخط من الإنترنت
-    const fontBuffer = await new Promise((resolve, reject) => {
-      https.get(FONT_URL, (response) => {
-        const chunks = [];
-        response.on('data', chunk => chunks.push(chunk));
-        response.on('end', () => resolve(Buffer.concat(chunks)));
-        response.on('error', reject);
-      });
-    });
-
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    doc.registerFont('Arabic', fontBuffer);
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     const pdfPromise = new Promise(resolve => { doc.on('end', () => resolve(Buffer.concat(chunks))); });
 
-    doc.font('Arabic');
-    doc.fontSize(20).text(reverseText('الراجحي للمحاسبة'), { align: 'center' });
+    // ترويسة بالإنجليزية
+    doc.fontSize(20).text('Alrajhi Accounting', { align: 'center' });
     doc.moveDown();
-    doc.fontSize(14).text(reverseText(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`), { align: 'center' });
+    doc.fontSize(14).text(`Invoice ${invoice.type === 'sale' ? 'Sale' : 'Purchase'}`, { align: 'center' });
     doc.moveDown();
-    doc.fontSize(12).text(reverseText(`التاريخ: ${invoice.date}`), { align: 'center' });
-    doc.text(reverseText(`المرجع: ${invoice.reference || '-'}`), { align: 'center' });
-    doc.moveDown();
-    if (invoice.customer?.name) doc.text(reverseText(`العميل: ${invoice.customer.name}`));
-    if (invoice.supplier?.name) doc.text(reverseText(`المورد: ${invoice.supplier.name}`));
+    doc.fontSize(12).text(`Date: ${invoice.date}`, { align: 'center' });
+    doc.text(`Ref: ${invoice.reference || '-'}`, { align: 'center' });
+    if (invoice.customer?.name) doc.text(`Customer: ${invoice.customer.name}`);
+    if (invoice.supplier?.name) doc.text(`Supplier: ${invoice.supplier.name}`);
     doc.moveDown();
 
+    // جدول البنود
     const tableTop = doc.y;
-    doc.fontSize(11).text(reverseText('المادة'), 50, tableTop);
-    doc.text(reverseText('الكمية'), 250, tableTop);
-    doc.text(reverseText('السعر'), 350, tableTop);
-    doc.text(reverseText('الإجمالي'), 450, tableTop);
+    doc.fontSize(11).text('Item', 50, tableTop);
+    doc.text('Qty', 250, tableTop);
+    doc.text('Price', 350, tableTop);
+    doc.text('Total', 450, tableTop);
     doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
     doc.moveDown(0.5);
 
     invoice.invoice_lines?.forEach(line => {
-      doc.text(reverseText(line.item?.name || '-'), 50, doc.y);
+      doc.text(line.item?.name || '-', 50, doc.y);
       doc.text(String(line.quantity), 250, doc.y);
       doc.text(String(line.unit_price), 350, doc.y);
       doc.text(String(line.total), 450, doc.y);
@@ -103,24 +87,25 @@ module.exports = async (req, res) => {
     doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
     doc.moveDown();
     doc.fontSize(12);
-    doc.text(reverseText(`الإجمالي: ${invoice.total}`), 250, doc.y, { align: 'left' });
-    doc.text(reverseText(`المدفوع: ${paid}`), 250, doc.y + 16, { align: 'left' });
-    doc.text(reverseText(`الباقي: ${balance}`), 250, doc.y + 32, { align: 'left' });
+    doc.text(`Total: ${invoice.total}`, 250, doc.y, { align: 'left' });
+    doc.text(`Paid: ${paid}`, 250, doc.y + 16, { align: 'left' });
+    doc.text(`Balance: ${balance}`, 250, doc.y + 32, { align: 'left' });
     if (invoice.notes) {
       doc.moveDown();
-      doc.text(reverseText(`ملاحظات: ${invoice.notes}`));
+      doc.text(`Notes: ${invoice.notes}`);
     }
 
     doc.end();
     const pdfBuffer = await pdfPromise;
 
+    // إرسال عبر البوت
     const form = new FormData();
     form.append('chat_id', String(userId));
     form.append('document', pdfBuffer, {
-      filename: `فاتورة-${invoice.reference || invoice.id}.pdf`,
+      filename: `invoice-${invoice.reference || invoice.id}.pdf`,
       contentType: 'application/pdf'
     });
-    form.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
+    form.append('caption', `Invoice ${invoice.type === 'sale' ? 'Sale' : 'Purchase'} ${invoice.reference || ''}`);
 
     const options = { hostname: 'api.telegram.org', path: `/bot${BOT_TOKEN}/sendDocument`, method: 'POST', headers: form.getHeaders() };
     const tgReq = https.request(options, (tgRes) => {
