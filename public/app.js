@@ -229,26 +229,111 @@ async function showInvoiceModal(type) {
     };
   } catch(err) { alert('خطأ: '+err.message); }
 }
+
 let invoicesCache = [];
 async function loadInvoices() {
   try {
     const [invoices] = await Promise.all([apiCall('/invoices','GET')]); invoicesCache = invoices;
     customersCache = (await apiCall('/customers','GET')); suppliersCache = (await apiCall('/suppliers','GET')); itemsCache = (await apiCall('/items','GET'));
-    let html = `<div class="card"><h2>جميع الفواتير</h2></div>`;
-    if (!invoices.length) html += '<div class="card">لا توجد فواتير</div>';
-    else html += invoices.map(inv => `<div class="card"><strong>${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''}</strong> – ${inv.date}<br>${inv.customer?.name?'العميل: '+inv.customer.name:''} ${inv.supplier?.name?'المورد: '+inv.supplier.name:''}<br>الإجمالي: ${inv.total} | المدفوع: ${inv.paid||0} | الباقي: <strong>${inv.balance||0}</strong><div style="font-size:0.8em">${inv.invoice_lines?.map(l => `${l.item?.name||'-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div><div class="card-actions"><button class="btn-secondary edit-invoice-btn" data-invoice-id="${inv.id}">✏️ تعديل</button><button class="btn-primary print-invoice-btn" data-invoice-id="${inv.id}">🖨️ طباعة</button><button class="btn-primary pdf-invoice-btn" data-invoice-id="${inv.id}">📥 PDF</button><button class="btn-danger delete-invoice-btn" data-invoice-id="${inv.id}">🗑️ حذف</button></div></div>`).join('');
+
+    let html = `
+      <div class="card">
+        <h2>جميع الفواتير</h2>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <button class="tab filter-tab active" data-filter="all">الكل</button>
+          <button class="tab filter-tab" data-filter="sale">بيع</button>
+          <button class="tab filter-tab" data-filter="purchase">شراء</button>
+        </div>
+        <input id="invoice-search" type="text" class="input-field" placeholder="🔍 بحث في الفواتير..." style="margin-bottom:6px;" />
+      </div>
+      <div id="invoices-list"></div>
+    `;
     document.getElementById('tab-content').innerHTML = html;
-    document.querySelectorAll('.edit-invoice-btn').forEach(btn => btn.addEventListener('click', e => { const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId)); if (inv) showEditInvoiceModal(inv); }));
-    document.querySelectorAll('.print-invoice-btn').forEach(btn => btn.addEventListener('click', e => { const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId)); if (inv) printInvoice(inv); }));
-    document.querySelectorAll('.pdf-invoice-btn').forEach(btn => btn.addEventListener('click', async e => {
-      const id = parseInt(e.target.dataset.invoiceId);
-      btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...';
-      try { await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); alert('تم إرسال الفاتورة إلى البوت ✅'); } catch (ex) { alert('فشل الإرسال: '+ex.message); }
-      finally { btn.disabled = false; btn.textContent = '📥 PDF'; }
-    }));
-    document.querySelectorAll('.delete-invoice-btn').forEach(btn => btn.addEventListener('click', e => deleteInvoice(parseInt(e.target.dataset.invoiceId))));
-  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+
+    // ربط أحداث التصفية والبحث
+    const filterTabs = document.querySelectorAll('.filter-tab');
+    filterTabs.forEach(tab => {
+      tab.addEventListener('click', function() {
+        filterTabs.forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        renderFilteredInvoices();
+      });
+    });
+    document.getElementById('invoice-search').addEventListener('input', renderFilteredInvoices);
+
+    // عرض القائمة الأولية
+    renderFilteredInvoices();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
 }
+
+function renderFilteredInvoices() {
+  const activeFilter = document.querySelector('.filter-tab.active')?.dataset.filter || 'all';
+  const searchQuery = document.getElementById('invoice-search')?.value.trim().toLowerCase() || '';
+
+  let filtered = invoicesCache;
+  if (activeFilter === 'sale') {
+    filtered = filtered.filter(inv => inv.type === 'sale');
+  } else if (activeFilter === 'purchase') {
+    filtered = filtered.filter(inv => inv.type === 'purchase');
+  }
+
+  if (searchQuery) {
+    filtered = filtered.filter(inv =>
+      (inv.reference || '').toLowerCase().includes(searchQuery) ||
+      (inv.customer?.name || '').toLowerCase().includes(searchQuery) ||
+      (inv.supplier?.name || '').toLowerCase().includes(searchQuery) ||
+      String(inv.total).includes(searchQuery)
+    );
+  }
+
+  let listHtml = '';
+  if (filtered.length === 0) {
+    listHtml = '<div class="card">لا توجد فواتير مطابقة</div>';
+  } else {
+    listHtml = filtered.map(inv => `
+      <div class="card">
+        <strong>${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}</strong> – ${inv.date}<br>
+        ${inv.customer?.name ? 'العميل: ' + inv.customer.name : ''} ${inv.supplier?.name ? 'المورد: ' + inv.supplier.name : ''}<br>
+        الإجمالي: ${inv.total} | المدفوع: ${inv.paid || 0} | الباقي: <strong>${inv.balance || 0}</strong>
+        <div style="font-size:0.8em;">${inv.invoice_lines?.map(l => `${l.item?.name || '-'} x${l.quantity} @${l.unit_price}`).join('<br>')}</div>
+        <div class="card-actions">
+          <button class="btn-secondary edit-invoice-btn" data-invoice-id="${inv.id}">✏️ تعديل</button>
+          <button class="btn-primary print-invoice-btn" data-invoice-id="${inv.id}">🖨️ طباعة</button>
+          <button class="btn-primary pdf-invoice-btn" data-invoice-id="${inv.id}">📥 PDF</button>
+          <button class="btn-danger delete-invoice-btn" data-invoice-id="${inv.id}">🗑️ حذف</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('invoices-list').innerHTML = listHtml;
+
+  // إعادة ربط الأزرار بعد كل تحديث
+  document.querySelectorAll('.edit-invoice-btn').forEach(btn => btn.addEventListener('click', e => {
+    const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId));
+    if (inv) showEditInvoiceModal(inv);
+  }));
+  document.querySelectorAll('.print-invoice-btn').forEach(btn => btn.addEventListener('click', e => {
+    const inv = invoicesCache.find(i => i.id === parseInt(e.target.dataset.invoiceId));
+    if (inv) printInvoice(inv);
+  }));
+  document.querySelectorAll('.pdf-invoice-btn').forEach(btn => btn.addEventListener('click', async e => {
+    const id = parseInt(e.target.dataset.invoiceId);
+    btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...';
+    try {
+      await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id });
+      alert('تم إرسال الفاتورة إلى البوت ✅');
+    } catch (ex) {
+      alert('فشل الإرسال: ' + ex.message);
+    } finally {
+      btn.disabled = false; btn.textContent = '📥 PDF';
+    }
+  }));
+  document.querySelectorAll('.delete-invoice-btn').forEach(btn => btn.addEventListener('click', e => deleteInvoice(parseInt(e.target.dataset.invoiceId))));
+}
+
 function showEditInvoiceModal(invoice) {
   const type = invoice.type;
   const itemsOpt = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
