@@ -33,26 +33,66 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { imageBase64, invoiceId, initData } = req.body;
-    if (!imageBase64) return res.status(400).json({ error: 'الصورة مطلوبة' });
+    const { invoiceId, initData } = req.body;
+    if (!invoiceId) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
     const userId = await getUserId(initData);
 
-    // تحويل base64 إلى Buffer
-    const buffer = Buffer.from(imageBase64, 'base64');
+    const { data: invoice, error: invError } = await supabase
+      .from('invoices')
+      .select('*, customer:customers(name), supplier:suppliers(name), invoice_lines(*, item:items(name))')
+      .eq('id', invoiceId)
+      .eq('user_id', userId)
+      .single();
+    if (invError || !invoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-    // إرسال الصورة إلى تيليجرام
+    const { data: payments } = await supabase.from('payments').select('amount').eq('invoice_id', invoiceId);
+    const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
+    const balance = invoice.total - paid;
+
+    // بناء صفحة HTML كاملة بالعربية
+    const html = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>فاتورة ${invoice.reference || invoice.id}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+  body { font-family: 'Tajawal', sans-serif; padding: 30px; direction: rtl; }
+  h2 { color: #2563eb; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th { background: #f0f0f0; }
+  th, td { border: 1px solid #ccc; padding: 10px; text-align: right; }
+  .total { margin-top: 20px; text-align: left; }
+</style></head>
+<body>
+  <h2>الراجحي للمحاسبة</h2>
+  <h3>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h3>
+  <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+  ${invoice.customer?.name ? `<p>العميل: ${invoice.customer.name}</p>` : ''}
+  ${invoice.supplier?.name ? `<p>المورد: ${invoice.supplier.name}</p>` : ''}
+  <table>
+    <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+    ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+  </table>
+  <div class="total">
+    <p><strong>الإجمالي: ${invoice.total}</strong></p>
+    <p>المدفوع: ${paid}</p>
+    <p><strong>الباقي: ${balance}</strong></p>
+  </div>
+  ${invoice.notes ? `<p>ملاحظات: ${invoice.notes}</p>` : ''}
+</body></html>`;
+
     const FormData = require('form-data');
     const form = new FormData();
     form.append('chat_id', String(userId));
-    form.append('photo', buffer, {
-      filename: `invoice-${invoiceId || 'unknown'}.png`,
-      contentType: 'image/png'
+    form.append('document', Buffer.from(html, 'utf-8'), {
+      filename: `فاتورة-${invoice.reference || invoice.id}.html`,
+      contentType: 'text/html'
     });
-    form.append('caption', 'فاتورة من الراجحي للمحاسبة');
+    form.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
 
     const options = {
       hostname: 'api.telegram.org',
-      path: `/bot${BOT_TOKEN}/sendPhoto`,
+      path: `/bot${BOT_TOKEN}/sendDocument`,
       method: 'POST',
       headers: form.getHeaders()
     };
