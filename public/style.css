@@ -37,7 +37,7 @@ body {
   font-size: 16px;
   line-height: 1.6;
   transition: background 0.3s, color 0.3s;
-  padding-top: 0;
+  padding: 0;
 }
 header {
   position: sticky;
@@ -120,8 +120,8 @@ select.input-field {
 }
 #tab-content {
   margin-top: 12px;
+  padding: 0 12px 12px 12px;
 }
-/* شريط الملخص السريع */
 .summary-strip {
   display: flex;
   gap: 8px;
