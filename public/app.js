@@ -292,37 +292,110 @@ async function deleteInvoice(id) { if (!await confirmDialog('متأكد من ح�
 async function loadCategories() {
   try {
     const cats = await apiCall('/categories','GET');
-    let html = `<div class="card"><h2>التصنيفات</h2><button id="btn-add-cat" class="btn-primary">+ إضافة تصنيف</button></div><div id="cat-form" class="card" style="display:none"><h3>إضافة تصنيف</h3><input id="cat-name" class="input-field" placeholder="اسم التصنيف"/><button id="btn-save-cat" class="btn-primary">حفظ</button><button id="btn-cancel-cat" class="btn-secondary">إلغاء</button></div>`;
+    let html = `<div class="card"><h2>التصنيفات</h2><button id="btn-add-cat" class="btn-primary">+ إضافة تصنيف</button></div>`;
     if (!cats.length) html += '<div class="card">لا توجد تصنيفات</div>';
     else html += cats.map(c => `<div class="card"><strong>${c.name}</strong><div class="card-actions"><button class="btn-secondary" onclick="showEditCategoryModal(${c.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteCategory(${c.id})">🗑️ حذف</button></div></div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
-    document.getElementById('btn-add-cat').addEventListener('click', ()=> document.getElementById('cat-form').style.display='block');
-    document.getElementById('btn-cancel-cat').addEventListener('click', ()=> document.getElementById('cat-form').style.display='none');
-    document.getElementById('btn-save-cat').addEventListener('click', async () => { const n = document.getElementById('cat-name').value.trim(); if (!n) return alert('الاسم مطلوب'); try { await apiCall('/categories','POST',{name:n}); document.getElementById('cat-form').style.display='none'; loadCategories(); } catch(e) { alert('خطأ: '+e.message); } });
+    document.getElementById('btn-add-cat').addEventListener('click', showAddCategoryModal);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+}
+function showAddCategoryModal() {
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>إضافة تصنيف جديد</h3>
+      <label class="form-label">اسم التصنيف</label>
+      <input id="cat-name" class="input-field" placeholder="اسم التصنيف" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="btn-save-cat">حفظ</button>
+        <button class="btn-secondary" id="btn-cancel-cat">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('btn-save-cat').onclick = async () => {
+    const n = document.getElementById('cat-name').value.trim();
+    if (!n) return alert('الاسم مطلوب');
+    try { await apiCall('/categories','POST',{name:n}); document.body.removeChild(overlay); loadCategories(); } catch(e) { alert('خطأ: '+e.message); }
+  };
+  document.getElementById('btn-cancel-cat').onclick = () => document.body.removeChild(overlay);
 }
 function showEditCategoryModal(id) { apiCall('/categories','GET').then(cats => { const c = cats.find(x => x.id===id); if (!c) return; const overlay = document.createElement('div'); overlay.className='modal-overlay'; overlay.innerHTML=`<div class="modal-box"><h3>تعديل التصنيف</h3><input id="edit-cat-name" class="input-field" value="${c.name}"/><div class="modal-actions"><button class="btn-primary" id="save-cat-edit">حفظ</button><button class="btn-secondary" id="cancel-cat-edit">إلغاء</button></div></div>`; document.body.appendChild(overlay); document.getElementById('save-cat-edit').onclick = async () => { const n = document.getElementById('edit-cat-name').value.trim(); if (!n) return alert('الاسم مطلوب'); try { await apiCall('/categories','PUT',{id,name:n}); document.body.removeChild(overlay); loadCategories(); } catch(e) { alert('خطأ: '+e.message); } }; document.getElementById('cancel-cat-edit').onclick = () => document.body.removeChild(overlay); }); }
 async function deleteCategory(id) { if (!await confirmDialog('متأكد من حذف التصنيف؟')) return; try { await apiCall(`/categories?id=${id}`,'DELETE'); alert('تم الحذف'); loadCategories(); } catch(e) { alert('خطأ: '+e.message); } }
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments','GET'), apiCall('/invoices','GET'), apiCall('/customers','GET'), apiCall('/suppliers','GET')]);
-    let html = `<div class="card"><h2>الدفعات</h2><button id="btn-add-pmt" class="btn-primary">+ إضافة دفعة</button></div><div id="pmt-form" class="card" style="display:none"><h3>إضافة دفعة</h3><select id="pmt-type" class="input-field"><option value="customer">من عميل</option><option value="supplier">إلى مورد</option></select><div id="pmt-cust-block"><select id="pmt-customer" class="input-field"><option value="">اختر عميل</option>${customers.map(c=>`<option value="${c.id}">${c.name} (${c.balance})</option>`).join('')}</select></div><div id="pmt-supp-block" style="display:none"><select id="pmt-supplier" class="input-field"><option value="">اختر مورد</option>${suppliers.map(s=>`<option value="${s.id}">${s.name} (${s.balance})</option>`).join('')}</select></div><select id="pmt-invoice" class="input-field"><option value="">بدون فاتورة</option></select><input id="pmt-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field"/><input id="pmt-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><textarea id="pmt-notes" placeholder="ملاحظات" class="input-field"></textarea><button id="btn-save-pmt" class="btn-primary">حفظ</button><button id="btn-cancel-pmt" class="btn-secondary">إلغاء</button></div>`;
+    let html = `<div class="card"><h2>الدفعات</h2><button id="btn-add-pmt" class="btn-primary">+ إضافة دفعة</button></div>`;
     if (!payments.length) html += '<div class="card">لا توجد دفعات</div>';
     else html += payments.map(p => `<div class="card"><strong>${p.amount}</strong> – ${p.payment_date}<br>${p.customer?.name?'العميل: '+p.customer.name:''} ${p.supplier?.name?'المورد: '+p.supplier.name:''} ${p.invoice?'| فاتورة: '+(p.invoice.type==='sale'?'بيع ':'شراء ')+(p.invoice.reference||''):''} ${p.notes?'<br>'+p.notes:''}<div class="card-actions"><button class="btn-danger" onclick="deletePayment(${p.id})">🗑️ حذف</button></div></div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
-    const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
-    const updateInvList = (type, eId) => { const filt = invoices.filter(inv => type==='customer'? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId); invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join(''); };
-    tSel.addEventListener('change', () => { if (tSel.value==='customer') { cBlock.style.display='block'; sBlock.style.display='none'; updateInvList('customer', cSel.value); } else { cBlock.style.display='none'; sBlock.style.display='block'; updateInvList('supplier', sSel.value); } });
-    cSel.addEventListener('change', () => updateInvList('customer', cSel.value));
-    sSel.addEventListener('change', () => updateInvList('supplier', sSel.value));
-    document.getElementById('btn-add-pmt').addEventListener('click', () => document.getElementById('pmt-form').style.display='block');
-    document.getElementById('btn-cancel-pmt').addEventListener('click', () => document.getElementById('pmt-form').style.display='none');
-    document.getElementById('btn-save-pmt').addEventListener('click', async () => {
-      const type = tSel.value, cust = type==='customer'? (cSel.value||null) : null, supp = type==='supplier'? (sSel.value||null) : null, invId = invSel.value||null, amount = parseFloat(document.getElementById('pmt-amount').value);
-      if (!amount || amount<=0) return alert('المبلغ مطلوب'); if (!cust && !supp) return alert('اختر عميلاً أو مورداً');
-      try { await apiCall('/payments','POST',{invoice_id:invId,customer_id:cust,supplier_id:supp,amount,payment_date:document.getElementById('pmt-date').value,notes:document.getElementById('pmt-notes').value.trim()}); alert('تم الحفظ'); loadPayments(); } catch(e) { alert('خطأ: '+e.message); }
-    });
+    document.getElementById('btn-add-pmt').addEventListener('click', () => showAddPaymentModal(customers, suppliers, invoices));
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+}
+function showAddPaymentModal(customers, suppliers, invoices) {
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:500px;">
+      <h3>إضافة دفعة جديدة</h3>
+      <label class="form-label">النوع</label>
+      <select id="pmt-type" class="input-field">
+        <option value="customer">من عميل</option>
+        <option value="supplier">إلى مورد</option>
+      </select>
+      <div id="pmt-cust-block">
+        <label class="form-label">العميل</label>
+        <select id="pmt-customer" class="input-field">
+          <option value="">اختر عميل</option>
+          ${customers.map(c => `<option value="${c.id}">${c.name} (${c.balance})</option>`).join('')}
+        </select>
+      </div>
+      <div id="pmt-supp-block" style="display:none;">
+        <label class="form-label">المورد</label>
+        <select id="pmt-supplier" class="input-field">
+          <option value="">اختر مورد</option>
+          ${suppliers.map(s => `<option value="${s.id}">${s.name} (${s.balance})</option>`).join('')}
+        </select>
+      </div>
+      <label class="form-label">الفاتورة (اختياري)</label>
+      <select id="pmt-invoice" class="input-field">
+        <option value="">بدون فاتورة</option>
+      </select>
+      <label class="form-label">المبلغ</label>
+      <input id="pmt-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field" />
+      <label class="form-label">التاريخ</label>
+      <input id="pmt-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
+      <label class="form-label">ملاحظات</label>
+      <textarea id="pmt-notes" placeholder="ملاحظات" class="input-field"></textarea>
+      <div class="modal-actions">
+        <button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button>
+        <button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
+  const updateInvList = (type, eId) => {
+    const filt = invoices.filter(inv => type==='customer'? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
+    invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join('');
+  };
+  tSel.addEventListener('change', () => {
+    if (tSel.value==='customer') { cBlock.style.display='block'; sBlock.style.display='none'; updateInvList('customer', cSel.value); }
+    else { cBlock.style.display='none'; sBlock.style.display='block'; updateInvList('supplier', sSel.value); }
+  });
+  cSel.addEventListener('change', () => updateInvList('customer', cSel.value));
+  sSel.addEventListener('change', () => updateInvList('supplier', sSel.value));
+
+  document.getElementById('btn-save-pmt').onclick = async () => {
+    const type = tSel.value, cust = type==='customer'? (cSel.value||null) : null, supp = type==='supplier'? (sSel.value||null) : null, invId = invSel.value||null, amount = parseFloat(document.getElementById('pmt-amount').value);
+    if (!amount || amount<=0) return alert('المبلغ مطلوب'); if (!cust && !supp) return alert('اختر عميلاً أو مورداً');
+    try {
+      await apiCall('/payments','POST',{invoice_id:invId,customer_id:cust,supplier_id:supp,amount,payment_date:document.getElementById('pmt-date').value,notes:document.getElementById('pmt-notes').value.trim()});
+      document.body.removeChild(overlay);
+      alert('تم حفظ الدفعة'); loadPayments();
+    } catch(e) { alert('خطأ: '+e.message); }
+  };
+  document.getElementById('btn-cancel-pmt').onclick = () => document.body.removeChild(overlay);
 }
 async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`,'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e) { alert('خطأ: '+e.message); } }
 async function loadReports() {
