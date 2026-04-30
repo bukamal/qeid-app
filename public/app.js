@@ -130,16 +130,65 @@ function showEditSupplierModal(supId) {
   document.getElementById('cancel-sup-edit').onclick = () => document.body.removeChild(overlay);
 }
 let itemsCache = [], categoriesCache = [];
+
 async function loadItems() {
   try {
-    const [items, categories] = await Promise.all([apiCall('/items', 'GET'), apiCall('/categories', 'GET')]); itemsCache = items; categoriesCache = categories;
-    let html = `<div class="card"><h2>المواد</h2><button id="btn-add-item" class="btn-primary">+ إضافة مادة</button></div>`;
-    if (!items.length) html += '<div class="card">لا توجد مواد مضافة بعد</div>';
-    else html += items.map(i => `<div class="card item-row"><strong>${i.name}</strong> <span style="float:left;font-size:0.9em">${i.item_type||'مخزون'}</span><br>📂 ${i.category?.name||'بدون تصنيف'} | 🛒 شراء:${i.purchase_price} | 💰 بيع:${i.selling_price}<div class="card-actions"><button class="btn-secondary" onclick="showEditItemModal(${i.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteItem(${i.id})">🗑️ حذف</button></div></div>`).join('');
+    const [items, categories] = await Promise.all([apiCall('/items', 'GET'), apiCall('/categories', 'GET')]);
+    itemsCache = items; categoriesCache = categories;
+
+    let html = `
+      <div class="card">
+        <h2>المواد</h2>
+        <button id="btn-add-item" class="btn-primary">+ إضافة مادة</button>
+        <input id="items-search" type="text" class="input-field" placeholder="🔍 بحث في المواد..." style="margin-top:8px;" />
+      </div>
+      <div id="items-list"></div>
+    `;
     document.getElementById('tab-content').innerHTML = html;
+
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
-  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+    document.getElementById('items-search').addEventListener('input', renderFilteredItems);
+
+    renderFilteredItems();
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
 }
+
+function renderFilteredItems() {
+  const searchQuery = document.getElementById('items-search')?.value.trim().toLowerCase() || '';
+  let filtered = itemsCache;
+  if (searchQuery) {
+    filtered = filtered.filter(item =>
+      (item.name || '').toLowerCase().includes(searchQuery) ||
+      (item.category?.name || '').toLowerCase().includes(searchQuery) ||
+      (item.item_type || '').toLowerCase().includes(searchQuery) ||
+      String(item.purchase_price).includes(searchQuery) ||
+      String(item.selling_price).includes(searchQuery)
+    );
+  }
+
+  let listHtml = '';
+  if (filtered.length === 0) {
+    listHtml = '<div class="card">لا توجد مواد مطابقة</div>';
+  } else {
+    listHtml = filtered.map(i => `
+      <div class="card item-row">
+        <strong>${i.name}</strong> 
+        <span style="float:left;font-size:0.9em">${i.item_type||'مخزون'}</span>
+        <br>
+        📂 ${i.category?.name||'بدون تصنيف'} | 🛒 شراء:${i.purchase_price} | 💰 بيع:${i.selling_price}
+        <div class="card-actions">
+          <button class="btn-secondary" onclick="showEditItemModal(${i.id})">✏️ تعديل</button>
+          <button class="btn-danger" onclick="deleteItem(${i.id})">🗑️ حذف</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('items-list').innerHTML = listHtml;
+}
+
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
