@@ -20,7 +20,6 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
     return json;
   }
 }
-
 async function loadDashboard() {
   try {
     const [items, customers, suppliers, invoices, monthly, daily, summary] = await Promise.all([
@@ -28,35 +27,15 @@ async function loadDashboard() {
       apiCall('/reports?type=monthly_summary', 'GET'), apiCall('/reports?type=daily_profit', 'GET'),
       apiCall('/summary', 'GET')
     ]);
-
     const totalSales = invoices.filter(inv => inv.type === 'sale').reduce((s, inv) => s + (inv.total || 0), 0);
     const totalPurchases = invoices.filter(inv => inv.type === 'purchase').reduce((s, inv) => s + (inv.total || 0), 0);
-
     document.getElementById('tab-content').innerHTML = `
-      <!-- شريط الملخص السريع -->
       <div class="summary-strip">
-        <div class="summary-item profit">
-          <div class="summary-icon">💰</div>
-          <div class="summary-label">صافي الربح</div>
-          <div class="summary-value ${summary.net_profit >= 0 ? 'positive' : 'negative'}">${summary.net_profit.toFixed(2)}</div>
-        </div>
-        <div class="summary-item cash">
-          <div class="summary-icon">🏦</div>
-          <div class="summary-label">رصيد الصندوق</div>
-          <div class="summary-value ${summary.cash_balance >= 0 ? 'positive' : 'negative'}">${summary.cash_balance.toFixed(2)}</div>
-        </div>
-        <div class="summary-item receivables">
-          <div class="summary-icon">📥</div>
-          <div class="summary-label">الذمم المدينة</div>
-          <div class="summary-value">${summary.receivables.toFixed(2)}</div>
-        </div>
-        <div class="summary-item payables">
-          <div class="summary-icon">📤</div>
-          <div class="summary-label">الذمم الدائنة</div>
-          <div class="summary-value">${summary.payables.toFixed(2)}</div>
-        </div>
+        <div class="summary-item profit"><div class="summary-icon">💰</div><div class="summary-label">صافي الربح</div><div class="summary-value ${summary.net_profit >= 0 ? 'positive' : 'negative'}">${summary.net_profit.toFixed(2)}</div></div>
+        <div class="summary-item cash"><div class="summary-icon">🏦</div><div class="summary-label">رصيد الصندوق</div><div class="summary-value ${summary.cash_balance >= 0 ? 'positive' : 'negative'}">${summary.cash_balance.toFixed(2)}</div></div>
+        <div class="summary-item receivables"><div class="summary-icon">📥</div><div class="summary-label">الذمم المدينة</div><div class="summary-value">${summary.receivables.toFixed(2)}</div></div>
+        <div class="summary-item payables"><div class="summary-icon">📤</div><div class="summary-label">الذمم الدائنة</div><div class="summary-value">${summary.payables.toFixed(2)}</div></div>
       </div>
-
       <div class="dashboard-grid">
         <div class="dash-card items"><span class="dash-icon">📦</span><div class="dash-label">المواد</div><div class="dash-value">${items.length}</div></div>
         <div class="dash-card customers"><span class="dash-icon">👥</span><div class="dash-label">العملاء</div><div class="dash-value">${customers.length}</div></div>
@@ -68,7 +47,6 @@ async function loadDashboard() {
         <div class="chart-container"><h4>المدفوعات الشهرية</h4><canvas id="paymentsChart"></canvas></div>
         <div class="chart-container"><h4>صافي الربح اليومي</h4><canvas id="profitChart"></canvas></div>
       </div>`;
-
     setTimeout(() => {
       const ctx1 = document.getElementById('incomeChart');
       if (ctx1) new Chart(ctx1, { type: 'doughnut', data: { labels: ['مبيعات', 'مشتريات'], datasets: [{ data: [totalSales, totalPurchases], backgroundColor: ['#10b981','#f59e0b'], borderColor: '#fff', borderWidth: 2 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
@@ -82,7 +60,6 @@ async function loadDashboard() {
     }, 100);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
-
 let customersCache = [];
 async function loadCustomers() {
   try {
@@ -217,8 +194,7 @@ function attachInvoiceEvents(invoiceType) {
       if (id||qty>0) lines.push({item_id:id, description:id?'':'بند', quantity:qty, unit_price:price, total});
     });
     if (dup) return alert('لا يمكن تكرار نفس المادة'); if (!lines.length) return alert('أضف بنداً');
-    const expenseType = document.getElementById('inv-expense-type')?.value || 'purchase';
-try { await apiCall('/invoices','POST',{type,customer_id:cust,supplier_id:supp,date,reference:ref,notes,lines,paid_amount:paid,expense_type:expenseType}); alert('تم حفظ الفاتورة'); loadInvoices(); } catch(e) { alert('خطأ: '+e.message); }
+    try { await apiCall('/invoices','POST',{type,customer_id:cust,supplier_id:supp,date,reference:ref,notes,lines,paid_amount:paid}); alert('تم حفظ الفاتورة'); loadInvoices(); } catch(e) { alert('خطأ: '+e.message); }
   });
   updateInvoiceRemoveButtons();
 }
@@ -229,16 +205,7 @@ async function showInvoiceModal(type) {
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/items','GET')]);
     itemsCache=items;customersCache=customers;suppliersCache=suppliers;
     let entOpts = ''; if (type==='sale') entOpts = `<option value="cash">عميل نقدي</option>`+customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); else entOpts = `<option value="cash">مورد نقدي</option>`+suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-    const modalHTML = `<div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;text-align:right;"><h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3><input type="hidden" id="inv-type" value="${type}" />
-
-${type === 'purchase' ? `
-  <label class="form-label">نوع المصروف</label>
-  <select id="inv-expense-type" class="input-field">
-    <option value="purchase">مشتريات بضاعة</option>
-    <option value="expense">مصاريف عامة</option>
-  </select>
-` : ''}
-<label class="form-label">${type==='sale'?'العميل':'المورد'}</label><select id="inv-entity" class="input-field">${entOpts}</select><label class="form-label">التاريخ</label><input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><label class="form-label">الرقم المرجعي</label><input id="inv-ref" placeholder="الرقم المرجعي" class="input-field"/><label class="form-label">ملاحظات</label><textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea><h4 style="margin:16px 0 8px;">البنود</h4><div id="inv-lines-container"><div class="line-row"><select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input"/><input type="number" step="0.01" placeholder="السعر" class="input-field price-input"/><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly/><button class="btn-remove-line btn-secondary" style="display:none">✕</button></div></div><button id="btn-add-inv-line" class="btn-secondary">+ بند</button><label class="form-label" style="margin-top:16px;">المبلغ المدفوع</label><input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" value="0"/><div class="modal-actions" style="margin-top:20px;"><button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button><button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button></div></div>`;
+    const modalHTML = `<div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;text-align:right;"><h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3><input type="hidden" id="inv-type" value="${type}" /><label class="form-label">${type==='sale'?'العميل':'المورد'}</label><select id="inv-entity" class="input-field">${entOpts}</select><label class="form-label">التاريخ</label><input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><label class="form-label">الرقم المرجعي</label><input id="inv-ref" placeholder="الرقم المرجعي" class="input-field"/><label class="form-label">ملاحظات</label><textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea><h4 style="margin:16px 0 8px;">البنود</h4><div id="inv-lines-container"><div class="line-row"><select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input"/><input type="number" step="0.01" placeholder="السعر" class="input-field price-input"/><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly/><button class="btn-remove-line btn-secondary" style="display:none">✕</button></div></div><button id="btn-add-inv-line" class="btn-secondary">+ بند</button><label class="form-label" style="margin-top:16px;">المبلغ المدفوع</label><input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field" value="0"/><div class="modal-actions" style="margin-top:20px;"><button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button><button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button></div></div>`;
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = modalHTML; document.body.appendChild(overlay);
     attachInvoiceEvents(type);
     document.getElementById('btn-cancel-invoice').addEventListener('click', () => { document.body.removeChild(overlay); });
@@ -379,6 +346,61 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   document.getElementById('btn-cancel-pmt').onclick = () => document.body.removeChild(overlay);
 }
 async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`,'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e) { alert('خطأ: '+e.message); } }
+// ==================== المصاريف ====================
+async function loadExpenses() {
+  try {
+    const expenses = await apiCall('/expenses','GET');
+    let html = `<div class="card"><h2>المصاريف العامة</h2><button id="btn-add-expense" class="btn-primary">+ إضافة مصروف</button></div>`;
+    if (!expenses.length) html += '<div class="card">لا توجد مصاريف</div>';
+    else {
+      html += expenses.map(ex => `
+        <div class="card">
+          <strong>${ex.amount}</strong> – ${ex.expense_date}<br>
+          ${ex.description || ''}
+          <div class="card-actions">
+            <button class="btn-danger" onclick="deleteExpense(${ex.id})">🗑️ حذف</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('tab-content').innerHTML = html;
+    document.getElementById('btn-add-expense').addEventListener('click', showAddExpenseModal);
+  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
+}
+function showAddExpenseModal() {
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>إضافة مصروف جديد</h3>
+      <label class="form-label">المبلغ</label>
+      <input id="expense-amount" type="number" step="0.01" placeholder="المبلغ" class="input-field" />
+      <label class="form-label">التاريخ</label>
+      <input id="expense-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
+      <label class="form-label">الوصف</label>
+      <input id="expense-desc" placeholder="وصف المصروف" class="input-field" />
+      <div class="modal-actions">
+        <button class="btn-primary" id="btn-save-expense">حفظ</button>
+        <button class="btn-secondary" id="btn-cancel-expense">إلغاء</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('btn-save-expense').onclick = async () => {
+    const amount = parseFloat(document.getElementById('expense-amount').value);
+    if (!amount || amount <= 0) return alert('المبلغ مطلوب');
+    const payload = {
+      amount,
+      expense_date: document.getElementById('expense-date').value,
+      description: document.getElementById('expense-desc').value.trim()
+    };
+    try { await apiCall('/expenses','POST', payload); document.body.removeChild(overlay); loadExpenses(); } catch(e) { alert('خطأ: '+e.message); }
+  };
+  document.getElementById('btn-cancel-expense').onclick = () => document.body.removeChild(overlay);
+}
+async function deleteExpense(id) {
+  if (!await confirmDialog('متأكد من حذف المصروف؟')) return;
+  try { await apiCall(`/expenses?id=${id}`,'DELETE'); alert('تم الحذف'); loadExpenses(); } catch(e) { alert('خطأ: '+e.message); }
+}
 async function loadReports() {
   let html = `<div class="card"><h2>التقارير</h2></div><div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div><div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div><div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div><div class="card report-link" data-report="account_ledger">📒 الأستاذ العام</div><div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div><div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>`;
   document.getElementById('tab-content').innerHTML = html;
@@ -524,11 +546,6 @@ async function loadSupplierStatementForm() {
     });
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
-(function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
-document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
-async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
-verifyUser();
-
 function showHelpModal() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -536,7 +553,6 @@ function showHelpModal() {
     <div class="modal-box" style="max-width:600px; text-align:right;">
       <h3>📚 مركز المساعدة – الراجحي للمحاسبة</h3>
       <p>مرحباً بك في نظام الراجحي للمحاسبة. إليك دليل سريع لاستخدام التطبيق:</p>
-      
       <h4>🧭 التبويبات الرئيسية</h4>
       <ul style="padding-right:16px;">
         <li><b>لوحة التحكم:</b> ملخص مالي، أرباح، سيولة، ومخططات.</li>
@@ -545,20 +561,17 @@ function showHelpModal() {
         <li><b>العملاء والموردين:</b> إدارة جهات الاتصال وأرصدتهم.</li>
         <li><b>التصنيفات:</b> تنظيم المواد في فئات.</li>
         <li><b>الدفعات:</b> تسجيل المدفوعات والمقبوضات وربطها بالفواتير.</li>
+        <li><b>المصاريف:</b> تسجيل المصاريف العامة للإدارة.</li>
         <li><b>الفواتير:</b> عرض جميع الفواتير مع إمكانية تعديلها وطباعتها وإرسال PDF.</li>
         <li><b>التقارير:</b> ميزان مراجعة، قائمة دخل، ميزانية عمومية، أستاذ عام، وكشوف حسابات.</li>
       </ul>
-
       <h4>💡 نصائح</h4>
       <ul style="padding-right:16px;">
         <li>يمكنك سحب التبويبات لإعادة ترتيبها حسب رغبتك.</li>
         <li>اضغط على 📥 PDF في أي فاتورة لإرسال نسخة إلى محادثتك.</li>
-        <li>في فاتورة المشتريات يمكنك اختيار "مصاريف عامة" لتسجيل المصروفات التشغيلية.</li>
-        <li>التقارير تُحدث تلقائياً من الفواتير والدفعات.</li>
+        <li>التقارير تُحدث تلقائياً من الفواتير والدفعات والمصاريف.</li>
       </ul>
-
       <p style="margin-top:16px;">📱 للدعم والتواصل: <b>@bukamal1991</b></p>
-
       <div class="modal-actions">
         <button class="btn-primary" id="close-help">حسناً، فهمت</button>
       </div>
@@ -569,6 +582,7 @@ function showHelpModal() {
     document.body.removeChild(overlay);
   });
 }
-
-document.getElementById('btn-help').addEventListener('click', showHelpModal);
-
+(function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
+document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='expenses') loadExpenses(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
+async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); document.getElementById('btn-help').addEventListener('click', showHelpModal); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
+verifyUser();
