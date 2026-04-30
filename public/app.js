@@ -420,24 +420,66 @@ function showItemDetailModal(itemId) {
 }
 
 function updateInvoiceRemoveButtons() { document.querySelectorAll('#inv-lines-container .line-row').forEach(row => { const btn = row.querySelector('.btn-remove-line'); if (btn) btn.style.display = document.querySelectorAll('#inv-lines-container .line-row').length > 1 ? 'inline-block' : 'none'; }); }
+
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r===cur) return; if (r.querySelector('.item-select')?.value===id) found=true; }); return found; }
   function autoFillPrice(sel, pr) {
     const id = sel.value; if (!id) { pr.value=''; return; }
     const item = itemsCache.find(i => i.id==id);
-    if (item) { pr.value = (invoiceType==='sale'?item.selling_price:item.purchase_price)||0; const row = sel.closest('.line-row'); const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input'); if (qty&&tot) tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2); }
+    if (item) {
+      pr.value = (invoiceType==='sale' ? item.selling_price : item.purchase_price) || 0;
+      const row = sel.closest('.line-row');
+      const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+      if (qty&&tot) tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2);
+    }
   }
+
+  // ربط الأحداث للأسطر الحالية
+  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+    const sel = row.querySelector('.item-select');
+    const pr = row.querySelector('.price-input');
+    // استدعاء فوري لملء السعر إذا كانت هناك مادة محددة مسبقاً
+    if (sel && pr) autoFillPrice(sel, pr);
+    // ربط حدث التغيير
+    sel?.addEventListener('change', function() {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return;
+      }
+      autoFillPrice(this, pr);
+    });
+    // ربط حساب الإجمالي
+    const qty = row.querySelector('.qty-input');
+    const tot = row.querySelector('.total-input');
+    const calc = () => { tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2); };
+    qty?.addEventListener('input', calc);
+    pr?.addEventListener('input', calc);
+  });
+
+  // زر إضافة سطر
   document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
     const ctr = document.getElementById('inv-lines-container');
-    const line = document.createElement('div'); line.className = 'line-row';
-    line.innerHTML = `<select class="input-field item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input" /><input type="number" step="0.01" placeholder="السعر" class="input-field price-input" /><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly /><button class="btn-remove-line btn-secondary">✕</button>`;
-    ctr.appendChild(line); updateInvoiceRemoveButtons(); attachLineEvents(line);
-    const sel = line.querySelector('.item-select'), pr = line.querySelector('.price-input');
-    sel.addEventListener('change', function() { if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return; } autoFillPrice(this, pr); });
+    const newLine = document.createElement('div'); newLine.className = 'line-row';
+    newLine.innerHTML = `<select class="input-field item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select><input type="number" step="any" placeholder="الكمية" class="input-field qty-input" /><input type="number" step="0.01" placeholder="السعر" class="input-field price-input" /><input type="number" step="0.01" placeholder="الإجمالي" class="input-field total-input" readonly /><button class="btn-remove-line btn-secondary">✕</button>`;
+    ctr.appendChild(newLine); updateInvoiceRemoveButtons();
+
+    const sel = newLine.querySelector('.item-select'), pr = newLine.querySelector('.price-input');
+    const qty = newLine.querySelector('.qty-input'), tot = newLine.querySelector('.total-input');
+    sel.addEventListener('change', function() {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return; }
+      autoFillPrice(this, pr);
+    });
+    const calc = () => { tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2); };
+    qty.addEventListener('input', calc);
+    pr.addEventListener('input', calc);
   });
-  document.getElementById('inv-lines-container')?.addEventListener('click', e => { if (e.target.classList.contains('btn-remove-line')) { const row = e.target.closest('.line-row'); if (document.querySelectorAll('#inv-lines-container .line-row').length>1) { row.remove(); updateInvoiceRemoveButtons(); } } });
-  function attachLineEvents(row) { const qty = row.querySelector('.qty-input'), pr = row.querySelector('.price-input'), tot = row.querySelector('.total-input'); const calc = () => { tot.value = ((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0)).toFixed(2); }; qty?.addEventListener('input', calc); pr?.addEventListener('input', calc); const sel = row.querySelector('.item-select'); sel?.addEventListener('change', function() { if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value=''; pr.value=''; return; } autoFillPrice(this, pr); }); }
-  document.querySelectorAll('#inv-lines-container .line-row').forEach(r => attachLineEvents(r));
+
+  document.getElementById('inv-lines-container')?.addEventListener('click', e => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const row = e.target.closest('.line-row');
+      if (document.querySelectorAll('#inv-lines-container .line-row').length>1) { row.remove(); updateInvoiceRemoveButtons(); }
+    }
+  });
+
   document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
     const type = document.getElementById('inv-type').value, entity = document.getElementById('inv-entity').value;
     let cust=null, supp=null; if (type==='sale') cust = entity==='cash'?null:entity; else supp = entity==='cash'?null:entity;
@@ -453,6 +495,7 @@ function attachInvoiceEvents(invoiceType) {
   });
   updateInvoiceRemoveButtons();
 }
+
 async function loadSaleInvoiceForm() { showInvoiceModal('sale'); }
 async function loadPurchaseInvoiceForm() { showInvoiceModal('purchase'); }
 async function showInvoiceModal(type) {
