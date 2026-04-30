@@ -132,10 +132,13 @@ module.exports = async (req, res) => {
         const { data: sales } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'sale').order('date', { ascending: true });
         sales?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة بيع ${inv.reference || ''}`, debit: 0, credit: inv.total }); });
       } else if (accountName === 'المشتريات') {
-        const { data: purchases } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
+        const { data: purchases } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').eq('expense_type', 'purchase').order('date', { ascending: true });
         purchases?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة شراء ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
+      } else if (accountName === 'مصاريف عامة') {
+        const { data: expenses } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'purchase').eq('expense_type', 'expense').order('date', { ascending: true });
+        expenses?.forEach(inv => { lines.push({ date: inv.date, description: `مصروف ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
       } else if (accountName === 'المخزون') {
-        const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
+        const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').eq('expense_type', 'purchase').order('date', { ascending: true });
         if (purchaseInvoices && purchaseInvoices.length > 0) {
           const purchaseIds = purchaseInvoices.map(inv => inv.id);
           const { data: purchaseLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice_id').in('invoice_id', purchaseIds).order('invoice_id', { ascending: true });
