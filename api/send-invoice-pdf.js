@@ -1,7 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const https = require('https');
-const PDFDocument = require('pdfkit');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -50,61 +49,45 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // إنشاء PDF باللغة الإنجليزية لتجنب مشاكل الخطوط
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    const pdfPromise = new Promise(resolve => { doc.on('end', () => resolve(Buffer.concat(chunks))); });
+    // بناء صفحة HTML كاملة بالعربية
+    const html = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>فاتورة ${invoice.reference || invoice.id}</title>
+<style>
+  body { font-family: 'Tajawal', sans-serif; padding: 30px; direction: rtl; }
+  h2 { color: #2563eb; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th { background: #f0f0f0; }
+  th, td { border: 1px solid #ccc; padding: 10px; text-align: right; }
+  .total { margin-top: 20px; text-align: left; }
+</style></head>
+<body>
+  <h2>الراجحي للمحاسبة</h2>
+  <h3>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h3>
+  <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference || '-'}</p>
+  ${invoice.customer?.name ? `<p>العميل: ${invoice.customer.name}</p>` : ''}
+  ${invoice.supplier?.name ? `<p>المورد: ${invoice.supplier.name}</p>` : ''}
+  <table>
+    <tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+    ${invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')}
+  </table>
+  <div class="total">
+    <p><strong>الإجمالي: ${invoice.total}</strong></p>
+    <p>المدفوع: ${paid}</p>
+    <p><strong>الباقي: ${balance}</strong></p>
+  </div>
+  ${invoice.notes ? `<p>ملاحظات: ${invoice.notes}</p>` : ''}
+</body></html>`;
 
-    doc.fontSize(20).text('Alrajhi Accounting', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(14).text(`Invoice ${invoice.type === 'sale' ? 'Sale' : 'Purchase'}`, { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`Date: ${invoice.date}`, { align: 'center' });
-    doc.text(`Ref: ${invoice.reference || '-'}`, { align: 'center' });
-    if (invoice.customer?.name) doc.text(`Customer: ${invoice.customer.name}`);
-    if (invoice.supplier?.name) doc.text(`Supplier: ${invoice.supplier.name}`);
-    doc.moveDown();
-
-    const tableTop = doc.y;
-    doc.fontSize(11).text('Item', 50, tableTop);
-    doc.text('Qty', 250, tableTop);
-    doc.text('Price', 350, tableTop);
-    doc.text('Total', 450, tableTop);
-    doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-    doc.moveDown(0.5);
-
-    invoice.invoice_lines?.forEach(line => {
-      doc.text(line.item?.name || '-', 50, doc.y);
-      doc.text(String(line.quantity), 250, doc.y);
-      doc.text(String(line.unit_price), 350, doc.y);
-      doc.text(String(line.total), 450, doc.y);
-      doc.moveDown(0.3);
-    });
-
-    doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-    doc.moveDown();
-    doc.fontSize(12);
-    doc.text(`Total: ${invoice.total}`, 250, doc.y, { align: 'left' });
-    doc.text(`Paid: ${paid}`, 250, doc.y + 16, { align: 'left' });
-    doc.text(`Balance: ${balance}`, 250, doc.y + 32, { align: 'left' });
-    if (invoice.notes) {
-      doc.moveDown();
-      doc.text(`Notes: ${invoice.notes}`);
-    }
-
-    doc.end();
-    const pdfBuffer = await pdfPromise;
-
-    // إرسال PDF إلى تيليجرام
     const FormData = require('form-data');
     const form = new FormData();
     form.append('chat_id', String(userId));
-    form.append('document', pdfBuffer, {
-      filename: `invoice-${invoice.reference || invoice.id}.pdf`,
-      contentType: 'application/pdf'
+    form.append('document', Buffer.from(html, 'utf-8'), {
+      filename: `فاتورة-${invoice.reference || invoice.id}.html`,
+      contentType: 'text/html'
     });
-    form.append('caption', `Invoice ${invoice.type === 'sale' ? 'Sale' : 'Purchase'} ${invoice.reference || ''}`);
+    form.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
 
     const options = {
       hostname: 'api.telegram.org',
