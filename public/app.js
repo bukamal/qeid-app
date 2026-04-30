@@ -256,64 +256,20 @@ function printInvoice(invoice) {
   else { alert('سيتم عرض الفاتورة للطباعة'); const ifr = document.createElement('iframe'); ifr.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;'; document.body.appendChild(ifr); ifr.contentWindow.document.write(html); ifr.contentWindow.document.close(); try { ifr.contentWindow.onafterprint = () => document.body.removeChild(ifr); } catch(e) {} }
 }
 function downloadPDF(invoice) {
-  if (!invoice) return alert('بيانات غير متوفرة');
-
-  // تشكيل النص العربي (باستخدام arabic-reshaper)
-  const arabicReshaper = window.arabicReshaper;
-  if (!arabicReshaper) return alert('المكتبة غير محملة');
-
-  const shape = (text) => arabicReshaper.convertArabic(text) || text;
-
-  const docDefinition = {
-    pageSize: 'A4',
-    pageMargins: [40, 40, 40, 40],
-    defaultStyle: { fontSize: 12 },
-    content: [
-      { text: shape('الراجحي للمحاسبة'), style: 'header' },
-      { text: shape(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`), style: 'subheader' },
-      { text: shape(`التاريخ: ${invoice.date}   المرجع: ${invoice.reference || '-'}`), margin: [0, 0, 0, 10] },
-      ...(invoice.customer?.name ? [{ text: shape(`العميل: ${invoice.customer.name}`), alignment: 'right' }] : []),
-      ...(invoice.supplier?.name ? [{ text: shape(`المورد: ${invoice.supplier.name}`), alignment: 'right' }] : []),
-      { text: '', margin: [0, 10, 0, 10] },
-      {
-        table: {
-          headerRows: 1,
-          widths: ['*', 'auto', 'auto', 'auto'],
-          body: [
-            [shape('المادة'), shape('الكمية'), shape('السعر'), shape('الإجمالي')],
-            ...(invoice.invoice_lines?.map(l => [shape(l.item?.name || '-'), l.quantity, l.unit_price, l.total]) || [])
-          ]
-        }
-      },
-      { text: '', margin: [0, 10, 0, 10] },
-      { text: shape(`الإجمالي: ${invoice.total}`), alignment: 'right', bold: true },
-      { text: shape(`المدفوع: ${invoice.paid || 0}`), alignment: 'right' },
-      { text: shape(`الباقي: ${invoice.balance || 0}`), alignment: 'right', bold: true, color: 'red' },
-      ...(invoice.notes ? [{ text: shape(`ملاحظات: ${invoice.notes}`), alignment: 'right', margin: [0, 10, 0, 0] }] : [])
-    ],
-    styles: {
-      header: { fontSize: 18, bold: true, alignment: 'center', margin: [0, 0, 0, 10] },
-      subheader: { fontSize: 14, bold: true, alignment: 'center', margin: [0, 0, 0, 15] }
-    }
-  };
-
-  const pdfDoc = pdfMake.createPdf(docDefinition);
-  pdfDoc.getBase64((base64) => {
-    // إرسال الـ base64 إلى الخادم لإرساله عبر البوت
-    fetch('/api/send-invoice-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        invoiceId: invoice.id,
-        pdfBase64: base64,
-        initData: initData
-      })
-    }).then(res => res.json()).then(data => {
-      if (data.success) alert('تم إرسال الفاتورة PDF إلى البوت ✅');
-      else alert('فشل الإرسال: ' + (data.error || 'خطأ غير معروف'));
-    }).catch(e => alert('فشل الإرسال: ' + e.message));
-  });
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:40px;background:white;font-family:Tajawal,sans-serif;direction:rtl;color:#000';
+  div.innerHTML = `<h2 style="text-align:center;color:#2563eb">الراجحي للمحاسبة</h2><h3 style="text-align:center">فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h3><p style="text-align:center">التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>${invoice.customer?.name?`<p>العميل: ${invoice.customer.name}</p>`:''}${invoice.supplier?.name?`<p>المورد: ${invoice.supplier.name}</p>`:''}<table style="width:100%;border-collapse:collapse;margin-top:20px"><tr style="background:#f0f0f0"><th style="border:1px solid #ccc;padding:8px">المادة</th><th style="border:1px solid #ccc;padding:8px">الكمية</th><th style="border:1px solid #ccc;padding:8px">السعر</th><th style="border:1px solid #ccc;padding:8px">الإجمالي</th></tr>${invoice.invoice_lines?.map(l=>`<tr><td style="border:1px solid #ddd;padding:8px">${l.item?.name||'-'}</td><td style="border:1px solid #ddd;padding:8px">${l.quantity}</td><td style="border:1px solid #ddd;padding:8px">${l.unit_price}</td><td style="border:1px solid #ddd;padding:8px">${l.total}</td></tr>`).join('')}</table><div style="text-align:left;margin-top:20px"><p><strong>الإجمالي: ${invoice.total}</strong></p><p>المدفوع: ${invoice.paid||0}</p><p style="color:red"><strong>الباقي: ${invoice.balance||0}</strong></p></div>${invoice.notes?`<p style="margin-top:15px">ملاحظات: ${invoice.notes}</p>`:''}`;
+  document.body.appendChild(div);
+  html2canvas(div, { scale: 2, backgroundColor: '#fff', logging: false }).then(canvas => {
+    document.body.removeChild(div);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const w = 210, h = (canvas.height * w) / canvas.width;
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
+    pdf.save(`فاتورة-${invoice.reference||invoice.id}.pdf`);
+  }).catch(e => { document.body.removeChild(div); alert('فشل PDF: '+e.message); });
 }
+
 function confirmDialog(msg) { return new Promise(resolve => { const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = `<div class="modal-box"><p>${msg}</p><div class="modal-actions"><button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button></div></div>`; document.body.appendChild(overlay); document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); }; document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); }; }); }
 async function deleteItem(id) { if (!await confirmDialog('متأكد من حذف المادة؟')) return; try { await apiCall(`/items?id=${id}`,'DELETE'); alert('تم الحذف'); loadItems(); } catch(e) { alert('خطأ: '+e.message); } }
 async function deleteCustomer(id) { if (!await confirmDialog('متأكد من حذف العميل؟')) return; try { await apiCall(`/customers?id=${id}`,'DELETE'); alert('تم الحذف'); loadCustomers(); } catch(e) { alert('خطأ: '+e.message); } }
