@@ -71,23 +71,23 @@ nav {
   transition: all 0.2s ease;
   box-shadow: var(--shadow);
   user-select: none;
-  position: relative;
-}
-.tab::after {
-  content: "⋮⋮";
-  position: absolute;
-  left: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 1rem;
-  color: var(--text);
-  opacity: 0.4;
-  pointer-events: none;
 }
 .tab:hover { background: var(--secondary-hover); transform: translateY(-1px); }
 .tab:active { cursor: grabbing; }
 .tab.active { background: var(--primary); color: white; box-shadow: var(--shadow-md); font-weight: 600; }
-.tab.active::after { color: rgba(255,255,255,0.7); }
+
+/* حدود علوية ملونة للتبويبات – متناغمة مع بطاقات لوحة التحكم */
+.tab[data-tab="dashboard"] { border-top: 4px solid #3b82f6; }
+.tab[data-tab="items"] { border-top: 4px solid #3b82f6; }
+.tab[data-tab="sale-invoice"] { border-top: 4px solid #10b981; }
+.tab[data-tab="purchase-invoice"] { border-top: 4px solid #f59e0b; }
+.tab[data-tab="customers"] { border-top: 4px solid #10b981; }
+.tab[data-tab="suppliers"] { border-top: 4px solid #f59e0b; }
+.tab[data-tab="categories"] { border-top: 4px solid #8b5cf6; }
+.tab[data-tab="payments"] { border-top: 4px solid #ec4899; }
+.tab[data-tab="invoices"] { border-top: 4px solid #8b5cf6; }
+.tab[data-tab="reports"] { border-top: 4px solid #c084fc; }
+
 select.input-field {
   appearance: none;
   -webkit-appearance: none;
