@@ -397,6 +397,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   };
   document.getElementById('btn-cancel-pmt').onclick = () => document.body.removeChild(overlay);
 }
+};
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance','GET');
