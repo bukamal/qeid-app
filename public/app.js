@@ -676,3 +676,28 @@ function showHelpModal() {
 document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='expenses') loadExpenses(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
 async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); document.getElementById('btn-help').addEventListener('click', showHelpModal); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
 verifyUser();
+
+// ==================== إخفاء التبويبات عند التمرير ====================
+(function() {
+  const nav = document.querySelector('nav');
+  let lastScrollY = window.scrollY;
+  let ticking = false;
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        if (currentScrollY > lastScrollY && currentScrollY > 50) {
+          // تمرير لأعلى: نخفي التبويبات (نحركها للأعلى)
+          nav.classList.add('nav-hidden');
+        } else {
+          // تمرير لأسفل: نظهرها
+          nav.classList.remove('nav-hidden');
+        }
+        lastScrollY = currentScrollY;
+        ticking = false;
+      });
+      ticking = true;
+    }
+  });
+})();
