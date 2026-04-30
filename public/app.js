@@ -1,4 +1,5 @@
-const tg = window.Telegram.WebApp; tg.ready(); tg.expand();
+const tg = window.Telegram.WebApp;
+tg.ready(); tg.expand();
 if (tg.colorScheme === 'dark') document.body.classList.add('dark');
 tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.colorScheme === 'dark'); });
 const initData = tg.initData, user = tg.initDataUnsafe?.user, apiBase = '/api';
@@ -216,7 +217,7 @@ async function loadInvoices() {
     document.querySelectorAll('.pdf-invoice-btn').forEach(btn => btn.addEventListener('click', async e => {
       const id = parseInt(e.target.dataset.invoiceId);
       btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...';
-      try { await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); alert('تم إرسال الفاتورة إلى البوت ✅'); } catch (ex) { alert('فشل الإرسال: '+ex.message); }
+      try { await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); alert('تم إرسال الفاتورة PDF عبر البوت ✅'); } catch (ex) { alert('فشل الإرسال: '+ex.message); }
       finally { btn.disabled = false; btn.textContent = '📥 PDF'; }
     }));
     document.querySelectorAll('.delete-invoice-btn').forEach(btn => btn.addEventListener('click', e => deleteInvoice(parseInt(e.target.dataset.invoiceId))));
@@ -254,20 +255,6 @@ function printInvoice(invoice) {
   const w = window.open('','_blank','width=800,height=600');
   if (w) { w.document.write(html); w.document.close(); }
   else { alert('سيتم عرض الفاتورة للطباعة'); const ifr = document.createElement('iframe'); ifr.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;'; document.body.appendChild(ifr); ifr.contentWindow.document.write(html); ifr.contentWindow.document.close(); try { ifr.contentWindow.onafterprint = () => document.body.removeChild(ifr); } catch(e) {} }
-}
-function downloadPDF(invoice) {
-  const div = document.createElement('div');
-  div.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:40px;background:white;font-family:Tajawal,sans-serif;direction:rtl;color:#000';
-  div.innerHTML = `<h2 style="text-align:center;color:#2563eb">الراجحي للمحاسبة</h2><h3 style="text-align:center">فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h3><p style="text-align:center">التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>${invoice.customer?.name?`<p>العميل: ${invoice.customer.name}</p>`:''}${invoice.supplier?.name?`<p>المورد: ${invoice.supplier.name}</p>`:''}<table style="width:100%;border-collapse:collapse;margin-top:20px"><tr style="background:#f0f0f0"><th style="border:1px solid #ccc;padding:8px">المادة</th><th style="border:1px solid #ccc;padding:8px">الكمية</th><th style="border:1px solid #ccc;padding:8px">السعر</th><th style="border:1px solid #ccc;padding:8px">الإجمالي</th></tr>${invoice.invoice_lines?.map(l=>`<tr><td style="border:1px solid #ddd;padding:8px">${l.item?.name||'-'}</td><td style="border:1px solid #ddd;padding:8px">${l.quantity}</td><td style="border:1px solid #ddd;padding:8px">${l.unit_price}</td><td style="border:1px solid #ddd;padding:8px">${l.total}</td></tr>`).join('')}</table><div style="text-align:left;margin-top:20px"><p><strong>الإجمالي: ${invoice.total}</strong></p><p>المدفوع: ${invoice.paid||0}</p><p style="color:red"><strong>الباقي: ${invoice.balance||0}</strong></p></div>${invoice.notes?`<p style="margin-top:15px">ملاحظات: ${invoice.notes}</p>`:''}`;
-  document.body.appendChild(div);
-  html2canvas(div, { scale: 2, backgroundColor: '#fff', logging: false }).then(canvas => {
-    document.body.removeChild(div);
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const w = 210, h = (canvas.height * w) / canvas.width;
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
-    pdf.save(`فاتورة-${invoice.reference||invoice.id}.pdf`);
-  }).catch(e => { document.body.removeChild(div); alert('فشل PDF: '+e.message); });
 }
 function confirmDialog(msg) { return new Promise(resolve => { const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = `<div class="modal-box"><p>${msg}</p><div class="modal-actions"><button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button></div></div>`; document.body.appendChild(overlay); document.getElementById('modal-confirm').onclick = () => { document.body.removeChild(overlay); resolve(true); }; document.getElementById('modal-cancel').onclick = () => { document.body.removeChild(overlay); resolve(false); }; }); }
 async function deleteItem(id) { if (!await confirmDialog('متأكد من حذف المادة؟')) return; try { await apiCall(`/items?id=${id}`,'DELETE'); alert('تم الحذف'); loadItems(); } catch(e) { alert('خطأ: '+e.message); } }
