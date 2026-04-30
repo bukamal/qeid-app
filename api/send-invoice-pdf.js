@@ -6,6 +6,7 @@ const https = require('https');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/cairo/static/Cairo-Regular.ttf';
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,6 +28,10 @@ function verifyTelegramData(initData) {
 async function getUserId(initData) {
   if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
   return JSON.parse(new URLSearchParams(initData).get('user')).id;
+}
+
+function reverseText(text) {
+  return text.split('').reverse().join('');
 }
 
 module.exports = async (req, res) => {
@@ -51,53 +56,64 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // إنشاء PDF باستخدام pdfkit
+    // تحميل الخط من الإنترنت
+    const fontBuffer = await new Promise((resolve, reject) => {
+      https.get(FONT_URL, (response) => {
+        const chunks = [];
+        response.on('data', chunk => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks)));
+        response.on('error', reject);
+      });
+    });
+
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    doc.registerFont('Arabic', fontBuffer);
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     const pdfPromise = new Promise(resolve => { doc.on('end', () => resolve(Buffer.concat(chunks))); });
 
-    doc.fontSize(20).text('الراجحي للمحاسبة', { align: 'center' });
+    doc.font('Arabic');
+    doc.fontSize(20).text(reverseText('الراجحي للمحاسبة'), { align: 'center' });
     doc.moveDown();
-    doc.fontSize(14).text(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`, { align: 'center' });
+    doc.fontSize(14).text(reverseText(`فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}`), { align: 'center' });
     doc.moveDown();
-    doc.fontSize(12).text(`التاريخ: ${invoice.date}`, { align: 'center' });
-    doc.text(`المرجع: ${invoice.reference || '-'}`, { align: 'center' });
+    doc.fontSize(12).text(reverseText(`التاريخ: ${invoice.date}`), { align: 'center' });
+    doc.text(reverseText(`المرجع: ${invoice.reference || '-'}`), { align: 'center' });
     doc.moveDown();
-    if (invoice.customer?.name) doc.text(`العميل: ${invoice.customer.name}`);
-    if (invoice.supplier?.name) doc.text(`المورد: ${invoice.supplier.name}`);
+    if (invoice.customer?.name) doc.text(reverseText(`العميل: ${invoice.customer.name}`));
+    if (invoice.supplier?.name) doc.text(reverseText(`المورد: ${invoice.supplier.name}`));
     doc.moveDown();
 
     const tableTop = doc.y;
-    doc.fontSize(11).text('المادة', 50, tableTop, { continued: true });
-    doc.text('الكمية', 250, tableTop, { continued: true });
-    doc.text('السعر', 350, tableTop, { continued: true });
-    doc.text('الإجمالي', 450, tableTop);
+    doc.fontSize(11).text(reverseText('المادة'), 50, tableTop);
+    doc.text(reverseText('الكمية'), 250, tableTop);
+    doc.text(reverseText('السعر'), 350, tableTop);
+    doc.text(reverseText('الإجمالي'), 450, tableTop);
     doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
     doc.moveDown(0.5);
 
     invoice.invoice_lines?.forEach(line => {
-      doc.text(line.item?.name || '-', 50, doc.y, { continued: true });
-      doc.text(String(line.quantity), 250, doc.y, { continued: true });
-      doc.text(String(line.unit_price), 350, doc.y, { continued: true });
+      doc.text(reverseText(line.item?.name || '-'), 50, doc.y);
+      doc.text(String(line.quantity), 250, doc.y);
+      doc.text(String(line.unit_price), 350, doc.y);
       doc.text(String(line.total), 450, doc.y);
       doc.moveDown(0.3);
     });
 
     doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
     doc.moveDown();
-    doc.fontSize(12).text(`الإجمالي: ${invoice.total}`, { align: 'right' });
-    doc.text(`المدفوع: ${paid}`, { align: 'right' });
-    doc.text(`الباقي: ${balance}`, { align: 'right' });
+    doc.fontSize(12);
+    doc.text(reverseText(`الإجمالي: ${invoice.total}`), 250, doc.y, { align: 'left' });
+    doc.text(reverseText(`المدفوع: ${paid}`), 250, doc.y + 16, { align: 'left' });
+    doc.text(reverseText(`الباقي: ${balance}`), 250, doc.y + 32, { align: 'left' });
     if (invoice.notes) {
       doc.moveDown();
-      doc.text(`ملاحظات: ${invoice.notes}`);
+      doc.text(reverseText(`ملاحظات: ${invoice.notes}`));
     }
 
     doc.end();
     const pdfBuffer = await pdfPromise;
 
-    // إرسال الملف عبر https.request
     const form = new FormData();
     form.append('chat_id', String(userId));
     form.append('document', pdfBuffer, {
@@ -106,34 +122,18 @@ module.exports = async (req, res) => {
     });
     form.append('caption', `فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}`);
 
-    const options = {
-      hostname: 'api.telegram.org',
-      path: `/bot${BOT_TOKEN}/sendDocument`,
-      method: 'POST',
-      headers: form.getHeaders()
-    };
-
-    const tgRequest = https.request(options, (tgRes) => {
+    const options = { hostname: 'api.telegram.org', path: `/bot${BOT_TOKEN}/sendDocument`, method: 'POST', headers: form.getHeaders() };
+    const tgReq = https.request(options, (tgRes) => {
       let data = '';
       tgRes.on('data', chunk => data += chunk);
       tgRes.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (!json.ok) {
-            return res.status(500).json({ error: json.description || 'فشل إرسال الملف' });
-          }
-          res.json({ success: true, message: 'تم إرسال الفاتورة PDF عبر البوت' });
-        } catch (e) {
-          res.status(500).json({ error: 'استجابة غير صالحة من تيليجرام' });
-        }
+        const json = JSON.parse(data);
+        if (!json.ok) return res.status(500).json({ error: json.description });
+        res.json({ success: true });
       });
     });
-
-    tgRequest.on('error', (err) => {
-      res.status(500).json({ error: err.message });
-    });
-
-    form.pipe(tgRequest);
+    tgReq.on('error', (e) => res.status(500).json({ error: e.message }));
+    form.pipe(tgReq);
   } catch (err) {
     console.error(err);
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
