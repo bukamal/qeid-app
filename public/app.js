@@ -403,13 +403,147 @@ async function loadReports() {
   document.getElementById('tab-content').innerHTML = html;
   document.querySelectorAll('.report-link').forEach(el => el.addEventListener('click', () => { const r = el.dataset.report; if (r==='trial_balance') loadTrialBalance(); else if (r==='income_statement') loadIncomeStatement(); else if (r==='balance_sheet') loadBalanceSheet(); else if (r==='account_ledger') loadAccountLedgerForm(); else if (r==='customer_statement') loadCustomerStatementForm(); else if (r==='supplier_statement') loadSupplierStatementForm(); }));
 }
-async function loadTrialBalance() { try { const data = await apiCall('/reports?type=trial_balance','GET'); const rows = data.map(r => `<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td>${r.total_credit.toFixed(2)}</td><td style="color:${r.balance>=0?'green':'red'}">${r.balance.toFixed(2)}</td></tr>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>ميزان المراجعة</h3><table class="report-table"><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>${rows}</table></div>`; } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
-async function loadIncomeStatement() { try { const d = await apiCall('/reports?type=income_statement','GET'); const iR = d.income.map(i => `<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td></tr>`).join(''); const eR = d.expenses.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>قائمة الدخل</h3><h4>الإيرادات</h4><table class="report-table">${iR}</table><strong>إجمالي الإيرادات: ${d.total_income.toFixed(2)}</strong><h4>المصروفات</h4><table class="report-table">${eR}</table><strong>إجمالي المصروفات: ${d.total_expenses.toFixed(2)}</strong><hr><h2>صافي الربح: ${d.net_profit.toFixed(2)}</h2></div>`; } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
-async function loadBalanceSheet() { try { const d = await apiCall('/reports?type=balance_sheet','GET'); const aR = d.assets.map(a => `<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td></tr>`).join(''); const lR = d.liabilities.map(l => `<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td></tr>`).join(''); const eR = d.equity.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الميزانية العمومية</h3><h4>الأصول</h4><table class="report-table">${aR}</table><strong>إجمالي الأصول: ${d.total_assets.toFixed(2)}</strong><h4>الخصوم</h4><table class="report-table">${lR}</table><strong>إجمالي الخصوم: ${d.total_liabilities.toFixed(2)}</strong><h4>حقوق الملكية</h4><table class="report-table">${eR}</table><strong>إجمالي حقوق الملكية: ${d.total_equity.toFixed(2)}</strong></div>`; } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
-async function loadAccountLedgerForm() { try { const accounts = await apiCall('/accounts','GET'); const opts = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الأستاذ العام</h3><select id="ledger-account" class="input-field">${opts}</select><button id="btn-ledger" class="btn-primary">عرض الحركات</button><div id="ledger-result" style="margin-top:15px"></div></div>`; document.getElementById('btn-ledger').addEventListener('click', async () => { const id = document.getElementById('ledger-account').value; if (!id) return; try { const lines = await apiCall(`/reports?type=account_ledger&account_id=${id}`,'GET'); let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>'; lines.forEach(l => html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`); html += '</table>'; document.getElementById('ledger-result').innerHTML = html; } catch(e) { document.getElementById('ledger-result').innerHTML = `<div style="color:red">⚠️ ${e.message}</div>`; } }); } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
-async function loadCustomerStatementForm() { try { const custs = await apiCall('/customers','GET'); const opts = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب عميل</h3><select id="stmt-cust" class="input-field">${opts}</select><button id="btn-stmt-cust" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-cust').addEventListener('click', async () => { const id = document.getElementById('stmt-cust').value; if (!id) return; try { const lines = await apiCall(`/reports?type=customer_statement&customer_id=${id}`,'GET'); let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>'; lines.forEach(l => html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`); html += '</table>'; document.getElementById('stmt-result').innerHTML = html; } catch(e) { document.getElementById('stmt-result').innerHTML = `<div style="color:red">⚠️ ${e.message}</div>`; } }); } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
-async function loadSupplierStatementForm() { try { const supps = await apiCall('/suppliers','GET'); const opts = supps.map(s => `<option value="${s.id}">${s.name}</option>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب مورد</h3><select id="stmt-supp" class="input-field">${opts}</select><button id="btn-stmt-supp" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-supp').addEventListener('click', async () => { const id = document.getElementById('stmt-supp').value; if (!id) return; try { const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`,'GET'); let html = '<table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>'; lines.forEach(l => html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`); html += '</table>'; document.getElementById('stmt-result').innerHTML = html; } catch(e) { document.getElementById('stmt-result').innerHTML = `<div style="color:red">⚠️ ${e.message}</div>`; } }); } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
-(function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
+async function loadTrialBalance() {
+  try {
+    const data = await apiCall('/reports?type=trial_balance','GET');
+    const rows = data.map(r => `<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td>${r.total_credit.toFixed(2)}</td><td style="color:${r.balance>=0?'green':'red'}">${r.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>ميزان المراجعة</h3>
+        <div class="report-table-wrapper">
+          <table class="report-table">
+            <tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>
+            ${rows}
+          </table>
+        </div>
+      </div>`;
+  } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+async function loadIncomeStatement() {
+  try {
+    const d = await apiCall('/reports?type=income_statement','GET');
+    const iR = d.income.map(i => `<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td></tr>`).join('');
+    const eR = d.expenses.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>قائمة الدخل</h3>
+        <h4>الإيرادات</h4>
+        <div class="report-table-wrapper">
+          <table class="report-table">${iR}</table>
+        </div>
+        <strong>إجمالي الإيرادات: ${d.total_income.toFixed(2)}</strong>
+        <h4>المصروفات</h4>
+        <div class="report-table-wrapper">
+          <table class="report-table">${eR}</table>
+        </div>
+        <strong>إجمالي المصروفات: ${d.total_expenses.toFixed(2)}</strong>
+        <hr><h2>صافي الربح: ${d.net_profit.toFixed(2)}</h2>
+      </div>`;
+  } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+async function loadBalanceSheet() {
+  try {
+    const d = await apiCall('/reports?type=balance_sheet','GET');
+    const aR = d.assets.map(a => `<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td></tr>`).join('');
+    const lR = d.liabilities.map(l => `<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td></tr>`).join('');
+    const eR = d.equity.map(e => `<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الميزانية العمومية</h3>
+        <h4>الأصول</h4>
+        <div class="report-table-wrapper">
+          <table class="report-table">${aR}</table>
+        </div>
+        <strong>إجمالي الأصول: ${d.total_assets.toFixed(2)}</strong>
+        <h4>الخصوم</h4>
+        <div class="report-table-wrapper">
+          <table class="report-table">${lR}</table>
+        </div>
+        <strong>إجمالي الخصوم: ${d.total_liabilities.toFixed(2)}</strong>
+        <h4>حقوق الملكية</h4>
+        <div class="report-table-wrapper">
+          <table class="report-table">${eR}</table>
+        </div>
+        <strong>إجمالي حقوق الملكية: ${d.total_equity.toFixed(2)}</strong>
+      </div>`;
+  } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+async function loadAccountLedgerForm() {
+  try {
+    const accounts = await apiCall('/accounts','GET');
+    const opts = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>الأستاذ العام</h3>
+        <select id="ledger-account" class="input-field">${opts}</select>
+        <button id="btn-ledger" class="btn-primary">عرض الحركات</button>
+        <div id="ledger-result" style="margin-top:15px"></div>
+      </div>`;
+    document.getElementById('btn-ledger').addEventListener('click', async () => {
+      const id = document.getElementById('ledger-account').value; if (!id) return;
+      try {
+        const lines = await apiCall(`/reports?type=account_ledger&account_id=${id}`,'GET');
+        let html = '<div class="report-table-wrapper"><table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`);
+        html += '</table></div>';
+        document.getElementById('ledger-result').innerHTML = html;
+      } catch(e) { document.getElementById('ledger-result').innerHTML = `<div style="color:red">⚠️ ${e.message}</div>`; }
+    });
+  } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+async function loadCustomerStatementForm() {
+  try {
+    const custs = await apiCall('/customers','GET');
+    const opts = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>كشف حساب عميل</h3>
+        <select id="stmt-cust" class="input-field">${opts}</select>
+        <button id="btn-stmt-cust" class="btn-primary">عرض الكشف</button>
+        <div id="stmt-result"></div>
+      </div>`;
+    document.getElementById('btn-stmt-cust').addEventListener('click', async () => {
+      const id = document.getElementById('stmt-cust').value; if (!id) return;
+      try {
+        const lines = await apiCall(`/reports?type=customer_statement&customer_id=${id}`,'GET');
+        let html = '<div class="report-table-wrapper"><table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`);
+        html += '</table></div>';
+        document.getElementById('stmt-result').innerHTML = html;
+      } catch(e) { document.getElementById('stmt-result').innerHTML = `<div style="color:red">⚠️ ${e.message}</div>`; }
+    });
+  } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+async function loadSupplierStatementForm() {
+  try {
+    const supps = await apiCall('/suppliers','GET');
+    const opts = supps.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button>
+        <h3>كشف حساب مورد</h3>
+        <select id="stmt-supp" class="input-field">${opts}</select>
+        <button id="btn-stmt-supp" class="btn-primary">عرض الكشف</button>
+        <div id="stmt-result"></div>
+      </div>`;
+    document.getElementById('btn-stmt-supp').addEventListener('click', async () => {
+      const id = document.getElementById('stmt-supp').value; if (!id) return;
+      try {
+        const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`,'GET');
+        let html = '<div class="report-table-wrapper"><table class="report-table"><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>';
+        lines.forEach(l => html += `<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td style="font-weight:bold;color:${l.balance>=0?'green':'red'}">${(l.balance||0).toFixed(2)}</td></tr>`);
+        html += '</table></div>';
+        document.getElementById('stmt-result').innerHTML = html;
+      } catch(e) { document.getElementById('stmt-result').innerHTML = `<div style="color:red">⚠️ ${e.message}</div>`; }
+    });
+  } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+}
+async function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
 document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
 async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
 verifyUser();
