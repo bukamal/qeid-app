@@ -528,3 +528,47 @@ async function loadSupplierStatementForm() {
 document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
 async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
 verifyUser();
+
+function showHelpModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:600px; text-align:right;">
+      <h3>📚 مركز المساعدة – الراجحي للمحاسبة</h3>
+      <p>مرحباً بك في نظام الراجحي للمحاسبة. إليك دليل سريع لاستخدام التطبيق:</p>
+      
+      <h4>🧭 التبويبات الرئيسية</h4>
+      <ul style="padding-right:16px;">
+        <li><b>لوحة التحكم:</b> ملخص مالي، أرباح، سيولة، ومخططات.</li>
+        <li><b>المواد:</b> إضافة وتعديل وحذف المواد مع أسعار البيع والشراء.</li>
+        <li><b>فاتورة مبيعات / مشتريات:</b> إنشاء فاتورة بيع أو شراء، اختيار عميل/مورد، وإضافة بنود.</li>
+        <li><b>العملاء والموردين:</b> إدارة جهات الاتصال وأرصدتهم.</li>
+        <li><b>التصنيفات:</b> تنظيم المواد في فئات.</li>
+        <li><b>الدفعات:</b> تسجيل المدفوعات والمقبوضات وربطها بالفواتير.</li>
+        <li><b>الفواتير:</b> عرض جميع الفواتير مع إمكانية تعديلها وطباعتها وإرسال PDF.</li>
+        <li><b>التقارير:</b> ميزان مراجعة، قائمة دخل، ميزانية عمومية، أستاذ عام، وكشوف حسابات.</li>
+      </ul>
+
+      <h4>💡 نصائح</h4>
+      <ul style="padding-right:16px;">
+        <li>يمكنك سحب التبويبات لإعادة ترتيبها حسب رغبتك.</li>
+        <li>اضغط على 📥 PDF في أي فاتورة لإرسال نسخة إلى محادثتك.</li>
+        <li>في فاتورة المشتريات يمكنك اختيار "مصاريف عامة" لتسجيل المصروفات التشغيلية.</li>
+        <li>التقارير تُحدث تلقائياً من الفواتير والدفعات.</li>
+      </ul>
+
+      <p style="margin-top:16px;">📱 للدعم والتواصل: <b>@bukamal1991</b></p>
+
+      <div class="modal-actions">
+        <button class="btn-primary" id="close-help">حسناً، فهمت</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('close-help').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+}
+
+document.getElementById('btn-help').addEventListener('click', showHelpModal);
+
