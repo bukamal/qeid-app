@@ -107,16 +107,17 @@ async function loadDashboard() {
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
 let customersCache = [];
+
 async function loadCustomers() {
   try {
-    const customers = await apiCall('/customers', 'GET'); customersCache = customers;
     let html = `<div class="card"><h2>العملاء</h2><button id="btn-add-customer" class="btn-primary">+ إضافة عميل</button></div>`;
-    if (!customers.length) html += '<div class="card">لا يوجد عملاء</div>';
-    else html += customers.map(c => `<div class="card"><strong>${c.name}</strong> <span style="float:left;font-weight:bold;color:${c.balance>=0?'green':'red'}">الرصيد: ${c.balance}</span><br>📞 ${c.phone||'-'} | 🏠 ${c.address||'-'}<div class="card-actions"><button class="btn-secondary" onclick="showEditCustomerModal(${c.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteCustomer(${c.id})">🗑️ حذف</button></div></div>`).join('');
+    if (!customersCache.length) html += '<div class="card">لا يوجد عملاء</div>';
+    else html += customersCache.map(c => `<div class="card"><strong>${c.name}</strong> <span style="float:left;font-weight:bold;color:${c.balance>=0?'green':'red'}">الرصيد: ${c.balance}</span><br>📞 ${c.phone||'-'} | 🏠 ${c.address||'-'}<div class="card-actions"><button class="btn-secondary" onclick="showEditCustomerModal(${c.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteCustomer(${c.id})">🗑️ حذف</button></div></div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-customer').addEventListener('click', showAddCustomerModal);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function showAddCustomerModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   overlay.innerHTML = `<div class="modal-box"><h3>إضافة عميل جديد</h3><label class="form-label">الاسم</label><input id="add-cust-name" class="input-field" placeholder="اسم العميل" /><label class="form-label">الهاتف</label><input id="add-cust-phone" class="input-field" placeholder="رقم الهاتف" /><label class="form-label">العنوان</label><input id="add-cust-address" class="input-field" placeholder="العنوان" /><div class="modal-actions"><button class="btn-primary" id="save-add-cust">حفظ</button><button class="btn-secondary" id="cancel-add-cust">إلغاء</button></div></div>`;
@@ -139,16 +140,17 @@ function showEditCustomerModal(custId) {
   document.getElementById('cancel-cust-edit').onclick = () => document.body.removeChild(overlay);
 }
 let suppliersCache = [];
+
 async function loadSuppliers() {
   try {
-    const suppliers = await apiCall('/suppliers', 'GET'); suppliersCache = suppliers;
     let html = `<div class="card"><h2>الموردين</h2><button id="btn-add-supplier" class="btn-primary">+ إضافة مورد</button></div>`;
-    if (!suppliers.length) html += '<div class="card">لا يوجد موردين</div>';
-    else html += suppliers.map(s => `<div class="card"><strong>${s.name}</strong> <span style="float:left;font-weight:bold;color:${s.balance<=0?'green':'red'}">الرصيد: ${s.balance}</span><br>📞 ${s.phone||'-'} | 🏠 ${s.address||'-'}<div class="card-actions"><button class="btn-secondary" onclick="showEditSupplierModal(${s.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteSupplier(${s.id})">🗑️ حذف</button></div></div>`).join('');
+    if (!suppliersCache.length) html += '<div class="card">لا يوجد موردين</div>';
+    else html += suppliersCache.map(s => `<div class="card"><strong>${s.name}</strong> <span style="float:left;font-weight:bold;color:${s.balance<=0?'green':'red'}">الرصيد: ${s.balance}</span><br>📞 ${s.phone||'-'} | 🏠 ${s.address||'-'}<div class="card-actions"><button class="btn-secondary" onclick="showEditSupplierModal(${s.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteSupplier(${s.id})">🗑️ حذف</button></div></div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-supplier').addEventListener('click', showAddSupplierModal);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function showAddSupplierModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   overlay.innerHTML = `<div class="modal-box"><h3>إضافة مورد جديد</h3><label class="form-label">الاسم</label><input id="add-sup-name" class="input-field" placeholder="اسم المورد" /><label class="form-label">الهاتف</label><input id="add-sup-phone" class="input-field" placeholder="رقم الهاتف" /><label class="form-label">العنوان</label><input id="add-sup-address" class="input-field" placeholder="العنوان" /><div class="modal-actions"><button class="btn-primary" id="save-add-sup">حفظ</button><button class="btn-secondary" id="cancel-add-sup">إلغاء</button></div></div>`;
@@ -174,9 +176,6 @@ let itemsCache = [], categoriesCache = [];
 
 async function loadItems() {
   try {
-    const [items, categories] = await Promise.all([apiCall('/items', 'GET'), apiCall('/categories', 'GET')]);
-    itemsCache = items; categoriesCache = categories;
-
     let html = `
       <div class="card">
         <h2>المواد</h2>
@@ -186,14 +185,10 @@ async function loadItems() {
       <div id="items-list"></div>
     `;
     document.getElementById('tab-content').innerHTML = html;
-
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
     document.getElementById('items-search').addEventListener('input', renderFilteredItems);
-
     renderFilteredItems();
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
+  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
 
 function renderFilteredItems() {
@@ -321,11 +316,9 @@ async function showInvoiceModal(type) {
 }
 
 let invoicesCache = [];
+
 async function loadInvoices() {
   try {
-    const [invoices] = await Promise.all([apiCall('/invoices','GET')]); invoicesCache = invoices;
-    customersCache = (await apiCall('/customers','GET')); suppliersCache = (await apiCall('/suppliers','GET')); itemsCache = (await apiCall('/items','GET'));
-
     let html = `
       <div class="card">
         <h2>جميع الفواتير</h2>
@@ -339,8 +332,6 @@ async function loadInvoices() {
       <div id="invoices-list"></div>
     `;
     document.getElementById('tab-content').innerHTML = html;
-
-    // ربط أحداث التصفية والبحث
     const filterTabs = document.querySelectorAll('.filter-tab');
     filterTabs.forEach(tab => {
       tab.addEventListener('click', function() {
@@ -350,12 +341,8 @@ async function loadInvoices() {
       });
     });
     document.getElementById('invoice-search').addEventListener('input', renderFilteredInvoices);
-
-    // عرض القائمة الأولية
     renderFilteredInvoices();
-  } catch (err) {
-    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
-  }
+  } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
 
 function renderFilteredInvoices() {
@@ -476,16 +463,17 @@ async function deleteItem(id) { if (!await confirmDialog('متأكد من حذف
 async function deleteCustomer(id) { if (!await confirmDialog('متأكد من حذف العميل؟')) return; try { await apiCall(`/customers?id=${id}`,'DELETE'); alert('تم الحذف'); loadCustomers(); } catch(e) { alert('خطأ: '+e.message); } }
 async function deleteSupplier(id) { if (!await confirmDialog('متأكد من حذف المورد؟')) return; try { await apiCall(`/suppliers?id=${id}`,'DELETE'); alert('تم الحذف'); loadSuppliers(); } catch(e) { alert('خطأ: '+e.message); } }
 async function deleteInvoice(id) { if (!await confirmDialog('متأكد من حذف الفاتورة؟')) return; try { await apiCall(`/invoices?id=${id}`,'DELETE'); alert('تم الحذف'); loadInvoices(); } catch(e) { alert('خطأ: '+e.message); } }
+
 async function loadCategories() {
   try {
-    const cats = await apiCall('/categories','GET');
     let html = `<div class="card"><h2>التصنيفات</h2><button id="btn-add-cat" class="btn-primary">+ إضافة تصنيف</button></div>`;
-    if (!cats.length) html += '<div class="card">لا توجد تصنيفات</div>';
-    else html += cats.map(c => `<div class="card"><strong>${c.name}</strong><div class="card-actions"><button class="btn-secondary" onclick="showEditCategoryModal(${c.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteCategory(${c.id})">🗑️ حذف</button></div></div>`).join('');
+    if (!categoriesCache.length) html += '<div class="card">لا توجد تصنيفات</div>';
+    else html += categoriesCache.map(c => `<div class="card"><strong>${c.name}</strong><div class="card-actions"><button class="btn-secondary" onclick="showEditCategoryModal(${c.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteCategory(${c.id})">🗑️ حذف</button></div></div>`).join('');
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-cat').addEventListener('click', showAddCategoryModal);
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function showAddCategoryModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   overlay.innerHTML = `<div class="modal-box"><h3>إضافة تصنيف جديد</h3><label class="form-label">اسم التصنيف</label><input id="cat-name" class="input-field" placeholder="اسم التصنيف" /><div class="modal-actions"><button class="btn-primary" id="btn-save-cat">حفظ</button><button class="btn-secondary" id="btn-cancel-cat">إلغاء</button></div></div>`;
@@ -764,7 +752,36 @@ function showHelpModal() {
 }
 (function enableTabDragAndDrop() { const nav = document.querySelector('nav'); if (!nav) return; let dragged = null; function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); } function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); } if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply); else apply(); nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain',''); dragged.style.opacity = '0.5'; } }); nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } }); nav.addEventListener('dragover', e => e.preventDefault()); nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target===dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); }); nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, {passive:true}); nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target!==dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, {passive:false}); nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } }); })();
 document.addEventListener('click', e => { if (e.target.classList.contains('tab')) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); e.target.classList.add('active'); const tab = e.target.dataset.tab; if (tab==='dashboard') loadDashboard(); else if (tab==='items') loadItems(); else if (tab==='sale-invoice') loadSaleInvoiceForm(); else if (tab==='purchase-invoice') loadPurchaseInvoiceForm(); else if (tab==='customers') loadCustomers(); else if (tab==='suppliers') loadSuppliers(); else if (tab==='categories') loadCategories(); else if (tab==='payments') loadPayments(); else if (tab==='expenses') loadExpenses(); else if (tab==='invoices') loadInvoices(); else if (tab==='reports') loadReports(); } });
-async function verifyUser() { try { const data = await apiCall('/verify','POST'); if (data.verified) { document.getElementById('user-name').textContent = user.first_name; document.getElementById('loading').style.display = 'none'; document.getElementById('main').style.display = 'block'; loadDashboard(); document.getElementById('btn-help').addEventListener('click', showHelpModal); } else showError(data.error || 'غير مصرح لك'); } catch (err) { showError(err.message); } }
+
+async function verifyUser() {
+  try {
+    const data = await apiCall('/verify','POST');
+    if (data.verified) {
+      document.getElementById('user-name').textContent = user.first_name;
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+
+      // التحميل المسبق لجميع البيانات الأساسية
+      const [items, customers, suppliers, invoices, payments, categories, accounts] = await Promise.all([
+        apiCall('/items', 'GET'),
+        apiCall('/customers', 'GET'),
+        apiCall('/suppliers', 'GET'),
+        apiCall('/invoices', 'GET'),
+        apiCall('/payments', 'GET'),
+        apiCall('/categories', 'GET'),
+        apiCall('/accounts', 'GET')
+      ]);
+      itemsCache = items;
+      customersCache = customers;
+      suppliersCache = suppliers;
+      invoicesCache = invoices;
+      categoriesCache = categories;
+
+      loadDashboard();
+    } else showError(data.error || 'غير مصرح لك');
+  } catch (err) { showError(err.message); }
+}
+
 verifyUser();
 
 // ==================== إخفاء التبويبات عند التمرير ====================
