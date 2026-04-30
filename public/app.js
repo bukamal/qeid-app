@@ -397,11 +397,6 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   };
   document.getElementById('btn-cancel-pmt').onclick = () => document.body.removeChild(overlay);
 }
-async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`,'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e) { alert('خطأ: '+e.message); } }
-async function loadReports() {
-  let html = `<div class="card"><h2>التقارير</h2></div><div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div><div class="card report-link" data-report="income_statement">📈 قائمة الدخل</div><div class="card report-link" data-report="balance_sheet">⚖️ الميزانية العمومية</div><div class="card report-link" data-report="account_ledger">📒 الأستاذ العام</div><div class="card report-link" data-report="customer_statement">👤 كشف حساب عميل</div><div class="card report-link" data-report="supplier_statement">🏭 كشف حساب مورد</div>`;
-  document.getElementById('tab-content').innerHTML = html;
-  document.querySelectorAll('.report-link').forEach(el => el.addEventListener('click', () => { const r = el.dataset.report; if (r==='trial_balance') loadTrialBalance(); else if (r==='income_statement') loadIncomeStatement(); else if (r==='balance_sheet') loadBalanceSheet(); else if (r==='account_ledger') loadAccountLedgerForm(); else if (r==='customer_statement') loadCustomerStatementForm(); else if (r==='supplier_statement') loadSupplierStatementForm(); }));
 }
 async function loadTrialBalance() {
   try {
@@ -420,6 +415,7 @@ async function loadTrialBalance() {
       </div>`;
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
 async function loadIncomeStatement() {
   try {
     const d = await apiCall('/reports?type=income_statement','GET');
@@ -443,6 +439,7 @@ async function loadIncomeStatement() {
       </div>`;
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
 async function loadBalanceSheet() {
   try {
     const d = await apiCall('/reports?type=balance_sheet','GET');
@@ -471,6 +468,7 @@ async function loadBalanceSheet() {
       </div>`;
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
 async function loadAccountLedgerForm() {
   try {
     const accounts = await apiCall('/accounts','GET');
@@ -495,6 +493,7 @@ async function loadAccountLedgerForm() {
     });
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
 async function loadCustomerStatementForm() {
   try {
     const custs = await apiCall('/customers','GET');
@@ -519,6 +518,7 @@ async function loadCustomerStatementForm() {
     });
   } catch(e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
+
 async function loadSupplierStatementForm() {
   try {
     const supps = await apiCall('/suppliers','GET');
