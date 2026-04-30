@@ -50,7 +50,6 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // إنشاء PDF
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
@@ -96,7 +95,6 @@ module.exports = async (req, res) => {
     doc.end();
     const pdfBuffer = await pdfPromise;
 
-    // إرسال PDF إلى تيليجرام
     const FormData = require('form-data');
     const form = new FormData();
     form.append('chat_id', String(userId));
