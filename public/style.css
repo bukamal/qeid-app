@@ -1,4 +1,10 @@
-:root {
+l-box .qty-input,
+.modal-box .price-input,
+.modal-box .total-input {
+  max-width: none;
+  width: 100%;
+  flex: 1;
+}:root {
   --bg: #f8fafc;
   --card-bg: #ffffff;
   --text: #1e293b;
@@ -246,7 +252,7 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .line-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 .line-row .input-field { flex: 1 1 80px; }
 .debit-input, .credit-input { max-width: 90px; }
-.qty-input, .price-input, .total-input { max-width: 90px; }
+/* داخل المودال فقط نجعل الحقول تأخذ العرض الكامل */
 .item-select, .customer-select, .supplier-select { min-width: 110px; }
 .report-link { cursor: pointer; font-weight: 500; transition: background 0.2s, transform 0.2s; border-radius: var(--radius-sm); padding: 2px 4px; }
 .report-link:hover { background: var(--secondary); transform: translateX(-4px); }
