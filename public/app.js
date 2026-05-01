@@ -515,7 +515,6 @@ function attachInvoiceEvents(invoiceType) {
     }
   });
 
-  document.getElementById('btn-save-invoice')?.addEventListener('click', async () => {
     const type = document.getElementById('inv-type').value, entity = document.getElementById('inv-entity').value;
     let cust=null, supp=null; if (type==='sale') cust = entity==='cash'?null:entity; else supp = entity==='cash'?null:entity;
     const date = document.getElementById('inv-date').value, ref = document.getElementById('inv-ref').value.trim(), notes = document.getElementById('inv-notes').value.trim(), paid = parseFloat(document.getElementById('inv-paid')?.value)||0;
