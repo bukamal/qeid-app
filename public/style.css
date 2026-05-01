@@ -73,6 +73,29 @@ body.dark .tab {
   color: #fff;
 }
 
+/* زر إخفاء الشريط عند التمرير */
+.nav-hidden {
+  opacity: 0;
+  transform: translateY(-100%);
+  pointer-events: none;
+}
+
+/* ===========================
+   تجاوب الجوال مع شريط التبويبات
+   =========================== */
+@media (max-width: 600px) {
+  nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 6px;
+  }
+  .tab {
+    flex-shrink: 0;
+  }
+}
+
 /* ===========================
    البطاقات
    =========================== */
