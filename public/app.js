@@ -1044,6 +1044,132 @@ async function loadSupplierStatementForm() {
   }
 }
 
+// ========== سحب وترتيب التبويبات (ماوس + لمس) ==========
+(function enableTabDragAndDrop() {
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+
+  let draggedTab = null;
+  let dragStartX = 0;
+  let scrollLeftStart = 0;
+
+  // حفظ الترتيب في localStorage
+  function saveTabOrder() {
+    const tabs = Array.from(nav.querySelectorAll('.tab:not([style*="display:none"])'));
+    const order = tabs.map(tab => tab.dataset.tab);
+    localStorage.setItem('tabOrder', JSON.stringify(order));
+  }
+
+  // تطبيق الترتيب المحفوظ
+  function applySavedOrder() {
+    const savedOrder = JSON.parse(localStorage.getItem('tabOrder'));
+    if (!savedOrder || !savedOrder.length) return;
+    const tabs = Array.from(nav.querySelectorAll('.tab:not([style*="display:none"])'));
+    const tabMap = {};
+    tabs.forEach(tab => { tabMap[tab.dataset.tab] = tab; });
+    savedOrder.forEach(tabId => {
+      if (tabMap[tabId]) nav.appendChild(tabMap[tabId]);
+    });
+  }
+
+  // تطبيق الترتيب عند تحميل الصفحة
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applySavedOrder);
+  } else {
+    applySavedOrder();
+  }
+
+  // بدء السحب (ماوس)
+  nav.addEventListener('dragstart', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    draggedTab = tab;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+    tab.style.opacity = '0.5';
+  });
+
+  nav.addEventListener('dragend', (e) => {
+    if (draggedTab) {
+      draggedTab.style.opacity = '1';
+      draggedTab = null;
+    }
+  });
+
+  nav.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  nav.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const targetTab = e.target.closest('.tab');
+    if (!targetTab || !draggedTab || targetTab === draggedTab) return;
+    const tabs = Array.from(nav.querySelectorAll('.tab:not([style*="display:none"])'));
+    const draggedIndex = tabs.indexOf(draggedTab);
+    const targetIndex = tabs.indexOf(targetTab);
+    if (draggedIndex < targetIndex) {
+      nav.insertBefore(draggedTab, targetTab.nextSibling);
+    } else {
+      nav.insertBefore(draggedTab, targetTab);
+    }
+    saveTabOrder();
+  });
+
+  // دعم اللمس (للأجهزة اللوحية والهواتف)
+  let touchDraggedTab = null;
+  let touchStartX = 0;
+  let touchScrollLeft = 0;
+
+  nav.addEventListener('touchstart', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    touchDraggedTab = tab;
+    touchStartX = e.touches[0].clientX;
+    touchScrollLeft = nav.scrollLeft;
+    tab.style.opacity = '0.5';
+    // منع التمرير العمودي للصفحة أثناء السحب
+    e.preventDefault();
+  }, { passive: false });
+
+  nav.addEventListener('touchmove', (e) => {
+    if (!touchDraggedTab) return;
+    e.preventDefault();
+    const currentX = e.touches[0].clientX;
+    const deltaX = currentX - touchStartX;
+    // تحريك التبويبة بصرياً أثناء السحب (اختياري)
+    touchDraggedTab.style.transform = `translateX(${deltaX}px)`;
+    // التمرير التلقائي إذا اقترب من الحافة
+    const edge = 50;
+    if (currentX < edge) {
+      nav.scrollLeft -= 10;
+    } else if (currentX > window.innerWidth - edge) {
+      nav.scrollLeft += 10;
+    }
+  }, { passive: false });
+
+  nav.addEventListener('touchend', (e) => {
+    if (!touchDraggedTab) return;
+    touchDraggedTab.style.transform = '';
+    touchDraggedTab.style.opacity = '1';
+    // تحديد التبويبة المستهدفة بناءً على الإحداثيات
+    const endX = e.changedTouches[0].clientX;
+    const elementsAtCursor = document.elementsFromPoint(endX, touchDraggedTab.getBoundingClientRect().top + 10);
+    const targetTab = elementsAtCursor.find(el => el.classList && el.classList.contains('tab') && el !== touchDraggedTab);
+    if (targetTab) {
+      const tabs = Array.from(nav.querySelectorAll('.tab:not([style*="display:none"])'));
+      const draggedIndex = tabs.indexOf(touchDraggedTab);
+      const targetIndex = tabs.indexOf(targetTab);
+      if (draggedIndex < targetIndex) {
+        nav.insertBefore(touchDraggedTab, targetTab.nextSibling);
+      } else {
+        nav.insertBefore(touchDraggedTab, targetTab);
+      }
+      saveTabOrder();
+    }
+    touchDraggedTab = null;
+  });
+})();
+
 // ========== أحداث التبويبات ==========
 document.addEventListener('click', e => {
   if (e.target.classList.contains('tab')) {
