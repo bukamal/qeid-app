@@ -127,14 +127,9 @@ function printInvoice(invoice){if(!invoice)return alert('بيانات غير م�
 async function verifyUser(){try{const data=await apiCall('/verify','POST');if(data.verified){document.getElementById('user-name').textContent=user.first_name;document.getElementById('loading').style.display='none';document.getElementById('main').style.display='block';[itemsCache,customersCache,suppliersCache,invoicesCache,categoriesCache,unitsCache]=await Promise.all([apiCall('/items','GET'),apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/invoices','GET'),apiCall('/definitions?type=category','GET'),apiCall('/definitions?type=unit','GET')]);loadDashboard();document.getElementById('btn-help').addEventListener('click',showHelpModal)}else showError(data.error||'غير مصرح لك')}catch(err){showError(err.message)}}
 verifyUser();
 
-// ضبط الهامش العلوي ديناميكيًا حسب ارتفاع الهيدر + التبويبات
-(function(){
-  const header = document.querySelector('header');
-  const nav = document.querySelector('nav');
+// تأكد من إزالة أي كود سابق يغير margin-top لـ #main
+// يمكن إضافة هذا التعديل البسيط:
+(function() {
   const main = document.getElementById('main');
-  if (header && nav && main) {
-    function setMargin() { main.style.marginTop = (header.offsetHeight + nav.offsetHeight) + 'px'; }
-    window.addEventListener('resize', setMargin);
-    setMargin();
-  }
+  if (main) main.style.marginTop = '0';
 })();
