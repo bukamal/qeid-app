@@ -13,6 +13,7 @@ body {
   color: #1e293b;
   direction: rtl;
   transition: background 0.3s, color 0.3s;
+  padding-top: 110px; /* مسافة للهيدر + التبويبات الثابتة */
 }
 
 body.dark {
@@ -21,9 +22,47 @@ body.dark {
 }
 
 /* ===========================
-   شريط التبويبات
+   الهيدر (ثابت في الأعلى)
+   =========================== */
+header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #2563eb;
+  color: #fff;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: padding 0.3s, background 0.3s;
+}
+
+body.dark header {
+  background: #1e3a5f;
+}
+
+header h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+#user-name {
+  font-size: 14px;
+  margin-left: 8px;
+}
+
+/* ===========================
+   شريط التبويبات (ثابت تحت الهيدر)
    =========================== */
 nav {
+  position: fixed;
+  top: 58px; /* ارتفاع الهيدر التقريبي */
+  left: 0;
+  right: 0;
+  z-index: 199;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -31,12 +70,10 @@ nav {
   padding: 10px;
   background: #ffffff;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  overflow-x: hidden;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  will-change: transform, opacity;
+  transition: transform 0.3s ease, opacity 0.3s ease, padding 0.3s, max-height 0.3s;
+  will-change: transform, opacity, max-height;
+  max-height: 200px; /* يسمح بالالتاف */
+  overflow-y: auto;  /* في حال الالتفاف الكبير يظهر شريط تمرير */
 }
 
 body.dark nav {
@@ -44,16 +81,32 @@ body.dark nav {
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
+/* حالة التقلص */
+nav.nav-collapsed {
+  padding: 4px 10px;
+  max-height: 44px;  /* ارتفاع صف واحد */
+  overflow-y: hidden;
+  opacity: 0.9;
+}
+
+/* حالة الإخفاء الكامل */
+nav.nav-hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* التبويبات */
 .tab {
   background: #e2e8f0;
   border: none;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border-radius: 20px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: #334155;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.2s, color 0.2s, padding 0.3s, font-size 0.3s;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -73,27 +126,21 @@ body.dark .tab {
   color: #fff;
 }
 
-/* زر إخفاء الشريط عند التمرير */
-.nav-hidden {
-  opacity: 0;
-  transform: translateY(-100%);
-  pointer-events: none;
+/* عند التقلص نصغر التبويبات */
+nav.nav-collapsed .tab {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 /* ===========================
-   تجاوب الجوال مع شريط التبويبات
+   (اختياري) شريط تمرير التبويبات عند الالتفاف
    =========================== */
-@media (max-width: 600px) {
-  nav {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    justify-content: flex-start;
-    -webkit-overflow-scrolling: touch;
-    padding: 8px 6px;
-  }
-  .tab {
-    flex-shrink: 0;
-  }
+nav::-webkit-scrollbar {
+  width: 4px;
+}
+nav::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
 /* ===========================
