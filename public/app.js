@@ -127,18 +127,14 @@ function printInvoice(invoice){if(!invoice)return alert('بيانات غير م�
 async function verifyUser(){try{const data=await apiCall('/verify','POST');if(data.verified){document.getElementById('user-name').textContent=user.first_name;document.getElementById('loading').style.display='none';document.getElementById('main').style.display='block';[itemsCache,customersCache,suppliersCache,invoicesCache,categoriesCache,unitsCache]=await Promise.all([apiCall('/items','GET'),apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/invoices','GET'),apiCall('/definitions?type=category','GET'),apiCall('/definitions?type=unit','GET')]);loadDashboard();document.getElementById('btn-help').addEventListener('click',showHelpModal)}else showError(data.error||'غير مصرح لك')}catch(err){showError(err.message)}}
 verifyUser();
 
-// ====== ضبط الهامش العلوي للمحتوى (ثابت بلا تأثيرات) ======
+// ضبط الهامش العلوي ديناميكيًا حسب ارتفاع الهيدر + التبويبات
 (function(){
   const header = document.querySelector('header');
   const nav = document.querySelector('nav');
   const main = document.getElementById('main');
-  if (!header || !nav || !main) return;
-
-  function updateMainMargin() {
-    const total = header.offsetHeight + nav.offsetHeight;
-    main.style.marginTop = total + 'px';
+  if (header && nav && main) {
+    function setMargin() { main.style.marginTop = (header.offsetHeight + nav.offsetHeight) + 'px'; }
+    window.addEventListener('resize', setMargin);
+    setMargin();
   }
-
-  window.addEventListener('resize', updateMainMargin);
-  updateMainMargin();
 })();
