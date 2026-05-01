@@ -1,7 +1,124 @@
 const tg=window.Telegram.WebApp;tg.ready();tg.expand();if(tg.colorScheme==='dark')document.body.classList.add('dark');tg.onEvent('themeChanged',()=>{document.body.classList.toggle('dark',tg.colorScheme==='dark')});const initData=tg.initData,user=tg.initDataUnsafe?.user,apiBase='/api';const cache={};const CACHE_DURATION=60000;function getCached(key){const entry=cache[key];if(entry&&Date.now()-entry.time<CACHE_DURATION)return entry.data;delete cache[key];return null}function setCache(key,data){cache[key]={data,time:Date.now()}}function clearCache(){for(const key in cache)delete cache[key]}function showLoading(msg){document.getElementById('loading').textContent=msg;document.getElementById('loading').style.display='block';document.getElementById('main').style.display='none'}function showError(msg){document.getElementById('loading').textContent='❌ '+msg;document.getElementById('loading').style.display='block';document.getElementById('main').style.display='none'}
 async function apiCall(endpoint,method='GET',body={}){let url=apiBase+endpoint;if(method==='GET'||method==='DELETE')url+=(url.includes('?')?'&':'?')+'initData='+encodeURIComponent(initData);if(method==='GET'){const cached=getCached(url);if(cached)return cached}const options={method,headers:{'Content-Type':'application/json'}};if(method!=='GET'&&method!=='DELETE')options.body=JSON.stringify({...body,initData});const res=await fetch(url,options);const json=await res.json().catch(()=>({}));if(!res.ok)throw new Error(json.error||`خطأ ${res.status}`);if(method==='GET')setCache(url,json);if(method==='POST'||method==='PUT'||method==='DELETE'){const base=endpoint.split('?')[0].split('/')[1];if(base==='definitions'){const urlParams=new URLSearchParams(endpoint.split('?')[1]);const type=urlParams.get('type');if(type==='category')categoriesCache=await apiCall('/definitions?type=category','GET');else if(type==='unit')unitsCache=await apiCall('/definitions?type=unit','GET')}else{for(const k in cache)if(k.includes(`/${base}`))delete cache[k];if(base==='invoices')invoicesCache=await apiCall('/invoices','GET');else if(base==='items')itemsCache=await apiCall('/items','GET');else if(base==='customers')customersCache=await apiCall('/customers','GET');else if(base==='suppliers')suppliersCache=await apiCall('/suppliers','GET');else if(base==='categories')categoriesCache=await apiCall('/definitions?type=category','GET');else if(base==='units')unitsCache=await apiCall('/definitions?type=unit','GET')}}return json}
 let customersCache=[],suppliersCache=[],itemsCache=[],categoriesCache=[],invoicesCache=[],unitsCache=[];
-async function loadDashboard(){try{const[monthly,daily,summary]=await Promise.all([apiCall('/reports?type=monthly_summary','GET'),apiCall('/reports?type=daily_profit','GET'),apiCall('/summary','GET')]);const totalSales=invoicesCache.filter(inv=>inv.type==='sale').reduce((s,inv)=>s+(inv.total||0),0);const totalPurchases=invoicesCache.filter(inv=>inv.type==='purchase').reduce((s,inv)=>s+(inv.total||0),0);document.getElementById('tab-content').innerHTML=`<div class="summary-strip"><div class="summary-item profit"><div class="summary-icon">💰</div><div class="summary-label">صافي الربح</div><div class="summary-value ${summary.net_profit>=0?'positive':'negative'}">${summary.net_profit.toFixed(2)}</div></div><div class="summary-item cash"><div class="summary-icon">🏦</div><div class="summary-label">رصيد الصندوق</div><div class="summary-value ${summary.cash_balance>=0?'positive':'negative'}">${summary.cash_balance.toFixed(2)}</div></div><div class="summary-item daily-cash"><div class="summary-icon">📅</div><div class="summary-label">رصيد الصندوق اليومي</div><div class="summary-value ${summary.daily_cash_balance>=0?'positive':'negative'}">${summary.daily_cash_balance.toFixed(2)}</div></div><div class="summary-item receivables"><div class="summary-icon">📥</div><div class="summary-label">الذمم المدينة</div><div class="summary-value">${summary.receivables.toFixed(2)}</div></div><div class="summary-item payables"><div class="summary-icon">📤</div><div class="summary-label">الذمم الدائنة</div><div class="summary-value">${summary.payables.toFixed(2)}</div></div></div><div class="dashboard-grid"><div class="dash-card items"><span class="dash-icon">📦</span><div class="dash-label">المواد</div><div class="dash-value">${itemsCache.length}</div></div><div class="dash-card customers"><span class="dash-icon">👥</span><div class="dash-label">العملاء</div><div class="dash-value">${customersCache.length}</div></div><div class="dash-card suppliers"><span class="dash-icon">🏭</span><div class="dash-label">الموردين</div><div class="dash-value">${suppliersCache.length}</div></div><div class="dash-card invoices"><span class="dash-icon">🧾</span><div class="dash-label">الفواتير</div><div class="dash-value">${invoicesCache.length}</div></div></div><div class="charts-row"><div class="chart-container"><h4>المبيعات والمشتريات</h4><canvas id="incomeChart"></canvas></div><div class="chart-container"><h4>المدفوعات الشهرية</h4><canvas id="paymentsChart"></canvas></div><div class="chart-container"><h4>صافي الربح اليومي</h4><canvas id="profitChart"></canvas></div></div>`;setTimeout(()=>{const ctx1=document.getElementById('incomeChart');if(ctx1)new Chart(ctx1,{type:'doughnut',data:{labels:['مبيعات','مشتريات'],datasets:[{data:[totalSales,totalPurchases],backgroundColor:['#10b981','#f59e0b'],borderColor:'#fff',borderWidth:2}]},options:{responsive:!0,plugins:{legend:{position:'bottom'}}}});const ctx2=document.getElementById('paymentsChart');if(ctx2&&monthly)new Chart(ctx2,{type:'bar',data:{labels:monthly.labels,datasets:[{label:'وارد',data:monthly.payments_in,backgroundColor:'#10b981'},{label:'منصرف',data:monthly.payments_out,backgroundColor:'#ef4444'}]},options:{responsive:!0,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:!0}}}});const ctx3=document.getElementById('profitChart');if(ctx3&&daily){const pts=daily.dates.map((ds,i)=>({x:new Date(ds+'T00:00:00'),y:daily.profits[i]}));new Chart(ctx3,{type:'line',data:{datasets:[{label:'صافي الربح اليومي',data:pts,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.1)',fill:!0,pointRadius:3}]},options:{responsive:!0,plugins:{legend:{position:'bottom'}},scales:{x:{type:'time',time:{unit:'day',displayFormats:{day:'yyyy-MM-dd'}},title:{display:!0,text:'التاريخ'}},y:{beginAtZero:!0,title:{display:!0,text:'الربح'}}}}})}},100)}catch(err){document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${err.message}</div>`}}
+
+async function loadDashboard() {
+  try {
+    // 1. استدعاء واحد فقط لـ /summary
+    const data = await apiCall('/summary', 'GET');
+    // data يحتوي الآن على:
+    // net_profit, cash_balance, daily_cash_balance, receivables, payables,
+    // total_sales, total_purchases,
+    // monthly: { labels, sales, purchases, net_profit, payments_in, payments_out, expenses }
+    // daily: { dates, profits }
+
+    // 2. بناء HTML لوحة التحكم مباشرة من البيانات
+    const totalSales = data.total_sales || 0;
+    const totalPurchases = data.total_purchases || 0;
+
+    document.getElementById('tab-content').innerHTML = `
+      <div class="summary-strip">
+        <div class="summary-item profit">
+          <div class="summary-icon">💰</div>
+          <div class="summary-label">صافي الربح</div>
+          <div class="summary-value ${data.net_profit >= 0 ? 'positive' : 'negative'}">${data.net_profit.toFixed(2)}</div>
+        </div>
+        <div class="summary-item cash">
+          <div class="summary-icon">🏦</div>
+          <div class="summary-label">رصيد الصندوق</div>
+          <div class="summary-value ${data.cash_balance >= 0 ? 'positive' : 'negative'}">${data.cash_balance.toFixed(2)}</div>
+        </div>
+        <div class="summary-item daily-cash">
+          <div class="summary-icon">📅</div>
+          <div class="summary-label">رصيد الصندوق اليومي</div>
+          <div class="summary-value ${data.daily_cash_balance >= 0 ? 'positive' : 'negative'}">${data.daily_cash_balance.toFixed(2)}</div>
+        </div>
+        <div class="summary-item receivables">
+          <div class="summary-icon">📥</div>
+          <div class="summary-label">الذمم المدينة</div>
+          <div class="summary-value">${data.receivables.toFixed(2)}</div>
+        </div>
+        <div class="summary-item payables">
+          <div class="summary-icon">📤</div>
+          <div class="summary-label">الذمم الدائنة</div>
+          <div class="summary-value">${data.payables.toFixed(2)}</div>
+        </div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="dash-card items">
+          <span class="dash-icon">📦</span>
+          <div class="dash-label">المواد</div>
+          <div class="dash-value">${itemsCache.length}</div>
+        </div>
+        <div class="dash-card customers">
+          <span class="dash-icon">👥</span>
+          <div class="dash-label">العملاء</div>
+          <div class="dash-value">${customersCache.length}</div>
+        </div>
+        <div class="dash-card suppliers">
+          <span class="dash-icon">🏭</span>
+          <div class="dash-label">الموردين</div>
+          <div class="dash-value">${suppliersCache.length}</div>
+        </div>
+        <div class="dash-card invoices">
+          <span class="dash-icon">🧾</span>
+          <div class="dash-label">الفواتير</div>
+          <div class="dash-value">${invoicesCache.length}</div>
+        </div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-container"><h4>المبيعات والمشتريات</h4><canvas id="incomeChart"></canvas></div>
+        <div class="chart-container"><h4>المدفوعات الشهرية</h4><canvas id="paymentsChart"></canvas></div>
+        <div class="chart-container"><h4>صافي الربح اليومي</h4><canvas id="profitChart"></canvas></div>
+      </div>`;
+
+    // 3. رسم المخططات باستخدام البيانات المضمنة
+    setTimeout(() => {
+      const ctx1 = document.getElementById('incomeChart');
+      if (ctx1) new Chart(ctx1, {
+        type: 'doughnut',
+        data: {
+          labels: ['مبيعات', 'مشتريات'],
+          datasets: [{ data: [totalSales, totalPurchases], backgroundColor: ['#10b981', '#f59e0b'], borderColor: '#fff', borderWidth: 2 }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
+
+      const ctx2 = document.getElementById('paymentsChart');
+      if (ctx2 && data.monthly) new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: data.monthly.labels,
+          datasets: [
+            { label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#10b981' },
+            { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444' }
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      const ctx3 = document.getElementById('profitChart');
+      if (ctx3 && data.daily) {
+        const pts = data.daily.dates.map((ds, i) => ({ x: new Date(ds + 'T00:00:00'), y: data.daily.profits[i] }));
+        new Chart(ctx3, {
+          type: 'line',
+          data: { datasets: [{ label: 'صافي الربح اليومي', data: pts, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, pointRadius: 3 }] },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+              x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'yyyy-MM-dd' } }, title: { display: true, text: 'التاريخ' } },
+              y: { beginAtZero: true, title: { display: true, text: 'الربح' } }
+            }
+          }
+        });
+      }
+    }, 100);
+  } catch (err) {
+    document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`;
+  }
+}
+
 function showFormModal({title,fields,initialValues={},onSave,onSuccess,confirmMode=false}){const overlay=document.createElement('div');overlay.className='modal-overlay';const fieldsHTML=fields.map(field=>{let inputHTML='';if(field.type==='select'&&field.options){inputHTML=`<select id="${field.id}" class="input-field">${field.options}</select>`}else{const inputType=field.type||'text';const placeholder=field.placeholder?`placeholder="${field.placeholder}"`:'';const value=initialValues[field.id]!==undefined?`value="${initialValues[field.id]}"`:'';inputHTML=`<input id="${field.id}" type="${inputType}" class="input-field" ${placeholder} ${value} />`}return `<label class="form-label">${field.label}</label>${inputHTML}`}).join('');const buttonsHTML=confirmMode?`<button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button>`:`<button class="btn-primary" id="modal-save">حفظ</button><button class="btn-secondary" id="modal-cancel">إلغاء</button>`;overlay.innerHTML=`<div class="modal-box"><h3>${title}</h3>${fieldsHTML}<div class="modal-actions">${buttonsHTML}</div></div>`;document.body.appendChild(overlay);const closeModal=()=>{if(document.body.contains(overlay))document.body.removeChild(overlay)};document.getElementById('modal-cancel').onclick=closeModal;const confirmBtn=document.getElementById(confirmMode?'modal-confirm':'modal-save');confirmBtn.onclick=async()=>{if(confirmMode){closeModal();if(onSuccess)onSuccess(true);return}const values={};for(const field of fields){const el=document.getElementById(field.id);if(el)values[field.id]=el.value.trim()}try{const result=await onSave(values);if(result&&result.error){alert('خطأ: '+result.error.message)}else{closeModal();if(onSuccess)onSuccess()}}catch(e){alert('خطأ: '+e.message)}}}
 function confirmDialog(msg){return new Promise(resolve=>{showFormModal({title:msg,fields:[],confirmMode:true,onSuccess:(confirmed)=>resolve(confirmed)})})}
 function showAddCustomerModal(){showFormModal({title:'إضافة عميل جديد',fields:[{id:'name',label:'الاسم',placeholder:'اسم العميل'},{id:'phone',label:'الهاتف',placeholder:'رقم الهاتف'},{id:'address',label:'العنوان',placeholder:'العنوان'}],onSave:values=>apiCall('/customers','POST',values),onSuccess:()=>loadCustomers()})}
@@ -18,7 +135,30 @@ function showAddExpenseModal(){showFormModal({title:'إضافة مصروف جد�
 async function loadCustomers(){try{let html=`<div class="card"><h2>العملاء</h2><button id="btn-add-customer" class="btn-primary">+ إضافة عميل</button></div>`;if(!customersCache.length)html+='<div class="card">لا يوجد عملاء</div>';else html+=customersCache.map(c=>`<div class="card"><strong>${c.name}</strong> <span style="float:left;font-weight:bold;color:${c.balance>=0?'green':'red'}">الرصيد: ${c.balance}</span><br>📞 ${c.phone||'-'} | 🏠 ${c.address||'-'}<div class="card-actions"><button class="btn-secondary" onclick="showEditCustomerModal(${c.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteCustomer(${c.id})">🗑️ حذف</button></div></div>`).join('');document.getElementById('tab-content').innerHTML=html;document.getElementById('btn-add-customer').addEventListener('click',showAddCustomerModal)}catch(err){document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${err.message}</div>`}}
 async function loadSuppliers(){try{let html=`<div class="card"><h2>الموردين</h2><button id="btn-add-supplier" class="btn-primary">+ إضافة مورد</button></div>`;if(!suppliersCache.length)html+='<div class="card">لا يوجد موردين</div>';else html+=suppliersCache.map(s=>`<div class="card"><strong>${s.name}</strong> <span style="float:left;font-weight:bold;color:${s.balance<=0?'green':'red'}">الرصيد: ${s.balance}</span><br>📞 ${s.phone||'-'} | 🏠 ${s.address||'-'}<div class="card-actions"><button class="btn-secondary" onclick="showEditSupplierModal(${s.id})">✏️ تعديل</button><button class="btn-danger" onclick="deleteSupplier(${s.id})">🗑️ حذف</button></div></div>`).join('');document.getElementById('tab-content').innerHTML=html;document.getElementById('btn-add-supplier').addEventListener('click',showAddSupplierModal)}catch(err){document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${err.message}</div>`}}
 async function loadItems(){try{let html=`<div class="card"><h2>المواد</h2><button id="btn-add-item" class="btn-primary">+ إضافة مادة</button><input id="items-search" type="text" class="input-field" placeholder="🔍 بحث في المواد..." style="margin-top:8px;" /></div><div id="items-list"></div>`;document.getElementById('tab-content').innerHTML=html;document.getElementById('btn-add-item').addEventListener('click',showAddItemModal);document.getElementById('items-search').addEventListener('input',renderFilteredItems);renderFilteredItems()}catch(err){document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${err.message}</div>`}}
-function renderFilteredItems(){const searchQuery=document.getElementById('items-search')?.value.trim().toLowerCase()||'';let filtered=itemsCache;if(searchQuery){filtered=filtered.filter(item=>(item.name||'').toLowerCase().includes(searchQuery))}if(!filtered.length){document.getElementById('items-list').innerHTML='<div class="card">لا توجد مواد مطابقة</div>';return}let tableHtml=`<div class="card" style="overflow-x:auto; padding:0; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05);"><table class="items-table"><thead><tr><th>اسم المادة</th><th>🛒 مشترى</th><th>💰 مباع</th><th>📦 متوفر</th><th>📏 الوحدة</th><th>💵 القيمة</th></tr></thead><tbody>`;filtered.forEach(item=>{const purchaseQty=invoicesCache.filter(inv=>inv.type==='purchase').flatMap(inv=>inv.invoice_lines||[]).filter(l=>l.item_id===item.id).reduce((sum,l)=>sum+(parseFloat(l.quantity)||0),0);const saleQty=invoicesCache.filter(inv=>inv.type==='sale').flatMap(inv=>inv.invoice_lines||[]).filter(l=>l.item_id===item.id).reduce((sum,l)=>sum+(parseFloat(l.quantity)||0),0);const available=purchaseQty-saleQty;const totalValue=available*(parseFloat(item.purchase_price)||0);const unit=item.unit||'-';tableHtml+=`<tr class="item-row" data-item-id="${item.id}" style="cursor:pointer;" onclick="showItemDetailModal(${item.id})"><td class="item-name">${item.name}</td><td class="qty">${purchaseQty}</td><td class="qty">${saleQty}</td><td class="qty" style="color:${available<0?'#dc2626':'#334155'}">${available}</td><td>${unit}</td><td class="value">${Math.round(totalValue)}</td></tr>`});tableHtml+=`</tbody></table></div>`;document.getElementById('items-list').innerHTML=tableHtml}
+
+function renderFilteredItems(){
+  const searchQuery = document.getElementById('items-search')?.value.trim().toLowerCase() || '';
+  let filtered = itemsCache;
+  if(searchQuery){
+    filtered = filtered.filter(item => (item.name || '').toLowerCase().includes(searchQuery));
+  }
+  if(!filtered.length){
+    document.getElementById('items-list').innerHTML = '<div class="card">لا توجد مواد مطابقة</div>';
+    return;
+  }
+  let tableHtml = '<div class="card" style="overflow-x:auto; padding:0; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05);"><table class="items-table"><thead><tr><th>اسم المادة</th><th>🛒 مشترى</th><th>💰 مباع</th><th>📦 متوفر</th><th>📏 الوحدة</th><th>💵 القيمة</th></tr></thead><tbody>';
+  filtered.forEach(item => {
+    const purchaseQty = item.purchase_qty ?? 0;
+    const saleQty     = item.sale_qty ?? 0;
+    const available   = item.available ?? 0;
+    const totalValue  = item.total_value ?? 0;
+    const unit = item.unit || '-';
+    tableHtml += `<tr class="item-row" data-item-id="${item.id}" style="cursor:pointer;" onclick="showItemDetailModal(${item.id})"><td class="item-name">${item.name}</td><td class="qty">${purchaseQty}</td><td class="qty">${saleQty}</td><td class="qty" style="color:${available<0?'#dc2626':'#334155'}">${available}</td><td>${unit}</td><td class="value">${Math.round(totalValue)}</td></tr>`;
+  });
+  tableHtml += '</tbody></table></div>';
+  document.getElementById('items-list').innerHTML = tableHtml;
+}
+
 function showItemDetailModal(itemId){const item=itemsCache.find(i=>i.id===itemId);if(!item)return;const purchaseQty=invoicesCache.filter(inv=>inv.type==='purchase').flatMap(inv=>inv.invoice_lines||[]).filter(l=>l.item_id===itemId).reduce((s,l)=>s+(parseFloat(l.quantity)||0),0);const saleQty=invoicesCache.filter(inv=>inv.type==='sale').flatMap(inv=>inv.invoice_lines||[]).filter(l=>l.item_id===itemId).reduce((s,l)=>s+(parseFloat(l.quantity)||0),0);const available=purchaseQty-saleQty;const totalValue=available*(parseFloat(item.purchase_price)||0);const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.innerHTML=`<div class="modal-box"><h3>${item.name}</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;"><div>📏 الوحدة: <b>${item.unit||'غير محدد'}</b></div><div>🛒 الكمية المشتراة: <b>${purchaseQty}</b></div><div>💰 الكمية المباعة: <b>${saleQty}</b></div><div>📦 الكمية المتوفرة: <b>${available}</b></div><div>💵 القيمة (بسعر الشراء): <b>${totalValue.toFixed(2)}</b></div><div>🏷️ التصنيف: <b>${item.category?.name||'بدون'}</b></div><div>📋 النوع: <b>${item.item_type||'-'}</b></div><div>🛒 سعر الشراء: <b>${item.purchase_price}</b></div><div>💰 سعر البيع: <b>${item.selling_price}</b></div></div><div class="modal-actions"><button class="btn-secondary" id="edit-item-from-detail">✏️ تعديل</button><button class="btn-danger" id="delete-item-from-detail">🗑️ حذف</button><button class="btn-secondary" id="close-detail">إغلاق</button></div></div>`;document.body.appendChild(overlay);document.getElementById('edit-item-from-detail').onclick=()=>{document.body.removeChild(overlay);showEditItemModal(itemId)};document.getElementById('delete-item-from-detail').onclick=()=>{document.body.removeChild(overlay);deleteItem(itemId)};document.getElementById('close-detail').onclick=()=>document.body.removeChild(overlay)}
 async function deleteItem(id){if(!await confirmDialog('متأكد من حذف المادة؟'))return;try{await apiCall(`/items?id=${id}`,'DELETE');alert('تم الحذف');loadItems()}catch(e){alert('خطأ: '+e.message)}}
 async function deleteCustomer(id){if(!await confirmDialog('متأكد من حذف العميل؟'))return;try{await apiCall(`/customers?id=${id}`,'DELETE');alert('تم الحذف');loadCustomers()}catch(e){alert('خطأ: '+e.message)}}
