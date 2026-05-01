@@ -868,32 +868,34 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 
-// سحب وترتيب التبويبات (اختياري) وتأثير الإخفاء عند التمرير
-(function enableTabDragAndDrop() {
+function() {
   const nav = document.querySelector('nav');
   if (!nav) return;
-  let dragged = null;
-  function saveOrder() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); }
-  function applyOrder() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyOrder); else applyOrder();
-  nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); dragged.style.opacity = '0.5'; } });
-  nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = ''; dragged = null; } });
-  nav.addEventListener('dragover', e => e.preventDefault());
-  nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target === dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); saveOrder(); });
-})();
+  let lastScrollY = window.scrollY;
+  let ticking = false;
 
-// إخفاء شريط التبويبات عند التمرير لأسفل
-(function() {
-  const nav = document.querySelector('nav');
-  if (!nav) return;
-  let lastScroll = 0;
+  function onScroll() {
+    const currentScrollY = window.scrollY;
+    // التمرير للأسفل (أعلى الصفحة يتحرك لأعلى) -> إخفاء
+    if (currentScrollY > 70 && currentScrollY > lastScrollY) {
+      nav.classList.add('nav-hidden');
+    } 
+    // التمرير للأعلى -> إظهار
+    else if (currentScrollY < lastScrollY) {
+      nav.classList.remove('nav-hidden');
+    }
+    lastScrollY = currentScrollY;
+    ticking = false;
+  }
+
   window.addEventListener('scroll', () => {
-    const current = window.scrollY;
-    if (current > 70 && current > lastScroll) nav.classList.add('nav-hidden');
-    else nav.classList.remove('nav-hidden');
-    lastScroll = current;
+    if (!ticking) {
+      requestAnimationFrame(onScroll);
+      ticking = true;
+    }
   });
 })();
+
 
 // ربط التبويبات الرئيسية
 document.querySelectorAll('.tab').forEach(tab => {
