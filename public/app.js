@@ -14,7 +14,119 @@ function showItemDetailModal(itemId){const item=itemsCache.find(i=>i.id===itemId
 function showAddItemModal(){const catOpts=categoriesCache.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.innerHTML=`<div class="modal-box"><h3>إضافة مادة جديدة</h3><label class="form-label">اسم المادة</label><input id="add-item-name" class="input-field"/><label class="form-label">التصنيف</label><select id="add-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select><div style="display:flex;gap:8px;margin:5px 0"><input id="add-item-new-category" class="input-field" placeholder="تصنيف جديد" style="flex:2"/><button id="btn-add-category-in-modal" class="btn-secondary" style="flex:1">أضف تصنيف</button></div><label class="form-label">نوع المادة</label><select id="add-item-type" class="input-field"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select><label class="form-label">سعر الشراء</label><input id="add-item-purchase" type="number" step="0.01" class="input-field" value="0"/><label class="form-label">سعر البيع</label><input id="add-item-selling" type="number" step="0.01" class="input-field" value="0"/><div class="modal-actions"><button class="btn-primary" id="save-add-item">حفظ</button><button class="btn-secondary" id="cancel-add-item">إلغاء</button></div></div>`;document.body.appendChild(overlay);document.getElementById('btn-add-category-in-modal').onclick=async()=>{const cn=document.getElementById('add-item-new-category').value.trim();if(!cn)return alert('أدخل اسم التصنيف');try{const nc=await apiCall('/categories','POST',{name:cn});categoriesCache.push(nc);const sel=document.getElementById('add-item-category');const opt=document.createElement('option');opt.value=nc.id;opt.textContent=nc.name;sel.appendChild(opt);sel.value=nc.id;document.getElementById('add-item-new-category').value=''}catch(e){alert('خطأ: '+e.message)}};document.getElementById('save-add-item').onclick=async()=>{const n=document.getElementById('add-item-name').value.trim();if(!n)return alert('اسم المادة مطلوب');if(itemsCache.some(i=>i.name.toLowerCase()===n.toLowerCase()))return alert('توجد مادة بنفس الاسم');const payload={name:n,category_id:document.getElementById('add-item-category').value||null,item_type:document.getElementById('add-item-type').value,purchase_price:parseFloat(document.getElementById('add-item-purchase').value)||0,selling_price:parseFloat(document.getElementById('add-item-selling').value)||0};try{await apiCall('/items','POST',payload);document.body.removeChild(overlay);loadItems()}catch(e){alert('خطأ: '+e.message)}};document.getElementById('cancel-add-item').onclick=()=>document.body.removeChild(overlay)}
 function showEditItemModal(itemId){const it=itemsCache.find(i=>i.id===itemId);if(!it)return;const catOpts=categoriesCache.map(c=>`<option value="${c.id}" ${c.id===it.category_id?'selected':''}>${c.name}</option>`).join('');const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.innerHTML=`<div class="modal-box"><h3>تعديل المادة</h3><label class="form-label">اسم المادة</label><input id="edit-item-name" class="input-field" value="${it.name}"/><label class="form-label">التصنيف</label><select id="edit-item-category" class="input-field"><option value="">بدون تصنيف</option>${catOpts}</select><label class="form-label">نوع المادة</label><select id="edit-item-type" class="input-field"><option value="مخزون" ${it.item_type==='مخزون'?'selected':''}>مخزون</option><option value="منتج نهائي" ${it.item_type==='منتج نهائي'?'selected':''}>منتج نهائي</option><option value="خدمة" ${it.item_type==='خدمة'?'selected':''}>خدمة</option></select><label class="form-label">سعر الشراء</label><input id="edit-item-purchase" type="number" step="0.01" class="input-field" value="${it.purchase_price}"/><label class="form-label">سعر البيع</label><input id="edit-item-selling" type="number" step="0.01" class="input-field" value="${it.selling_price}"/><div class="modal-actions"><button class="btn-primary" id="save-item-edit">حفظ</button><button class="btn-secondary" id="cancel-item-edit">إلغاء</button></div></div>`;document.body.appendChild(overlay);document.getElementById('save-item-edit').onclick=async()=>{const n=document.getElementById('edit-item-name').value.trim();if(!n)return alert('الاسم مطلوب');const payload={id:itemId,name:n,category_id:document.getElementById('edit-item-category').value||null,item_type:document.getElementById('edit-item-type').value,purchase_price:parseFloat(document.getElementById('edit-item-purchase').value)||0,selling_price:parseFloat(document.getElementById('edit-item-selling').value)||0};try{await apiCall('/items','PUT',payload);document.body.removeChild(overlay);loadItems()}catch(e){alert('خطأ: '+e.message)}};document.getElementById('cancel-item-edit').onclick=()=>document.body.removeChild(overlay)}
 function updateInvoiceRemoveButtons(){document.querySelectorAll('#inv-lines-container .line-row').forEach(row=>{const btn=row.querySelector('.btn-remove-line');if(btn)btn.style.display=document.querySelectorAll('#inv-lines-container .line-row').length>1?'inline-block':'none'})}
-function attachInvoiceEvents(invoiceType){function isItemDuplicate(id,cur){if(!id)return!1;let found=!1;document.querySelectorAll('#inv-lines-container .line-row').forEach(r=>{if(r===cur)return;if(r.querySelector('.item-select')?.value===id)found=!0});return found}function autoFillPrice(sel,pr){const id=sel.value;if(!id){pr.value='';return}const item=itemsCache.find(i=>i.id==id);if(item){pr.value=(invoiceType==='sale'?item.selling_price:item.purchase_price)||0;const row=sel.closest('.line-row');const qty=row.querySelector('.qty-input'),tot=row.querySelector('.total-input');if(qty&&tot)tot.value=Math.round((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0))}}document.querySelectorAll('#inv-lines-container .line-row').forEach(row=>{const sel=row.querySelector('.item-select'),pr=row.querySelector('.price-input');if(sel&&pr)autoFillPrice(sel,pr);sel?.addEventListener('change',function(){if(isItemDuplicate(this.value,this.closest('.line-row'))){alert('المادة مضافة مسبقاً');this.value='';pr.value='';return}autoFillPrice(this,pr)});const qty=row.querySelector('.qty-input'),tot=row.querySelector('.total-input');const calc=()=>{tot.value=Math.round((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0))};qty?.addEventListener('input',calc);pr?.addEventListener('input',calc)});document.getElementById('btn-add-inv-line')?.addEventListener('click',()=>{const ctr=document.getElementById('inv-lines-container');const newLine=document.createElement('div');newLine.className='line-row';newLine.innerHTML=`<select class="input-field item-select"><option value="">اختر مادة</option>${itemsCache.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><div style="flex:1;"><label class="form-label" style="margin-top:0;font-size:0.8rem;">الكمية</label><input type="number" step="any" class="input-field qty-input"/></div><div style="flex:1;"><label class="form-label" style="margin-top:0;font-size:0.8rem;">السعر</label><input type="number" step="0.01" class="input-field price-input"/></div><div style="flex:1;"><label class="form-label" style="margin-top:0;font-size:0.8rem;">الإجمالي</label><input type="number" step="0.01" class="input-field total-input" readonly/></div><button class="btn-remove-line btn-secondary">✕</button>`;ctr.appendChild(newLine);updateInvoiceRemoveButtons();const sel=newLine.querySelector('.item-select'),pr=newLine.querySelector('.price-input');const qty=newLine.querySelector('.qty-input'),tot=newLine.querySelector('.total-input');sel.addEventListener('change',function(){if(isItemDuplicate(this.value,this.closest('.line-row'))){alert('المادة مضافة مسبقاً');this.value='';pr.value='';return}autoFillPrice(this,pr)});const calc=()=>{tot.value=Math.round((parseFloat(qty.value)||0)*(parseFloat(pr.value)||0))};qty.addEventListener('input',calc);pr.addEventListener('input',calc)});document.getElementById('inv-lines-container')?.addEventListener('click',e=>{if(e.target.classList.contains('btn-remove-line')){const row=e.target.closest('.line-row');if(document.querySelectorAll('#inv-lines-container .line-row').length>1){row.remove();updateInvoiceRemoveButtons()}}});updateInvoiceRemoveButtons()}
+
+function attachInvoiceEvents(invoiceType) {
+  function isItemDuplicate(id, cur) {
+    if (!id) return false;
+    let found = false;
+    document.querySelectorAll('#inv-lines-container .line-row').forEach(r => {
+      if (r === cur) return;
+      if (r.querySelector('.item-select')?.value === id) found = true;
+    });
+    return found;
+  }
+
+  function autoFillPrice(sel, pr) {
+    const id = sel.value;
+    if (!id) { pr.value = ''; return; }
+    const item = itemsCache.find(i => i.id == id);
+    if (item) {
+      pr.value = (invoiceType === 'sale' ? item.selling_price : item.purchase_price) || 0;
+      const row = sel.closest('.line-row');
+      const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+      if (qty && tot) tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0));
+    }
+  }
+
+  // ربط الأسطر الموجودة
+  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+    const sel = row.querySelector('.item-select'), pr = row.querySelector('.price-input');
+    if (sel && pr) autoFillPrice(sel, pr);
+    sel?.addEventListener('change', function () {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً'); this.value = ''; pr.value = ''; return;
+      }
+      autoFillPrice(this, pr);
+    });
+    const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+    const calc = () => { tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0)); };
+    qty?.addEventListener('input', calc);
+    pr?.addEventListener('input', calc);
+  });
+
+  // زر إضافة سطر جديد
+  document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
+    const ctr = document.getElementById('inv-lines-container');
+    const newLine = document.createElement('div'); newLine.className = 'line-row';
+    newLine.innerHTML = `
+      <select class="input-field item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select>
+      <div style="flex:1;"><label class="form-label" style="margin-top:0;">الكمية</label><input type="number" step="any" class="input-field qty-input"/></div>
+      <div style="flex:1;"><label class="form-label" style="margin-top:0;">السعر</label><input type="number" step="0.01" class="input-field price-input"/></div>
+      <div style="flex:1;"><label class="form-label" style="margin-top:0;">الإجمالي</label><input type="number" step="0.01" class="input-field total-input" readonly/></div>
+      <button class="btn-remove-line btn-secondary">✕</button>
+    `;
+    ctr.appendChild(newLine); updateInvoiceRemoveButtons();
+    const sel = newLine.querySelector('.item-select'), pr = newLine.querySelector('.price-input');
+    const qty = newLine.querySelector('.qty-input'), tot = newLine.querySelector('.total-input');
+    sel.addEventListener('change', function () {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً'); this.value = ''; pr.value = ''; return;
+      }
+      autoFillPrice(this, pr);
+    });
+    const calc = () => { tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0)); };
+    qty.addEventListener('input', calc);
+    pr.addEventListener('input', calc);
+  });
+
+  // حذف سطر
+  document.getElementById('inv-lines-container')?.addEventListener('click', e => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const row = e.target.closest('.line-row');
+      if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) {
+        row.remove(); updateInvoiceRemoveButtons();
+      }
+    }
+  });
+
+  updateInvoiceRemoveButtons();
+
+  // ************** هنا تم إضافة مستمع زر الحفظ **************
+  document.getElementById('btn-save-invoice').onclick = async function () {
+    const type = document.getElementById('inv-type').value;
+    const entity = document.getElementById('inv-entity').value;
+    let cust = null, supp = null;
+    if (type === 'sale') cust = entity === 'cash' ? null : entity;
+    else supp = entity === 'cash' ? null : entity;
+    const date = document.getElementById('inv-date').value;
+    const ref = document.getElementById('inv-ref').value.trim();
+    const notes = document.getElementById('inv-notes').value.trim();
+    const paid = parseFloat(document.getElementById('inv-paid')?.value) || 0;
+    const lines = [];
+    const ids = new Set();
+    let dup = false;
+    document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+      const id = row.querySelector('.item-select').value || null;
+      if (id) {
+        if (ids.has(id)) dup = true;
+        ids.add(id);
+      }
+      const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+      const price = parseFloat(row.querySelector('.price-input').value) || 0;
+      const total = parseFloat(row.querySelector('.total-input').value) || 0;
+      if (id || qty > 0) lines.push({ item_id: id, description: id ? '' : 'بند', quantity: qty, unit_price: price, total });
+    });
+    if (dup) return alert('لا يمكن تكرار نفس المادة');
+    if (!lines.length) return alert('أضف بنداً');
+    try {
+      await apiCall('/invoices', 'POST', { type, customer_id: cust, supplier_id: supp, date, reference: ref, notes, lines, paid_amount: paid });
+      document.body.removeChild(document.querySelector('.modal-overlay'));
+      alert('تم حفظ الفاتورة بنجاح');
+      loadInvoices();
+    } catch (e) { alert('خطأ: ' + e.message); }
+  };
+}
+
 async function loadSaleInvoiceForm(){showInvoiceModal('sale')}async function loadPurchaseInvoiceForm(){showInvoiceModal('purchase')}
 async function showInvoiceModal(type){try{const[customers,suppliers,items]=await Promise.all([apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/items','GET')]);itemsCache=items;customersCache=customers;suppliersCache=suppliers;let entOpts='';if(type==='sale')entOpts=`<option value="cash">عميل نقدي</option>`+customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');else entOpts=`<option value="cash">مورد نقدي</option>`+suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');const modalHTML=`<div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;text-align:right;"><h3>فاتورة ${type==='sale'?'مبيعات':'مشتريات'} جديدة</h3><input type="hidden" id="inv-type" value="${type}"/><h4 style="margin:16px 0 8px;">البنود</h4><div id="inv-lines-container"><div class="line-row"><select class="input-field item-select"><option value="">اختر مادة</option>${items.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><div style="flex:1;"><label class="form-label" style="margin-top:0;font-size:0.8rem;">الكمية</label><input type="number" step="any" class="input-field qty-input"/></div><div style="flex:1;"><label class="form-label" style="margin-top:0;font-size:0.8rem;">السعر</label><input type="number" step="0.01" class="input-field price-input"/></div><div style="flex:1;"><label class="form-label" style="margin-top:0;font-size:0.8rem;">الإجمالي</label><input type="number" step="0.01" class="input-field total-input" readonly/></div><button class="btn-remove-line btn-secondary" style="display:none">✕</button></div></div><button id="btn-add-inv-line" class="btn-secondary">+ بند</button><label class="form-label" style="margin-top:16px;">${type==='sale'?'العميل':'المورد'}</label><select id="inv-entity" class="input-field">${entOpts}</select><label class="form-label">التاريخ</label><input id="inv-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}"/><label class="form-label">الرقم المرجعي</label><input id="inv-ref" placeholder="الرقم المرجعي" class="input-field"/><label class="form-label">ملاحظات</label><textarea id="inv-notes" placeholder="ملاحظات" class="input-field"></textarea><label class="form-label">المبلغ المدفوع</label><input id="inv-paid" type="number" step="0.01" placeholder="المبلغ المدفوع" class="input-field"/><div class="modal-actions" style="margin-top:20px;"><button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button><button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button></div></div>`;const overlay=document.createElement('div');overlay.className='modal-overlay';overlay.innerHTML=modalHTML;document.body.appendChild(overlay);attachInvoiceEvents(type);document.getElementById('btn-cancel-invoice').addEventListener('click',()=>{document.body.removeChild(overlay)})}catch(err){alert('خطأ: '+err.message)}}
 async function loadInvoices(){try{let html=`<div class="card"><h2>جميع الفواتير</h2><div style="display:flex;gap:6px;margin-bottom:8px;"><button class="tab filter-tab active" data-filter="all">الكل</button><button class="tab filter-tab" data-filter="sale">بيع</button><button class="tab filter-tab" data-filter="purchase">شراء</button></div><input id="invoice-search" type="text" class="input-field" placeholder="🔍 بحث في الفواتير..." style="margin-bottom:6px;"/></div><div id="invoices-list"></div>`;document.getElementById('tab-content').innerHTML=html;document.querySelectorAll('.filter-tab').forEach(tab=>{tab.addEventListener('click',function(){document.querySelectorAll('.filter-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');renderFilteredInvoices()})});document.getElementById('invoice-search').addEventListener('input',renderFilteredInvoices);renderFilteredInvoices()}catch(err){document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${err.message}</div>`}}
