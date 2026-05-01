@@ -56,7 +56,7 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + error.message });
     }
 
-    // إنشاء الحسابات الافتراضية (نفس الكود السابق)
+    // إنشاء الحسابات الافتراضية
     const defaultAccounts = [
       { name: 'الصندوق', type: 'asset' },
       { name: 'المبيعات', type: 'income' },

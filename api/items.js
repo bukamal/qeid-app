@@ -35,7 +35,6 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      // 1. جلب المواد الأساسية مع التصنيف
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select('*, category:categories(name)')
@@ -43,35 +42,22 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
-      // 2. محاولة استخدام RPC لتحسين الأداء (إذا كانت الدالة موجودة)
-      let qtyMap = {};
-      try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_item_quantities', { p_user_id: userId });
-        if (!rpcError && rpcData) {
-          rpcData.forEach(row => {
-            qtyMap[row.item_id] = { purchase: row.purchase_qty, sale: row.sale_qty };
-          });
-        } else {
-          throw new Error('RPC not available, fallback to manual');
-        }
-      } catch (err) {
-        // Fallback: الطريقة اليدوية (تجميع سطور الفواتير)
-        const { data: invoiceLines, error: linesError } = await supabase
-          .from('invoice_lines')
-          .select('item_id, quantity, invoice:invoices!inner(type)')
-          .eq('invoice.user_id', userId)
-          .not('item_id', 'is', null);
-        if (!linesError) {
-          for (const line of invoiceLines) {
-            const { item_id, quantity, invoice } = line;
-            if (!qtyMap[item_id]) qtyMap[item_id] = { purchase: 0, sale: 0 };
-            if (invoice.type === 'purchase') qtyMap[item_id].purchase += parseFloat(quantity) || 0;
-            else if (invoice.type === 'sale') qtyMap[item_id].sale += parseFloat(quantity) || 0;
-          }
-        }
+      const { data: invoiceLines, error: linesError } = await supabase
+        .from('invoice_lines')
+        .select('item_id, quantity, invoice:invoices!inner(type)')
+        .eq('invoice.user_id', userId)
+        .not('item_id', 'is', null);
+      if (linesError) throw linesError;
+
+      const qtyMap = {};
+      for (const line of invoiceLines) {
+        const { item_id, quantity, invoice } = line;
+        if (!item_id) continue;
+        if (!qtyMap[item_id]) qtyMap[item_id] = { purchase: 0, sale: 0 };
+        if (invoice.type === 'purchase') qtyMap[item_id].purchase += parseFloat(quantity) || 0;
+        else if (invoice.type === 'sale') qtyMap[item_id].sale += parseFloat(quantity) || 0;
       }
 
-      // 3. إثراء المواد بالكميات
       const enrichedItems = items.map(item => {
         const q = qtyMap[item.id] || { purchase: 0, sale: 0 };
         const available = q.purchase - q.sale;
@@ -88,7 +74,6 @@ module.exports = async (req, res) => {
       return res.json(enrichedItems);
     }
 
-    // POST, PUT, DELETE تبقى كما هي (لم تتغير)
     if (req.method === 'POST') {
       const { name, category_id, item_type, purchase_price, selling_price, quantity, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
