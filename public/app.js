@@ -24,24 +24,21 @@ function renderFilteredItems() {
     return;
   }
 
-  // بناء رأس الجدول
   let tableHtml = `
-    <div class="card" style="overflow-x:auto;">
+    <div class="card" style="overflow-x:auto; padding:0;">
       <table style="width:100%; border-collapse: collapse; text-align: right;">
         <thead>
-          <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-            <th style="padding: 12px 8px;">اسم المادة</th>
-            <th style="padding: 12px 8px;">مشترى</th>
-            <th style="padding: 12px 8px;">مباع</th>
-            <th style="padding: 12px 8px;">متوفر</th>
-            <th style="padding: 12px 8px;">القيمة (سعر الشراء)</th>
-            <th style="padding: 12px 8px;">إجراءات</th>
+          <tr style="background: #1e40af; color: #ffffff;">
+            <th style="padding: 12px 10px;">اسم المادة</th>
+            <th style="padding: 12px 10px;">مشترى</th>
+            <th style="padding: 12px 10px;">مباع</th>
+            <th style="padding: 12px 10px;">متوفر</th>
+            <th style="padding: 12px 10px;">القيمة</th>
           </tr>
         </thead>
         <tbody>
   `;
 
-  // بناء الصفوف
   filtered.forEach(item => {
     const purchaseQty = invoicesCache
       .filter(inv => inv.type === 'purchase')
@@ -60,15 +57,11 @@ function renderFilteredItems() {
 
     tableHtml += `
       <tr class="item-row" data-item-id="${item.id}" style="border-bottom: 1px solid #e2e8f0; cursor: pointer;" onclick="showItemDetailModal(${item.id})">
-        <td style="padding: 10px 8px; font-weight: 500;">${item.name}</td>
-        <td style="padding: 10px 8px;">${purchaseQty}</td>
-        <td style="padding: 10px 8px;">${saleQty}</td>
-        <td style="padding: 10px 8px;">${available}</td>
-        <td style="padding: 10px 8px;">${totalValue.toFixed(2)}</td>
-        <td style="padding: 10px 8px; white-space: nowrap;">
-          <button class="btn-secondary" style="margin: 2px;" onclick="event.stopPropagation(); showEditItemModal(${item.id})">✏️</button>
-          <button class="btn-danger" style="margin: 2px;" onclick="event.stopPropagation(); deleteItem(${item.id})">🗑️</button>
-        </td>
+        <td style="padding: 10px; font-weight: 500;">${item.name}</td>
+        <td style="padding: 10px;">${purchaseQty}</td>
+        <td style="padding: 10px;">${saleQty}</td>
+        <td style="padding: 10px;">${available}</td>
+        <td style="padding: 10px;">${Math.round(totalValue)}</td>
       </tr>
     `;
   });
