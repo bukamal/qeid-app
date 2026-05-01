@@ -652,40 +652,165 @@ async function deleteInvoice(id) {
   try { await apiCall(`/invoices?id=${id}`, 'DELETE'); alert('تم الحذف'); loadInvoices(); } catch (e) { alert('خطأ: ' + e.message); }
 }
 
-// ========== لوحة التحكم ==========
 async function loadDashboard() {
   try {
+    // جلب الملخص من API
     const data = await apiCall('/summary', 'GET');
+    
+    // استخراج القيم مع قيم افتراضية
+    const netProfit = data.net_profit || 0;
+    const cashBalance = data.cash_balance || 0;
+    const dailyCashBalance = data.daily_cash_balance || 0;
+    const receivables = data.receivables || 0;
+    const payables = data.payables || 0;
     const totalSales = data.total_sales || 0;
     const totalPurchases = data.total_purchases || 0;
+
+    // بناء واجهة لوحة التحكم
     document.getElementById('tab-content').innerHTML = `
       <div class="summary-strip">
-        <div class="summary-item profit"><div class="summary-icon">💰</div><div class="summary-label">صافي الربح</div><div class="summary-value ${data.net_profit >= 0 ? 'positive' : 'negative'}">${data.net_profit.toFixed(2)}</div></div>
-        <div class="summary-item cash"><div class="summary-icon">🏦</div><div class="summary-label">رصيد الصندوق</div><div class="summary-value ${data.cash_balance >= 0 ? 'positive' : 'negative'}">${data.cash_balance.toFixed(2)}</div></div>
-        <div class="summary-item daily-cash"><div class="summary-icon">📅</div><div class="summary-label">رصيد الصندوق اليومي</div><div class="summary-value ${data.daily_cash_balance >= 0 ? 'positive' : 'negative'}">${data.daily_cash_balance.toFixed(2)}</div></div>
-        <div class="summary-item receivables"><div class="summary-icon">📥</div><div class="summary-label">الذمم المدينة</div><div class="summary-value">${data.receivables.toFixed(2)}</div></div>
-        <div class="summary-item payables"><div class="summary-icon">📤</div><div class="summary-label">الذمم الدائنة</div><div class="summary-value">${data.payables.toFixed(2)}</div></div>
+        <div class="summary-item profit">
+          <div class="summary-icon">💰</div>
+          <div class="summary-label">صافي الربح</div>
+          <div class="summary-value ${netProfit >= 0 ? 'positive' : 'negative'}">${netProfit.toFixed(2)}</div>
+        </div>
+        <div class="summary-item cash">
+          <div class="summary-icon">🏦</div>
+          <div class="summary-label">رصيد الصندوق</div>
+          <div class="summary-value ${cashBalance >= 0 ? 'positive' : 'negative'}">${cashBalance.toFixed(2)}</div>
+        </div>
+        <div class="summary-item daily-cash">
+          <div class="summary-icon">📅</div>
+          <div class="summary-label">رصيد الصندوق اليومي</div>
+          <div class="summary-value ${dailyCashBalance >= 0 ? 'positive' : 'negative'}">${dailyCashBalance.toFixed(2)}</div>
+        </div>
+        <div class="summary-item receivables">
+          <div class="summary-icon">📥</div>
+          <div class="summary-label">الذمم المدينة</div>
+          <div class="summary-value">${receivables.toFixed(2)}</div>
+        </div>
+        <div class="summary-item payables">
+          <div class="summary-icon">📤</div>
+          <div class="summary-label">الذمم الدائنة</div>
+          <div class="summary-value">${payables.toFixed(2)}</div>
+        </div>
       </div>
       <div class="dashboard-grid">
-        <div class="dash-card items"><span class="dash-icon">📦</span><div class="dash-label">المواد</div><div class="dash-value">${itemsCache.length}</div></div>
-        <div class="dash-card customers"><span class="dash-icon">👥</span><div class="dash-label">العملاء</div><div class="dash-value">${customersCache.length}</div></div>
-        <div class="dash-card suppliers"><span class="dash-icon">🏭</span><div class="dash-label">الموردين</div><div class="dash-value">${suppliersCache.length}</div></div>
-        <div class="dash-card invoices"><span class="dash-icon">🧾</span><div class="dash-label">الفواتير</div><div class="dash-value">${invoicesCache.length}</div></div>
+        <div class="dash-card items">
+          <span class="dash-icon">📦</span>
+          <div class="dash-label">المواد</div>
+          <div class="dash-value">${itemsCache.length}</div>
+        </div>
+        <div class="dash-card customers">
+          <span class="dash-icon">👥</span>
+          <div class="dash-label">العملاء</div>
+          <div class="dash-value">${customersCache.length}</div>
+        </div>
+        <div class="dash-card suppliers">
+          <span class="dash-icon">🏭</span>
+          <div class="dash-label">الموردين</div>
+          <div class="dash-value">${suppliersCache.length}</div>
+        </div>
+        <div class="dash-card invoices">
+          <span class="dash-icon">🧾</span>
+          <div class="dash-label">الفواتير</div>
+          <div class="dash-value">${invoicesCache.length}</div>
+        </div>
       </div>
       <div class="charts-row">
-        <div class="chart-container"><h4>المبيعات والمشتريات</h4><canvas id="incomeChart"></canvas></div>
-        <div class="chart-container"><h4>المدفوعات الشهرية</h4><canvas id="paymentsChart"></canvas></div>
-        <div class="chart-container"><h4>صافي الربح اليومي</h4><canvas id="profitChart"></canvas></div>
-      </div>`;
+        <div class="chart-container">
+          <h4>المبيعات والمشتريات</h4>
+          <canvas id="incomeChart"></canvas>
+        </div>
+        <div class="chart-container">
+          <h4>المدفوعات الشهرية</h4>
+          <canvas id="paymentsChart"></canvas>
+        </div>
+        <div class="chart-container">
+          <h4>صافي الربح اليومي</h4>
+          <canvas id="profitChart"></canvas>
+        </div>
+      </div>
+    `;
+
+    // رسم المخططات بعد تحميل DOM
     setTimeout(() => {
-      const ctx1 = document.getElementById('incomeChart');
-      if (ctx1) new Chart(ctx1, { type: 'doughnut', data: { labels: ['مبيعات', 'مشتريات'], datasets: [{ data: [totalSales, totalPurchases], backgroundColor: ['#10b981', '#f59e0b'], borderColor: '#fff', borderWidth: 2 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
-      const ctx2 = document.getElementById('paymentsChart');
-      if (ctx2 && data.monthly) new Chart(ctx2, { type: 'bar', data: { labels: data.monthly.labels, datasets: [{ label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#10b981' }, { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444' }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } } });
-      const ctx3 = document.getElementById('profitChart');
-      if (ctx3 && data.daily) {
-        const pts = data.daily.dates.map((ds, i) => ({ x: new Date(ds + 'T00:00:00'), y: data.daily.profits[i] }));
-        new Chart(ctx3, { type: 'line', data: { datasets: [{ label: 'صافي الربح اليومي', data: pts, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, pointRadius: 3 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'yyyy-MM-dd' } }, title: { display: true, text: 'التاريخ' } }, y: { beginAtZero: true, title: { display: true, text: 'الربح' } } } } });
+      // مخطط doughnut للمبيعات والمشتريات
+      const incomeCtx = document.getElementById('incomeChart');
+      if (incomeCtx) {
+        new Chart(incomeCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['مبيعات', 'مشتريات'],
+            datasets: [{
+              data: [totalSales, totalPurchases],
+              backgroundColor: ['#10b981', '#f59e0b'],
+              borderColor: '#fff',
+              borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } }
+          }
+        });
+      }
+
+      // مخطط أعمدة للمدفوعات الشهرية
+      const paymentsCtx = document.getElementById('paymentsChart');
+      if (paymentsCtx && data.monthly) {
+        new Chart(paymentsCtx, {
+          type: 'bar',
+          data: {
+            labels: data.monthly.labels,
+            datasets: [
+              { label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#10b981' },
+              { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444' }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+      }
+
+      // مخطط خطي للأرباح اليومية
+      const profitCtx = document.getElementById('profitChart');
+      if (profitCtx && data.daily && data.daily.dates && data.daily.profits) {
+        const points = data.daily.dates.map((date, idx) => ({
+          x: new Date(date + 'T00:00:00'),
+          y: data.daily.profits[idx]
+        }));
+        new Chart(profitCtx, {
+          type: 'line',
+          data: {
+            datasets: [{
+              label: 'صافي الربح اليومي',
+              data: points,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.1)',
+              fill: true,
+              pointRadius: 3
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+              x: {
+                type: 'time',
+                time: { unit: 'day', displayFormats: { day: 'yyyy-MM-dd' } },
+                title: { display: true, text: 'التاريخ' }
+              },
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'الربح' }
+              }
+            }
+          }
+        });
       }
     }, 100);
   } catch (err) {
