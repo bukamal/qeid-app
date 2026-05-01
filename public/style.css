@@ -34,9 +34,8 @@ nav {
   position: sticky;
   top: 0;
   z-index: 100;
-  overflow-x: hidden;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  will-change: transform, opacity;
+  overflow-x: hidden;            /* إلغاء التمرير الأفقي */
+  -webkit-overflow-scrolling: touch;
 }
 
 body.dark nav {
