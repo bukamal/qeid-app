@@ -225,3 +225,30 @@ function showHelpModal(){const overlay=document.createElement('div');overlay.cla
 document.addEventListener('click',e=>{if(e.target.classList.contains('tab')){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));e.target.classList.add('active');const tab=e.target.dataset.tab;if(tab==='dashboard')loadDashboard();else if(tab==='items')loadItems();else if(tab==='sale-invoice')loadSaleInvoiceForm();else if(tab==='purchase-invoice')loadPurchaseInvoiceForm();else if(tab==='customers')loadCustomers();else if(tab==='suppliers')loadSuppliers();else if(tab==='categories')loadCategories();else if(tab==='payments')loadPayments();else if(tab==='expenses')loadExpenses();else if(tab==='invoices')loadInvoices();else if(tab==='reports')loadReports()}});
 async function verifyUser(){try{const data=await apiCall('/verify','POST');if(data.verified){document.getElementById('user-name').textContent=user.first_name;document.getElementById('loading').style.display='none';document.getElementById('main').style.display='block';[itemsCache,customersCache,suppliersCache,invoicesCache,categoriesCache]=await Promise.all([apiCall('/items','GET'),apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/invoices','GET'),apiCall('/categories','GET')]);loadDashboard();document.getElementById('btn-help').addEventListener('click',showHelpModal)}else showError(data.error||'غير مصرح لك')}catch(err){showError(err.message)}}
 verifyUser();
+// ==================== إخفاء التبويبات عند التمرير ====================
+(function() {
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+  let lastScrollY = window.scrollY;
+  let ticking = false;
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        if (currentScrollY > lastScrollY && currentScrollY > 50) {
+          nav.style.opacity = '0';
+          nav.style.transform = 'translateY(-100%)';
+          nav.style.pointerEvents = 'none';
+        } else {
+          nav.style.opacity = '1';
+          nav.style.transform = 'translateY(0)';
+          nav.style.pointerEvents = 'auto';
+        }
+        lastScrollY = currentScrollY;
+        ticking = false;
+      });
+      ticking = true;
+    }
+  });
+})();
