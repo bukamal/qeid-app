@@ -27,13 +27,13 @@ function clearCache() {
 
 function showLoading(msg) { document.getElementById('loading').textContent = msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
 function showError(msg) { document.getElementById('loading').textContent = '❌ ' + msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
+
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
   if (method === 'GET' || method === 'DELETE') {
     url += (url.includes('?') ? '&' : '?') + 'initData=' + encodeURIComponent(initData);
   }
 
-  // إذا كان GET، تحقق من الكاش
   if (method === 'GET') {
     const cached = getCached(url);
     if (cached) return cached;
@@ -48,14 +48,33 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
 
-  // خزن في الكاش إذا كان GET
   if (method === 'GET') {
     setCache(url, json);
   }
 
-  // إذا كان هناك تعديل (POST/PUT/DELETE)، امسح الكاش كاملًا
+  // بعد التعديل، نمسح الكاش المرتبط بالمسار الأساسي فقط
   if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-    clearCache();
+    const baseEndpoint = endpoint.split('?')[0].split('/')[1]; // items, invoices, customers...
+    // مسح الكاش للمسارات ذات الصلة
+    for (const key in cache) {
+      if (key.includes(`/${baseEndpoint}`)) {
+        delete cache[key];
+      }
+    }
+    // تحديث المتغيرات العامة عند الحاجة
+    if (baseEndpoint === 'invoices') {
+      invoicesCache = await apiCall('/invoices', 'GET');
+    } else if (baseEndpoint === 'items') {
+      itemsCache = await apiCall('/items', 'GET');
+    } else if (baseEndpoint === 'customers' || baseEndpoint === 'entities') {
+      customersCache = await apiCall('/customers', 'GET');
+    } else if (baseEndpoint === 'suppliers' || baseEndpoint === 'entities') {
+      suppliersCache = await apiCall('/suppliers', 'GET');
+    } else if (baseEndpoint === 'payments') {
+      // update payments if needed
+    } else if (baseEndpoint === 'categories') {
+      categoriesCache = await apiCall('/categories', 'GET');
+    }
   }
 
   return json;
