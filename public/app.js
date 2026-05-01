@@ -248,9 +248,9 @@ function renderFilteredItems() {
     const available = purchaseQty - saleQty;
     const totalValue = available * (parseFloat(item.purchase_price) || 0);
     const unit = item.unit || '-';
-    tableHtml += `<tr class="item-row" data-item-id="${item.id}" style="cursor:pointer;" onclick="showItemDetailModal(${item.id})"><td class="item-name">${item.name}</td><td class="qty">${purchaseQty}</td><td class="qty">${saleQty}</td><td class="qty" style="color:${available < 0 ? '#dc2626' : '#334155'}">${available}</td><td class="unit">${unit}</td><td class="value">${Math.round(totalValue)}</td></tr>`;
+    tableHtml += `<tr class="item-row" data-item-id="${item.id}" style="cursor:pointer;" onclick="showItemDetailModal(${item.id})"><td class="item-name">${item.name}</td><td class="qty">${purchaseQty}</td><td class="qty">${saleQty}</td><td class="qty" style="color:${available < 0 ? '#dc2626' : '#334155'}">${available}</td><td class="unit">${unit}</td><td class="value">${Math.round(totalValue)}<\/td></tr>`;
   });
-  tableHtml += `</tbody></table></div>`;
+  tableHtml += `</tbody>}</div>`;
   document.getElementById('items-list').innerHTML = tableHtml;
 }
 
@@ -619,7 +619,7 @@ async function loadReports() {
 }
 
 async function loadTrialBalance() {
-  try { const data = await apiCall('/reports?type=trial_balance', 'GET'); const rows = data.map(r => `<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td>${r.total_credit.toFixed(2)}</td><td style="color:${r.balance >= 0 ? 'green' : 'red'}">${r.balance.toFixed(2)}</td></tr>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>ميزان المراجعة</h3><div class="report-table-wrapper"><table class="report-table"><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>${rows}</table></div></div>`; } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
+  try { const data = await apiCall('/reports?type=trial_balance', 'GET'); const rows = data.map(r => `<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td style="text-align:center">${r.total_credit.toFixed(2)}</td><td style="color:${r.balance >= 0 ? 'green' : 'red'}">${r.balance.toFixed(2)}</td></tr>`).join(''); document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>ميزان المراجعة</h3><div class="report-table-wrapper"><table class="report-table"><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>${rows}</table></div></div>`; } catch (e) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${e.message}</div>`; }
 }
 
 async function loadIncomeStatement() {
@@ -645,28 +645,12 @@ async function loadSupplierStatementForm() {
 function showHelpModal() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box" style="max-width:600px; text-align:right;"><h3>📚 مركز المساعدة – الراجحي للمحاسبة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. إليك دليل سريع لاستخدام التطبيق:</p><h4>🧭 التبويبات الرئيسية</h4><ul style="padding-right:16px;"><li><b>لوحة التحكم:</b> ملخص مالي، أرباح، سيولة، ومخططات.</li><li><b>المواد:</b> إضافة وتعديل وحذف المواد مع أسعار البيع والشراء.</li><li><b>فاتورة مبيعات / مشتريات:</b> إنشاء فاتورة بيع أو شراء، اختيار عميل/مورد، وإضافة بنود.</li><li><b>العملاء والموردين:</b> إدارة جهات الاتصال وأرصدتهم.</li><li><b>التصنيفات:</b> تنظيم المواد في فئات.</li><li><b>الدفعات:</b> تسجيل المدفوعات والمقبوضات وربطها بالفواتير.</li><li><b>المصاريف:</b> تسجيل المصاريف العامة للإدارة.</li><li><b>الفواتير:</b> عرض جميع الفواتير مع إمكانية تعديلها وطباعتها وإرسال PDF.</li><li><b>التقارير:</b> ميزان مراجعة، قائمة دخل، ميزانية عمومية، أستاذ عام، وكشوف حسابات.</li></ul><h4>💡 نصائح</h4><ul style="padding-right:16px;"><li>يمكنك سحب التبويبات لإعادة ترتيبها حسب رغبتك.</li><li>اضغط على 📥 PDF في أي فاتورة لإرسال نسخة إلى محادثتك.</li><li>التقارير تُحدث تلقائياً من الفواتير والدفعات والمصاريف.</li></ul><p style="margin-top:16px;">📱 للدعم والتواصل: <b>@bukamal1991</b></p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً، فهمت</button></div></div>`;
+  overlay.innerHTML = `<div class="modal-box" style="max-width:600px; text-align:right;"><h3>📚 مركز المساعدة – الراجحي للمحاسبة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. إليك دليل سريع لاستخدام التطبيق:</p><h4>🧭 التبويبات الرئيسية</h4><ul style="padding-right:16px;"><li><b>لوحة التحكم:</b> ملخص مالي، أرباح، سيولة، ومخططات.</li><li><b>المواد:</b> إضافة وتعديل وحذف المواد مع أسعار البيع والشراء.</li><li><b>فاتورة مبيعات / مشتريات:</b> إنشاء فاتورة بيع أو شراء، اختيار عميل/مورد، وإضافة بنود.</li><li><b>العملاء والموردين:</b> إدارة جهات الاتصال وأرصدتهم.</li><li><b>التصنيفات:</b> تنظيم المواد في فئات.</li><li><b>الدفعات:</b> تسجيل المدفوعات والمقبوضات وربطها بالفواتير.</li><li><b>المصاريف:</b> تسجيل المصاريف العامة للإدارة.</li><li><b>الفواتير:</b> عرض جميع الفواتير مع إمكانية تعديلها وطباعتها وإرسال PDF.</li><li><b>التقارير:</b> ميزان مراجعة، قائمة دخل، ميزانية عمومية، أستاذ عام، وكشوف حسابات.</li></ul><h4>💡 نصائح</h4><ul style="padding-right:16px;"><li>يمكنك إعادة ترتيب التبويبات حسب رغبتك (اسحبها إلى الموضع المطلوب).</li><li>اضغط على 📥 PDF في أي فاتورة لإرسال نسخة إلى محادثتك.</li><li>التقارير تُحدث تلقائياً من الفواتير والدفعات والمصاريف.</li></ul><p style="margin-top:16px;">📱 للدعم والتواصل: <b>@bukamal1991</b></p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً، فهمت</button></div></div>`;
   document.body.appendChild(overlay);
   document.getElementById('close-help').addEventListener('click', () => { document.body.removeChild(overlay); });
 }
 
-// سحب التبويبات وإعادة ترتيبها
-(function enableTabDragAndDrop() {
-  const nav = document.querySelector('nav');
-  if (!nav) return;
-  let dragged = null;
-  function save() { const tabs = Array.from(nav.querySelectorAll('.tab')); localStorage.setItem('tabOrder', JSON.stringify(tabs.map(t => t.dataset.tab))); }
-  function apply() { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (!saved) return; const tabs = Array.from(nav.querySelectorAll('.tab')); const map = {}; tabs.forEach(t => map[t.dataset.tab] = t); saved.forEach(k => { if (map[k]) nav.appendChild(map[k]); }); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply); else apply();
-  nav.addEventListener('dragstart', e => { dragged = e.target.closest('.tab'); if (dragged) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); dragged.style.opacity = '0.5'; } });
-  nav.addEventListener('dragend', () => { if (dragged) { dragged.style.opacity = '1'; dragged = null; } });
-  nav.addEventListener('dragover', e => e.preventDefault());
-  nav.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.tab'); if (!target || !dragged || target === dragged) return; const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); save(); });
-  nav.addEventListener('touchstart', e => { dragged = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (dragged) dragged.style.opacity = '0.5'; }, { passive: true });
-  nav.addEventListener('touchmove', e => { if (!dragged) return; e.preventDefault(); const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.tab'); if (target && target !== dragged) { const tabs = Array.from(nav.querySelectorAll('.tab')); if (tabs.indexOf(dragged) < tabs.indexOf(target)) nav.insertBefore(dragged, target.nextSibling); else nav.insertBefore(dragged, target); } }, { passive: false });
-  nav.addEventListener('touchend', () => { if (dragged) { dragged.style.opacity = '1'; save(); dragged = null; } });
-})();
-
+// ---- أحداث التبويبات ----
 document.addEventListener('click', e => {
   if (e.target.classList.contains('tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -702,29 +686,33 @@ async function verifyUser() {
 }
 verifyUser();
 
-// إخفاء التبويب عند التمرير للأسفل
-(function () {
+// ===== تمرير التبويبات بشكل احترافي (يختفي عند التمرير لأسفل ويظهر عند التمرير لأعلى) =====
+(function initSmartNavbar() {
   const nav = document.querySelector('nav');
   if (!nav) return;
-  let lastScrollY = window.scrollY;
+  let lastScroll = 0;
   let ticking = false;
   window.addEventListener('scroll', () => {
     if (!ticking) {
       window.requestAnimationFrame(() => {
-        const currentScrollY = window.scrollY;
-        if (currentScrollY > lastScrollY && currentScrollY > 50) {
-          nav.style.opacity = '0';
+        const currentScroll = window.scrollY;
+        if (currentScroll > lastScroll && currentScroll > 50) {
+          // التمرير لأسفل - إخفاء التبويبات
+          nav.style.transition = 'transform 0.3s ease, opacity 0.2s ease';
           nav.style.transform = 'translateY(-100%)';
+          nav.style.opacity = '0';
           nav.style.pointerEvents = 'none';
-        } else {
-          nav.style.opacity = '1';
+        } else if (currentScroll < lastScroll) {
+          // التمرير لأعلى - إظهار التبويبات
           nav.style.transform = 'translateY(0)';
+          nav.style.opacity = '1';
           nav.style.pointerEvents = 'auto';
         }
-        lastScrollY = currentScrollY;
+        lastScroll = currentScroll;
         ticking = false;
       });
       ticking = true;
     }
   });
 })();
+
