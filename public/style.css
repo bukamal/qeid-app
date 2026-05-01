@@ -102,7 +102,7 @@ header h1 {
 .btn-help:hover { background: var(--secondary); }
 
 /* ===========================
-   شريط التبويبات (ملون الحواف)
+   شريط التبويبات (عرض كامل)
    =========================== */
 nav {
   position: sticky;
@@ -114,6 +114,8 @@ nav {
   padding: 10px 20px;
   flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
+  width: 100%;
+  justify-content: flex-start; /* تمتد من اليمين */
 }
 
 .tab {
@@ -133,6 +135,7 @@ nav {
   align-items: center;
   gap: 6px;
   border-top: 4px solid transparent;
+  user-select: none;
 }
 
 .tab i { font-size: 0.9rem; }
@@ -149,7 +152,7 @@ nav {
   font-weight: 600;
 }
 
-/* حواف علوية ملونة للتبويبات (مثل التصميم المطلوب) */
+/* حواف علوية ملونة للتبويبات */
 .tab[data-tab="dashboard"] { border-top-color: #3b82f6; }
 .tab[data-tab="items"] { border-top-color: #3b82f6; }
 .tab[data-tab="sale-invoice"] { border-top-color: #10b981; }
@@ -168,6 +171,7 @@ nav {
    =========================== */
 #tab-content {
   padding: 20px;
+  /* لا max-width ولا margin: auto */
 }
 
 /* ===========================
@@ -217,7 +221,6 @@ nav {
 .positive { color: #10b981; }
 .negative { color: #ef4444; }
 
-/* ألوان الحواف لكل ملخص */
 .summary-item.profit { border-top-color: #3b82f6; }
 .summary-item.cash { border-top-color: #10b981; }
 .summary-item.receivables { border-top-color: #f59e0b; }
@@ -249,7 +252,6 @@ nav {
 .dash-card .dash-label { font-size: 0.9rem; opacity: 0.8; margin-bottom: 4px; }
 .dash-card .dash-value { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
 
-/* ألوان حواف بطاقات الأرقام */
 .dash-card.items { border-top-color: #3b82f6; }
 .dash-card.customers { border-top-color: #10b981; }
 .dash-card.suppliers { border-top-color: #f59e0b; }
@@ -493,14 +495,6 @@ body.dark .filter-tab { background: var(--secondary); }
   text-align: center;
   padding: 40px;
   font-size: 1.1rem;
-}
-
-/* ===========================
-   تأثير إخفاء التبويبات (اختياري)
-   =========================== */
-.nav-hidden {
-  transform: translateY(-85%);
-  opacity: 0.7;
 }
 
 /* ===========================
