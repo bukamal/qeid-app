@@ -37,7 +37,6 @@ nav {
   overflow-x: hidden;
   transition: opacity 0.3s ease, transform 0.3s ease;
   will-change: transform, opacity;
-  -webkit-overflow-scrolling: touch;
 }
 
 body.dark nav {
