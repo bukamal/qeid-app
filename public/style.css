@@ -7,13 +7,18 @@
   padding: 0;
 }
 
+:root {
+  --header-height: 58px;
+  --nav-height: 52px;
+}
+
 body {
   font-family: 'Tajawal', sans-serif;
   background: #f1f5f9;
   color: #1e293b;
   direction: rtl;
   transition: background 0.3s, color 0.3s;
-  padding-top: 110px; /* مسافة للهيدر + التبويبات الثابتة */
+  /* نترك المسافة للـ main عبر margin-top لاحقاً */
 }
 
 body.dark {
@@ -38,6 +43,7 @@ header {
   align-items: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   transition: padding 0.3s, background 0.3s;
+  height: var(--header-height);
 }
 
 body.dark header {
@@ -59,7 +65,7 @@ header h1 {
    =========================== */
 nav {
   position: fixed;
-  top: 58px; /* ارتفاع الهيدر التقريبي */
+  top: var(--header-height);
   left: 0;
   right: 0;
   z-index: 199;
@@ -72,8 +78,8 @@ nav {
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   transition: transform 0.3s ease, opacity 0.3s ease, padding 0.3s, max-height 0.3s;
   will-change: transform, opacity, max-height;
-  max-height: 200px; /* يسمح بالالتاف */
-  overflow-y: auto;  /* في حال الالتفاف الكبير يظهر شريط تمرير */
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 body.dark nav {
@@ -81,22 +87,19 @@ body.dark nav {
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
-/* حالة التقلص */
 nav.nav-collapsed {
   padding: 4px 10px;
-  max-height: 44px;  /* ارتفاع صف واحد */
+  max-height: 44px;
   overflow-y: hidden;
   opacity: 0.9;
 }
 
-/* حالة الإخفاء الكامل */
 nav.nav-hidden {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
 }
 
-/* التبويبات */
 .tab {
   background: #e2e8f0;
   border: none;
@@ -126,21 +129,29 @@ body.dark .tab {
   color: #fff;
 }
 
-/* عند التقلص نصغر التبويبات */
 nav.nav-collapsed .tab {
   padding: 4px 10px;
   font-size: 12px;
 }
 
-/* ===========================
-   (اختياري) شريط تمرير التبويبات عند الالتفاف
-   =========================== */
 nav::-webkit-scrollbar {
   width: 4px;
 }
 nav::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
+}
+
+/* ===========================
+   المحتوى الرئيسي
+   =========================== */
+#main {
+  /* الهامش العلوي سيضبط ديناميكياً من app.js */
+  transition: margin-top 0.3s ease;
+}
+
+#tab-content {
+  padding: 16px;
 }
 
 /* ===========================
