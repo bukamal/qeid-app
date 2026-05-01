@@ -192,5 +192,45 @@ function renderFilteredInvoices(){const activeFilter=document.querySelector('.fi
 function printInvoice(invoice){if(!invoice)return alert('بيانات غير متوفرة');const rows=invoice.invoice_lines?.map(l=>`<tr><td>${l.item?.name||'-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td></tr>`).join('')||'';const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${invoice.reference||''}</title><style>body{font-family:Tajawal,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f0f0f0}@media print{.no-print{display:none}}</style></head><body><h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2><p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p><p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''} ${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p><table><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${rows}</table><h3>الإجمالي: ${Math.round(invoice.total)}</h3><p>المدفوع: ${Math.round(invoice.paid||0)} | الباقي: ${Math.round(invoice.balance||0)}</p><p>${invoice.notes||''}</p><button class="no-print" onclick="window.print()">🖨️ طباعة</button><script>setTimeout(()=>window.print(),800);<\/script></body></html>`;const w=window.open('','_blank','width=800,height=600');if(w){w.document.write(html);w.document.close()}else{alert('سيتم عرض الفاتورة للطباعة');const ifr=document.createElement('iframe');ifr.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:white;';document.body.appendChild(ifr);ifr.contentWindow.document.write(html);ifr.contentWindow.document.close();try{ifr.contentWindow.onafterprint=()=>document.body.removeChild(ifr)}catch(e){}}}
 async function verifyUser(){try{const data=await apiCall('/verify','POST');if(data.verified){document.getElementById('user-name').textContent=user.first_name;document.getElementById('loading').style.display='none';document.getElementById('main').style.display='block';[itemsCache,customersCache,suppliersCache,invoicesCache,categoriesCache,unitsCache]=await Promise.all([apiCall('/items','GET'),apiCall('/customers','GET'),apiCall('/suppliers','GET'),apiCall('/invoices','GET'),apiCall('/definitions?type=category','GET'),apiCall('/definitions?type=unit','GET')]);loadDashboard();document.getElementById('btn-help').addEventListener('click',showHelpModal)}else showError(data.error||'غير مصرح لك')}catch(err){showError(err.message)}}
 verifyUser();
-(function(){const nav=document.querySelector('nav');if(!nav)return;let lastScrollY=window.scrollY;let ticking=false;window.addEventListener('scroll',()=>{if(!ticking){window.requestAnimationFrame(()=>{const currentScrollY=window.scrollY;if(currentScrollY>lastScrollY&&currentScrollY>50){nav.style.opacity='0';nav.style.transform='translateY(-100%)';nav.style.pointerEvents='none'}else{nav.style.opacity='1';nav.style.transform='translateY(0)';nav.style.pointerEvents='auto'}lastScrollY=currentScrollY;ticking=false});ticking=true}})})();
+(function(){
+  const nav = document.querySelector('nav');
+  if (!nav) return;
 
+  let lastScrollY = window.scrollY;
+  let ticking = false;
+  let hideTimeout = null;
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+
+        // إظهار الشريط فوراً عند التمرير للأعلى أو في أعلى الصفحة
+        if (currentScrollY < lastScrollY || currentScrollY <= 50) {
+          nav.style.opacity = '1';
+          nav.style.transform = 'translateY(0)';
+          nav.style.pointerEvents = 'auto';
+          if (hideTimeout) {
+            clearTimeout(hideTimeout);
+            hideTimeout = null;
+          }
+        }
+        // إخفاء الشريط مع تأخير بسيط لتجنب الوميض
+        else if (currentScrollY > lastScrollY && currentScrollY > 50) {
+          if (!hideTimeout) {
+            hideTimeout = setTimeout(() => {
+              nav.style.opacity = '0';
+              nav.style.transform = 'translateY(-100%)';
+              nav.style.pointerEvents = 'none';
+              hideTimeout = null;
+            }, 150);
+          }
+        }
+
+        lastScrollY = currentScrollY;
+        ticking = false;
+      });
+      ticking = true;
+    }
+  });
+})();
