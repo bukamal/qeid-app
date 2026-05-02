@@ -8,14 +8,20 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- قفل التمرير البسيط ----------
+// ---------- تثبيت التمرير بدون قفز ----------
+let scrollPosition = 0;
+
 function lockBodyScroll() {
-  document.body.classList.add('modal-open');
-  document.documentElement.classList.add('modal-open');
+  scrollPosition = window.scrollY;
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${scrollPosition}px`;
+  document.body.style.width = '100%';
 }
 function unlockBodyScroll() {
-  document.body.classList.remove('modal-open');
-  document.documentElement.classList.remove('modal-open');
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  window.scrollTo(0, scrollPosition);
 }
 
 // ---------- التخزين المؤقت ----------
@@ -137,7 +143,6 @@ function confirmDialog(msg) {
     showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
   });
 }
-
 // ---------- المواد (Items) ----------
 async function loadItems() {
   try {
@@ -339,7 +344,6 @@ document.addEventListener('click', async (e) => {
     } catch (err) { alert('خطأ: ' + err.message); }
   }
 });
-
 // ---------- فاتورة المبيعات والمشتريات ----------
 async function showInvoiceModal(type) {
   try {
@@ -565,7 +569,6 @@ function printInvoice(invoice) {
   const w = window.open('', '_blank', 'width=800,height=600');
   if (w) { w.document.write(html); w.document.close(); } else alert('الرجاء السماح بالنوافذ المنبثقة');
 }
-
 // ---------- المدفوعات (Payments) ----------
 async function loadPayments() {
   try {
@@ -682,7 +685,6 @@ async function loadDashboard() {
     }
   } catch(err){ document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
-
 // ---------- التقارير (Reports) ----------
 async function loadReports() {
   let html = `<div class="card"><h3>التقارير</h3></div>
@@ -875,3 +877,4 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
+
