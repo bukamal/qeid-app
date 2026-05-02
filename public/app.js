@@ -9,18 +9,23 @@ const apiBase = '/api';
 const cache = {};
 const CACHE_DURATION = 60000;
 let gScrollY = 0;
+let gScrollbarWidth = 0;
 
 function lockScroll() {
   gScrollY = window.scrollY;
+  // حساب عرض شريط التمرير لتجنب الإزاحة
+  gScrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
   document.body.style.position = 'fixed';
   document.body.style.top = `-${gScrollY}px`;
   document.body.style.width = '100%';
-  document.body.style.overflowY = 'scroll';
+  document.body.style.paddingRight = gScrollbarWidth + 'px'; // تعويض الإزاحة
+  document.body.style.overflowY = 'scroll'; // إبقاء شريط التمرير موجودًا (يمنع التمدد)
 }
 function unlockScroll() {
   document.body.style.position = '';
   document.body.style.top = '';
   document.body.style.width = '';
+  document.body.style.paddingRight = '';
   document.body.style.overflowY = '';
   window.scrollTo(0, gScrollY);
 }
@@ -104,12 +109,12 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   container.innerHTML = `<h3>${title}</h3>${fieldsHTML}<div class="modal-actions">${buttonsHTML}</div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  lockScroll();
+  lockScroll();  // تثبيت التمرير مع تعويض الإزاحة
 
   const closeModal = () => {
     if (document.body.contains(overlay)) {
       document.body.removeChild(overlay);
-      unlockScroll();
+      unlockScroll(); // إعادة التمرير
     }
   };
   document.getElementById('modal-cancel').onclick = closeModal;
@@ -133,6 +138,7 @@ function confirmDialog(msg) {
     showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
   });
 }
+
 // --- المواد ---
 async function loadItems() {
   try {
