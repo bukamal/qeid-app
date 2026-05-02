@@ -432,24 +432,23 @@ function showItemDetail(itemId) {
     `
   });
 
-  // تفويض الأحداث على كامل الـ overlay
+  // تفويض الأحداث على كامل المودال
   modal.element.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
 
     if (btn.id === 'edit-item-btn') {
-      modal.close();
+      // فتح نافذة التعديل مباشرة (ستغلق نافذة التفاصيل تلقائياً)
       showEditItemModal(itemId);
     }
     else if (btn.id === 'delete-item-btn') {
-      modal.close();
-      // انتظار إغلاق المودال ثم طلب التأكيد
+      // طلب التأكيد (سيغلق نافذة التفاصيل تلقائياً ثم يظهر نافذة التأكيد)
       const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة ${item.name}؟`);
       if (confirmed) {
         try {
           await apiCall(`/items?id=${itemId}`, 'DELETE');
           showToast('تم الحذف بنجاح', 'success');
-          loadItems(); // تحديث قائمة المواد
+          loadItems();
         } catch (e) {
           showToast(e.message, 'error');
         }
