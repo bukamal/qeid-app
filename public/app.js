@@ -443,10 +443,11 @@ function emptyState(title, subtitle) {
   </div>`;
 }
 
+
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
-  
+
   const modal = openModal({
     title: item.name,
     bodyHTML: `
@@ -464,11 +465,16 @@ function showItemDetail(itemId) {
       <p>${item.item_type || 'مخزون'}</p>
     `,
     footerHTML: `
-      <button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button>
-      <button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>
+      <button class="btn btn-secondary edit-btn" data-id="${item.id}" data-type="/items">${ICONS.edit} تعديل</button>
+      <button class="btn btn-danger delete-btn" data-id="${item.id}" data-type="/items">${ICONS.trash} حذف</button>
     `
   });
-  
+
+  // إغلاق المودال عند النقر على أي من الزرين (اختياري)
+  modal.element.querySelector('.edit-btn').addEventListener('click', () => modal.close());
+  modal.element.querySelector('.delete-btn').addEventListener('click', () => modal.close());
+}
+
   // ربط الأحداث مباشرة باستخدام المعرفات
   modal.element.querySelector('#edit-item-btn').onclick = () => {
     modal.close();
