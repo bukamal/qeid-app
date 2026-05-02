@@ -8,68 +8,14 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- دوال قفل التمرير (مع السماح بالتمرير داخل المودال) ----------
-let currentOverlay = null;
-
-function preventBackgroundScroll(e) {
-  // نمنع التمرير فقط إذا كان الهدف هو الـ overlay نفسه (الخارج عن المودال بوكس)
-  if (e.target === currentOverlay) {
-    e.preventDefault();
-  }
-}
-
-function lockBodyScroll(overlayElement) {
-  currentOverlay = overlayElement;
+// ---------- قفل التمرير البسيط ----------
+function lockBodyScroll() {
   document.body.classList.add('modal-open');
   document.documentElement.classList.add('modal-open');
-  if (overlayElement) {
-    overlayElement.addEventListener('touchmove', preventBackgroundScroll, { passive: false });
-  }
 }
-
 function unlockBodyScroll() {
   document.body.classList.remove('modal-open');
   document.documentElement.classList.remove('modal-open');
-  if (currentOverlay) {
-    currentOverlay.removeEventListener('touchmove', preventBackgroundScroll);
-    currentOverlay = null;
-  }
-}
-
-// ---------- توسيط ذكي ينتظر أن يصبح للمودال ارتفاع فعلي ----------
-function waitForLayoutThenCenter(overlay) {
-  const box = overlay.querySelector('.modal-box');
-  if (!box) return;
-
-  function positionWhenReady() {
-    if (box.offsetHeight === 0) {
-      requestAnimationFrame(positionWhenReady);
-      return;
-    }
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-    const boxHeight = box.offsetHeight;
-    const boxWidth = box.offsetWidth;
-
-    let top = (vh - boxHeight) / 2;
-    let left = (vw - boxWidth) / 2;
-
-    const minMargin = 10;
-    if (top < minMargin) top = minMargin;
-    if (left < minMargin) left = minMargin;
-    if (top + boxHeight > vh - minMargin) top = vh - boxHeight - minMargin;
-    if (left + boxWidth > vw - minMargin) left = vw - boxWidth - minMargin;
-
-    box.style.position = 'fixed';
-    box.style.top = top + 'px';
-    box.style.left = left + 'px';
-    box.style.margin = '0';
-
-    window.addEventListener('resize', positionWhenReady);
-    overlay._cleanupResize = () => window.removeEventListener('resize', positionWhenReady);
-  }
-
-  requestAnimationFrame(positionWhenReady);
 }
 
 // ---------- التخزين المؤقت ----------
@@ -163,13 +109,11 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
-  lockBodyScroll(overlay);
-  waitForLayoutThenCenter(overlay);
+  lockBodyScroll();
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
     unlockBodyScroll();
-    if (overlay._cleanupResize) overlay._cleanupResize();
   };
   document.getElementById('modal-cancel').onclick = closeModal;
   const confirmBtn = document.getElementById(confirmMode ? 'modal-confirm' : 'modal-save');
@@ -242,13 +186,11 @@ function showItemDetailModal(itemId) {
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
-  lockBodyScroll(overlay);
-  waitForLayoutThenCenter(overlay);
+  lockBodyScroll();
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
     unlockBodyScroll();
-    if (overlay._cleanupResize) overlay._cleanupResize();
   };
   document.getElementById('edit-item-detail').onclick = () => { closeModal(); showEditItemModal(itemId); };
   document.getElementById('delete-item-detail').onclick = () => { closeModal(); deleteItem(itemId); };
@@ -434,13 +376,11 @@ async function showInvoiceModal(type) {
     overlay.appendChild(container);
     document.body.appendChild(overlay);
 
-    lockBodyScroll(overlay);
-    waitForLayoutThenCenter(overlay);
+    lockBodyScroll();
 
     const closeModal = () => {
       if (document.body.contains(overlay)) document.body.removeChild(overlay);
       unlockBodyScroll();
-      if (overlay._cleanupResize) overlay._cleanupResize();
     };
     document.getElementById('btn-cancel-invoice').onclick = closeModal;
 
@@ -655,13 +595,11 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
-  lockBodyScroll(overlay);
-  waitForLayoutThenCenter(overlay);
+  lockBodyScroll();
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
     unlockBodyScroll();
-    if (overlay._cleanupResize) overlay._cleanupResize();
   };
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
   const updateInvList = (type, eId) => {
@@ -782,13 +720,11 @@ function showHelpModal() {
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
-  lockBodyScroll(overlay);
-  waitForLayoutThenCenter(overlay);
+  lockBodyScroll();
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
     unlockBodyScroll();
-    if (overlay._cleanupResize) overlay._cleanupResize();
   };
   document.getElementById('close-help').onclick = closeModal;
 }
