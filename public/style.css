@@ -264,6 +264,8 @@ select.input-field {
   padding: 16px;
   box-shadow: var(--shadow);
 }
+
+/* --- تعديلات النوافذ المنبثقة (Modals) --- */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -276,6 +278,7 @@ select.input-field {
   align-items: center;
   justify-content: center;
   z-index: 9999;
+  overflow-y: auto; /* يسمح بتمرير النافذة نفسها إذا تجاوزت ارتفاع الشاشة */
 }
 .modal-box {
   background: var(--card-bg);
@@ -288,7 +291,9 @@ select.input-field {
   overflow-y: auto;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--glass-border);
+  margin: auto; /* يضمن التوسيط التلقائي دائمًا */
 }
+
 .report-table-wrapper {
   overflow-x: auto;
   border-radius: var(--radius-sm);
