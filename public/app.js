@@ -399,12 +399,14 @@ function renderFilteredItems() {
   container.innerHTML = html;
 }
 
+
 function emptyState(title, subtitle) {
   return `<div class="empty-state">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
     <h3>${title}</h3><p>${subtitle}</p>
   </div>`;
 }
+
 
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
@@ -432,30 +434,35 @@ function showItemDetail(itemId) {
     `
   });
 
-  // تفويض الأحداث على كامل المودال
-  modal.element.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button');
-    if (!btn) return;
+  // ربط الأحداث بتأخير بسيط لضمان وجود العناصر
+  setTimeout(() => {
+    const editBtn = modal.element.querySelector('#edit-item-btn');
+    const deleteBtn = modal.element.querySelector('#delete-item-btn');
 
-    if (btn.id === 'edit-item-btn') {
-      // فتح نافذة التعديل مباشرة (ستغلق نافذة التفاصيل تلقائياً)
-      showEditItemModal(itemId);
+    if (editBtn) {
+      editBtn.addEventListener('click', () => {
+        showEditItemModal(itemId); // سيفتح نافذة التعديل (ويغلق الحالية تلقائياً)
+      });
     }
-    else if (btn.id === 'delete-item-btn') {
-      // طلب التأكيد (سيغلق نافذة التفاصيل تلقائياً ثم يظهر نافذة التأكيد)
-      const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة ${item.name}؟`);
-      if (confirmed) {
-        try {
-          await apiCall(`/items?id=${itemId}`, 'DELETE');
-          showToast('تم الحذف بنجاح', 'success');
-          loadItems();
-        } catch (e) {
-          showToast(e.message, 'error');
+
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        // سيتم إغلاق النافذة الحالية تلقائياً عند فتح نافذة التأكيد
+        const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة ${item.name}؟`);
+        if (confirmed) {
+          try {
+            await apiCall(`/items?id=${itemId}`, 'DELETE');
+            showToast('تم الحذف بنجاح', 'success');
+            loadItems();
+          } catch (e) {
+            showToast(e.message, 'error');
+          }
         }
-      }
+      });
     }
-  });
+  }, 0);
 }
+
 
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
