@@ -463,6 +463,7 @@ function showItemDetail(itemId) {
 }
 
 
+
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   showFormModal({
@@ -484,24 +485,105 @@ function showAddItemModal() {
   });
 }
 
-function showEditItemModal(itemId) {
-  const it = itemsCache.find(i => i.id === itemId); if (!it) return;
-  const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
-  showFormModal({
-    title: 'تعديل المادة',
-    fields: [
-      { id: 'name', label: 'اسم المادة' },
-      { id: 'category_id', label: 'التصنيف', type: 'select', options: `<option value="">بدون تصنيف</option>${catOpts}` },
-      { id: 'item_type', label: 'نوع المادة', type: 'select', options: '<option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option>' },
-      { id: 'unit', label: 'وحدة القياس' },
-      { id: 'purchase_price', label: 'سعر الشراء', type: 'number' },
-      { id: 'selling_price', label: 'سعر البيع', type: 'number' }
-    ],
-    initialValues: { name: it.name, category_id: it.category_id || '', item_type: it.item_type || 'مخزون', unit: it.unit || '', purchase_price: it.purchase_price, selling_price: it.selling_price },
-    onSave: values => apiCall('/items', 'PUT', { id: itemId, ...values, category_id: values.category_id || null, purchase_price: parseFloat(values.purchase_price) || 0, selling_price: parseFloat(values.selling_price) || 0 }),
-    onSuccess: () => loadItems()
+function showAddItemModal() {
+  const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  
+  const body = `
+    <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
+    
+    <div class="form-group">
+      <label class="form-label">التصنيف</label>
+      <select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select>
+    </div>
+    
+    <div class="form-group">
+      <label class="form-label">أو أضف تصنيف جديد</label>
+      <div style="display:flex;gap:8px;align-items:stretch;">
+        <input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف الجديد..." style="flex:1;">
+        <button class="btn btn-secondary" id="btn-quick-add-cat" type="button" style="width:auto;padding:0 16px;">${ICONS.plus}</button>
+      </div>
+    </div>
+    
+    <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
+    <div class="form-group"><label class="form-label">وحدة القياس</label><input class="input" id="fm-unit" type="text" placeholder="قطعة، صندوق، كرتونة..."></div>
+    <div class="form-group"><label class="form-label">سعر الشراء</label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">سعر البيع</label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
+  `;
+
+  const modal = openModal({
+    title: 'إضافة مادة جديدة',
+    bodyHTML: body,
+    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
+
+  // --- إضافة تصنيف سريعة ---
+  const quickBtn = modal.element.querySelector('#btn-quick-add-cat');
+  const quickInput = modal.element.querySelector('#fm-new-category');
+  const catSelect = modal.element.querySelector('#fm-category_id');
+
+  quickBtn.onclick = async () => {
+    const name = quickInput.value.trim();
+    if (!name) return showToast('أدخل اسم التصنيف', 'warning');
+    if (categoriesCache.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+      return showToast('التصنيف موجود مسبقاً', 'warning');
+    }
+    quickBtn.disabled = true;
+    quickBtn.innerHTML = `<span class="loader-inline"></span>`;
+    try {
+      const res = await apiCall('/definitions?type=category', 'POST', { type: 'category', name });
+      const newId = res?.id || res?.data?.id;
+      const newName = res?.name || res?.data?.name || name;
+      if (!newId) throw new Error('لم يتم إرجاع معرف التصنيف');
+      
+      // تحديث الكاش والقائمة المنسدلة
+      categoriesCache.push({ id: newId, name: newName });
+      const opt = document.createElement('option');
+      opt.value = newId;
+      opt.textContent = newName;
+      catSelect.appendChild(opt);
+      catSelect.value = newId;
+      quickInput.value = '';
+      showToast('تم إضافة التصنيف واختياره', 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      quickBtn.disabled = false;
+      quickBtn.innerHTML = `${ICONS.plus}`;
+    }
+  };
+
+  // --- حفظ المادة ---
+  modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
+  modal.element.querySelector('#fm-save').onclick = async () => {
+    const values = {
+      name: modal.element.querySelector('#fm-name').value.trim(),
+      category_id: modal.element.querySelector('#fm-category_id').value || null,
+      item_type: modal.element.querySelector('#fm-item_type').value,
+      unit: modal.element.querySelector('#fm-unit').value.trim(),
+      purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
+      selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0
+    };
+    if (!values.name) return showToast('اسم المادة مطلوب', 'error');
+    if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) {
+      return showToast('توجد مادة بنفس الاسم', 'error');
+    }
+    try {
+      const btn = modal.element.querySelector('#fm-save');
+      btn.disabled = true;
+      btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      await apiCall('/items', 'POST', values);
+      modal.close();
+      showToast('تم الحفظ بنجاح', 'success');
+      loadItems();
+    } catch (e) {
+      showToast(e.message, 'error');
+      const btn = modal.element.querySelector('#fm-save');
+      btn.disabled = false;
+      btn.innerHTML = `${ICONS.check} حفظ`;
+    }
+  };
 }
+
 
 // ========== الأقسام العامة ==========
 let g_currentSection = null;
