@@ -8,27 +8,32 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- دوال قفل التمرير ومنع اللمس ----------
+// ---------- دوال قفل التمرير مع السماح بالتمرير داخل المودال ----------
 let currentOverlay = null;
+
+// دالة لمنع التمرير على الخلفية (تُستخدم للـ overlay)
+function preventBackgroundScroll(e) {
+  // نمنع التمرير فقط إذا كان الهدف هو الـ overlay نفسه (الخارج عن المودال بوكس)
+  if (e.target === currentOverlay) {
+    e.preventDefault();
+  }
+}
 
 function lockBodyScroll(overlayElement) {
   currentOverlay = overlayElement;
   document.body.classList.add('modal-open');
   document.documentElement.classList.add('modal-open');
+  // إضافة مستمع يمنع التمرير على الخلفية فقط
   if (overlayElement) {
-    overlayElement.addEventListener('touchmove', preventTouchMove, { passive: false });
+    overlayElement.addEventListener('touchmove', preventBackgroundScroll, { passive: false });
   }
-}
-
-function preventTouchMove(e) {
-  e.preventDefault();
 }
 
 function unlockBodyScroll() {
   document.body.classList.remove('modal-open');
   document.documentElement.classList.remove('modal-open');
   if (currentOverlay) {
-    currentOverlay.removeEventListener('touchmove', preventTouchMove);
+    currentOverlay.removeEventListener('touchmove', preventBackgroundScroll);
     currentOverlay = null;
   }
 }
@@ -132,6 +137,8 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   overlay.className = 'modal-overlay';
   const container = document.createElement('div');
   container.className = 'modal-box';
+  // السماح بالتمرير داخل المودال وإيقاف انتشاره للخارج
+  container.addEventListener('touchmove', e => e.stopPropagation());
 
   let fieldsHTML = '';
   for (const field of fields) {
@@ -213,6 +220,7 @@ function showItemDetailModal(itemId) {
   if (!item) return;
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
+  container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>${item.name}</h3>
     <p>الوحدة: ${item.unit || '-'}</p>
     <p>الكمية المشتراة: ${item.purchase_qty ?? 0}</p>
@@ -396,6 +404,7 @@ async function showInvoiceModal(type) {
     container.style.maxWidth = '600px';
     container.style.maxHeight = '90vh';
     container.style.overflowY = 'auto';
+    container.addEventListener('touchmove', e => e.stopPropagation()); // السماح بالتمرير داخل الفاتورة
     container.innerHTML = `
       <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
       <input type="hidden" id="inv-type" value="${type}" />
@@ -459,6 +468,7 @@ async function showInvoiceModal(type) {
     };
   } catch (err) { alert('خطأ: ' + err.message); }
 }
+
 // ---------- دوال أحداث الفاتورة وربط البنود ----------
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) {
@@ -916,4 +926,3 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
-

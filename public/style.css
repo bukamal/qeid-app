@@ -287,7 +287,7 @@ select.input-field {
   overflow-y: auto;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--glass-border);
-  /* سيتم تحديد الموضع عبر JavaScript */
+  -webkit-overflow-scrolling: touch; /* تحسين التمرير على iOS */
 }
 
 /* قفل التمرير */
