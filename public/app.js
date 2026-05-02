@@ -46,7 +46,7 @@ const apiBase = '/api';
 
 // ========== المساعدة ==========
 function formatNumber(num) {
-  if (num === undefined || num === null) return '0';
+  if (num === undefined || num === null) return '0.00';
   return Number(num).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function formatDate(dateStr) {
@@ -138,10 +138,6 @@ function openModal({ title, bodyHTML, footerHTML = '', onClose, size = 'md' }) {
 
   closeBtn.onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  overlay.addEventListener('touchmove', e => {
-    const modalBody = overlay.querySelector('.modal-body');
-    if (!modalBody.contains(e.target)) e.preventDefault();
-  }, { passive: false });
   
   const handleEsc = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', handleEsc, { once: true });
@@ -276,6 +272,7 @@ function navigateTo(tabName) {
   setActiveTab(tabName);
   document.getElementById('more-menu').style.display = 'none';
   document.getElementById('sidebar').classList.remove('open');
+  if (scrollLockPos !== undefined) unlockScroll();
   
   const content = document.getElementById('tab-content');
   content.style.opacity = '0';
@@ -340,12 +337,25 @@ function initNavigation() {
   });
 }
 
-document.getElementById('menu-toggle').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.toggle('open');
-});
-document.querySelector('.sheet-backdrop').addEventListener('click', () => {
-  document.getElementById('more-menu').style.display = 'none';
-  unlockScroll();
+// مستمعي الأحداث للقوائم
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('menu-toggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('open');
+  });
+  const backdrop = document.querySelector('.sheet-backdrop');
+  if (backdrop) {
+    backdrop.addEventListener('click', () => {
+      document.getElementById('more-menu').style.display = 'none';
+      unlockScroll();
+    });
+  }
+  // مستمعي التبويبات السفلية
+  document.querySelectorAll('.bottom-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      if (tabName && tabName !== 'more') navigateTo(tabName);
+    });
+  });
 });
 
 // ========== المواد ==========
@@ -367,7 +377,7 @@ async function loadItems() {
     document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
     renderFilteredItems();
   } catch (err) {
-    showError(err.message);
+    showToast(err.message, 'error');
   }
 }
 
@@ -397,9 +407,6 @@ function emptyState(title, subtitle) {
     <h3>${title}</h3><p>${subtitle}</p>
   </div>`;
 }
-function showError(msg) {
-  document.getElementById('tab-content').innerHTML = `<div class="card" style="color:var(--danger);text-align:center;padding:40px 20px;">${ICONS.alert} ${msg}</div>`;
-}
 
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
@@ -421,14 +428,22 @@ function showItemDetail(itemId) {
       <p>${item.item_type || 'مخزون'}</p>
     `,
     footerHTML: `
-      <button class="btn btn-secondary" onclick="closeCurrentModal();showEditItemModal(${item.id})">${ICONS.edit} تعديل</button>
-      <button class="btn btn-danger" onclick="closeCurrentModal();deleteItem(${item.id})">${ICONS.trash} حذف</button>
+      <button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button>
+      <button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>
     `
   });
+  const currentOverlay = document.querySelector('#modal-portal .modal-overlay:last-child');
+  if (currentOverlay) {
+    currentOverlay.querySelector('#edit-item-btn').onclick = () => {
+      if (activeModal) activeModal.close();
+      showEditItemModal(itemId);
+    };
+    currentOverlay.querySelector('#delete-item-btn').onclick = () => {
+      if (activeModal) activeModal.close();
+      deleteItem(itemId);
+    };
+  }
 }
-
-let currentModal = null;
-function closeCurrentModal() { if (currentModal) currentModal.close(); }
 
 async function deleteItem(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟ لا يمكن التراجع عن هذا الإجراء.')) return;
@@ -515,7 +530,7 @@ async function loadGenericSection(options) {
       options.cache.forEach(item => { html += buildGenericItemHtml(item, options); });
     }
     document.getElementById('tab-content').innerHTML = html;
-  } catch (err) { showError(err.message); }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function getSectionOptions(key) {
@@ -564,6 +579,7 @@ function getSectionOptions(key) {
   return map[key];
 }
 
+// تفويض الأحداث للأزرار العامة
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -579,7 +595,8 @@ document.addEventListener('click', async (e) => {
   }
   else if (t.classList.contains('delete-btn')) {
     const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
-    if (!await confirmDialog(`هل أنت متأكد من حذف ${opts.title} <strong>${opts.cache.find(x=>x[opts.idField]==id)?.[opts.nameField]}</strong>؟`)) return;
+    const found = opts.cache.find(x => x[opts.idField] == id);
+    if (!await confirmDialog(`هل أنت متأكد من حذف ${opts.title} <strong>${found?.[opts.nameField] || ''}</strong>؟`)) return;
     try {
       const delUrl = opts.apiBase.includes('?') ? `${opts.apiBase}&id=${id}` : `${opts.apiBase}?id=${id}`;
       await apiCall(delUrl, 'DELETE');
@@ -765,7 +782,7 @@ async function loadInvoices() {
     });
     document.getElementById('invoice-search').addEventListener('input', debounce(renderFilteredInvoices, 200));
     renderFilteredInvoices();
-  } catch (err) { showError(err.message); }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function renderFilteredInvoices() {
@@ -808,8 +825,15 @@ function renderFilteredInvoices() {
   });
   container.innerHTML = html;
 
-  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => { showToast('التعديل قريباً', 'warning'); }));
-  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => { const inv = invoicesCache.find(i => i.id === parseInt(e.target.closest('button').dataset.id)); if (inv) printInvoice(inv); }));
+  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    showToast('ميزة تعديل الفاتورة قيد التطوير', 'warning');
+  }));
+  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    const inv = invoicesCache.find(i => i.id === id);
+    if (inv) printInvoice(inv);
+  }));
   container.querySelectorAll('.pdf-invoice-btn').forEach(b => b.addEventListener('click', async e => {
     const btn = e.target.closest('button'); const id = parseInt(btn.dataset.id);
     btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span>`;
@@ -817,7 +841,10 @@ function renderFilteredInvoices() {
     catch (ex) { showToast('فشل الإرسال: ' + ex.message, 'error'); }
     finally { btn.disabled = false; btn.innerHTML = `${ICONS.file} PDF`; }
   }));
-  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => deleteInvoice(parseInt(e.target.closest('button').dataset.id))));
+  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    deleteInvoice(id);
+  }));
 }
 
 async function deleteInvoice(id) {
@@ -829,7 +856,7 @@ async function deleteInvoice(id) {
 function printInvoice(invoice) {
   const rows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${formatNumber(l.unit_price)}</td><td>${formatNumber(l.total)}</td></tr>`).join('') || '';
   const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title>
-    <style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border:1px solid #ddd;padding:10px;text-align:right}th{background:#f8fafc}.total{font-size:20px;font-weight:800;margin-top:16px}button{padding:10px 24px;background:var(--primary);color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}</style></head><body>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border:1px solid #ddd;padding:10px;text-align:right}th{background:#f8fafc}.total{font-size:20px;font-weight:800;margin-top:16px}button{padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}</style></head><body>
     <h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2>
     <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>
     <p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''}${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p>
@@ -877,7 +904,7 @@ async function loadPayments() {
     }
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-pmt')?.addEventListener('click', () => showAddPaymentModal(customers, suppliers, invoices));
-  } catch (err) { showError(err.message); }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function showAddPaymentModal(customers, suppliers, invoices) {
@@ -891,7 +918,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
     <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="pmt-notes" placeholder="وصف الدفعة..."></textarea></div>
   `;
   const modal = openModal({ title: 'تسجيل دفعة جديدة', bodyHTML: body, footerHTML: `<button class="btn btn-secondary" id="pmt-cancel">إلغاء</button><button class="btn btn-primary" id="pmt-save">${ICONS.check} حفظ</button>` });
-  // ... (same logic as before but with formatNumber)
+  
   const tSel = modal.element.querySelector('#pmt-type');
   const cBlock = modal.element.querySelector('#pmt-cust-block');
   const sBlock = modal.element.querySelector('#pmt-supp-block');
@@ -957,7 +984,7 @@ async function loadExpenses() {
     }
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-expense')?.addEventListener('click', showAddExpenseModal);
-  } catch (err) { showError(err.message); }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function showAddExpenseModal() {
@@ -1062,7 +1089,7 @@ async function loadDashboard() {
         options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } }
       });
     }
-  } catch (err) { showError(err.message); }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 // ========== التقارير ==========
@@ -1089,15 +1116,13 @@ async function loadReports() {
   });
 }
 
-// ... (بقية دوال التقارير تبقى كما هي مع تحسينات بسيطة في التنسيق)
-
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance', 'GET');
     const rows = data.map(r => `<tr><td style="font-weight:700;">${r.name}</td><td>${formatNumber(r.total_debit)}</td><td>${formatNumber(r.total_credit)}</td><td class="${r.balance >= 0 ? 'text-success' : 'text-danger'}" style="font-weight:800;">${formatNumber(r.balance)}</td></tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">${ICONS.home} رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
         <h3 class="card-title">ميزان المراجعة</h3>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${rows}</tbody></table></div>
       </div>`;
@@ -1111,16 +1136,16 @@ async function loadIncomeStatement() {
     const eRows = d.expenses.map(e => `<tr><td>${e.name}</td><td style="font-weight:700;color:var(--danger);">${formatNumber(e.balance)}</td></tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">${ICONS.home} رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
         <h3 class="card-title">قائمة الدخل</h3>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">الإيرادات</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${iRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;font-size:16px;">إجمالي الإيرادات: <span style="color:var(--success);">${formatNumber(d.total_income)}</span></p>
+        <p style="font-weight:800;margin:8px 0;font-size:16px;text-align:left;">إجمالي الإيرادات: <span style="color:var(--success);">${formatNumber(d.total_income)}</span></p>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">المصروفات</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;font-size:16px;">إجمالي المصروفات: <span style="color:var(--danger);">${formatNumber(d.total_expenses)}</span></p>
+        <p style="font-weight:800;margin:8px 0;font-size:16px;text-align:left;">إجمالي المصروفات: <span style="color:var(--danger);">${formatNumber(d.total_expenses)}</span></p>
         <hr style="border-color:var(--border);margin:16px 0;">
-        <h2 style="color:${d.net_profit >= 0 ? 'var(--success)' : 'var(--danger)'};font-size:24px;font-weight:900;">صافي الربح: ${formatNumber(d.net_profit)}</h2>
+        <h2 style="color:${d.net_profit >= 0 ? 'var(--success)' : 'var(--danger)'};font-size:24px;font-weight:900;text-align:center;">صافي الربح: ${formatNumber(d.net_profit)}</h2>
       </div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -1133,17 +1158,17 @@ async function loadBalanceSheet() {
     const eRows = d.equity.map(e => `<tr><td>${e.name}</td><td style="font-weight:700;">${formatNumber(e.balance)}</td></tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">${ICONS.home} رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
         <h3 class="card-title">الميزانية العمومية</h3>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">الأصول</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${aRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;">إجمالي الأصول: ${formatNumber(d.total_assets)}</p>
+        <p style="font-weight:800;margin:8px 0;text-align:left;">إجمالي الأصول: ${formatNumber(d.total_assets)}</p>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">الخصوم</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${lRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;">إجمالي الخصوم: ${formatNumber(d.total_liabilities)}</p>
+        <p style="font-weight:800;margin:8px 0;text-align:left;">إجمالي الخصوم: ${formatNumber(d.total_liabilities)}</p>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">حقوق الملكية</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;">إجمالي حقوق الملكية: ${formatNumber(d.total_equity)}</p>
+        <p style="font-weight:800;margin:8px 0;text-align:left;">إجمالي حقوق الملكية: ${formatNumber(d.total_equity)}</p>
       </div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -1154,7 +1179,7 @@ async function loadAccountLedgerForm() {
     const opts = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">${ICONS.home} رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
         <h3 class="card-title">الأستاذ العام</h3>
         <div class="form-group"><select class="select" id="ledger-account">${opts}</select></div>
         <button class="btn btn-primary" id="btn-ledger" style="width:auto;">عرض الحركات</button>
@@ -1179,7 +1204,7 @@ async function loadCustomerStatementForm() {
     const opts = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">${ICONS.home} رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
         <h3 class="card-title">كشف حساب عميل</h3>
         <div class="form-group"><select class="select" id="stmt-cust">${opts}</select></div>
         <button class="btn btn-primary" id="btn-stmt-cust" style="width:auto;">عرض الكشف</button>
@@ -1204,7 +1229,7 @@ async function loadSupplierStatementForm() {
     const opts = supps.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">${ICONS.home} رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
         <h3 class="card-title">كشف حساب مورد</h3>
         <div class="form-group"><select class="select" id="stmt-supp">${opts}</select></div>
         <button class="btn btn-primary" id="btn-stmt-supp" style="width:auto;">عرض الكشف</button>
@@ -1255,7 +1280,7 @@ async function verifyUser() {
     const data = await apiCall('/verify', 'POST');
     if (data.verified) {
       document.getElementById('user-name-sidebar').textContent = user?.first_name || 'مستخدم';
-      document.getElementById('user-avatar').textContent = (user?.first_name?.[0] || 'م');
+      document.getElementById('user-avatar').textContent = (user?.first_name?.[0] || 'م').toUpperCase();
       initNavigation();
       
       [itemsCache, customersCache, suppliersCache, invoicesCache, categoriesCache, unitsCache] = await Promise.all([
