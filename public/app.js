@@ -8,10 +8,9 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- دوال قفل التمرير مع السماح بالتمرير داخل المودال ----------
+// ---------- دوال قفل التمرير (مع السماح بالتمرير داخل المودال) ----------
 let currentOverlay = null;
 
-// دالة لمنع التمرير على الخلفية (تُستخدم للـ overlay)
 function preventBackgroundScroll(e) {
   // نمنع التمرير فقط إذا كان الهدف هو الـ overlay نفسه (الخارج عن المودال بوكس)
   if (e.target === currentOverlay) {
@@ -23,7 +22,6 @@ function lockBodyScroll(overlayElement) {
   currentOverlay = overlayElement;
   document.body.classList.add('modal-open');
   document.documentElement.classList.add('modal-open');
-  // إضافة مستمع يمنع التمرير على الخلفية فقط
   if (overlayElement) {
     overlayElement.addEventListener('touchmove', preventBackgroundScroll, { passive: false });
   }
@@ -38,7 +36,7 @@ function unlockBodyScroll() {
   }
 }
 
-// ---------- توسيط يدوي ديناميكي ----------
+// ---------- توسيط يدوي محسّن (يمنع القطع من الأسفل والأعلى) ----------
 function centerModalBox(overlay) {
   const box = overlay.querySelector('.modal-box');
   if (!box) return;
@@ -46,17 +44,27 @@ function centerModalBox(overlay) {
   function position() {
     const vh = window.innerHeight;
     const vw = window.innerWidth;
-    const boxHeight = box.offsetHeight;
+
+    // تعيين أقصى ارتفاع بنسبة 85% من ارتفاع الشاشة (يدويًا لضمان التوافق)
+    const maxHeight = vh * 0.85;
+    box.style.maxHeight = maxHeight + 'px';
+    box.style.overflowY = 'auto';
+
+    // استخدام scrollHeight بدلاً من offsetHeight للحصول على الارتفاع الكامل (ولكن بعد تطبيق max-height، سيكون scrollHeight هو ارتفاع المحتوى إذا كان أكبر، أو offsetHeight إذا كان أصغر)
+    // نريد الارتفاع الفعلي الظاهر، لذا نأخذ offsetHeight بعد تطبيق max-height
+    const visibleHeight = box.offsetHeight;
     const boxWidth = box.offsetWidth;
 
-    const maxHeight = parseFloat(getComputedStyle(box).maxHeight) || (vh * 0.85);
-    const actualHeight = Math.min(boxHeight, maxHeight);
-
-    let top = (vh - actualHeight) / 2;
+    // حساب الموقع بحيث يكون في المنتصف تمامًا، مع هوامش دنيا 10px
+    let top = (vh - visibleHeight) / 2;
     let left = (vw - boxWidth) / 2;
 
-    if (top < 10) top = 10;
-    if (left < 10) left = 10;
+    // ضمان ألا يلتصق بالأعلى أو الأسفل أو الجوانب
+    const minMargin = 10;
+    if (top < minMargin) top = minMargin;
+    if (left < minMargin) left = minMargin;
+    if (top + visibleHeight > vh - minMargin) top = vh - visibleHeight - minMargin;
+    if (left + boxWidth > vw - minMargin) left = vw - boxWidth - minMargin;
 
     box.style.position = 'fixed';
     box.style.top = top + 'px';
@@ -64,7 +72,8 @@ function centerModalBox(overlay) {
     box.style.margin = '0';
   }
 
-  position();
+  // تشغيل التوسيط بعد إتاحة الوقت للمتصفح لإنهاء التخطيط (reflow)
+  setTimeout(position, 0);
   window.addEventListener('resize', position);
   overlay._cleanupResize = () => window.removeEventListener('resize', position);
 }
