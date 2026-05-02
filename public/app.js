@@ -432,22 +432,25 @@ function showItemDetail(itemId) {
     `
   });
 
-  // ربط الأحداث داخل المودال
+  // زر التعديل – يعمل كما كان
   modal.element.querySelector('#edit-item-btn').onclick = () => {
     modal.close();
     showEditItemModal(itemId);
   };
 
+  // زر الحذف – إغلاق النافذة أولاً، ثم تأكيد، ثم تنفيذ الحذف
   modal.element.querySelector('#delete-item-btn').onclick = async () => {
-    // إظهار تأكيد الحذف أولاً
+    // نغلق نافذة التفاصيل فوراً
+    modal.close();
+
+    // ننتظر قليلاً حتى تنتهي أنيميشن الإغلاق ثم نعرض تأكيد الحذف
     const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة ${item.name}؟`);
-    if (!confirmed) return; // إذا ألغى المستخدم لا نفعل شيء
-    // تنفيذ الحذف
+    if (!confirmed) return;
+
     try {
       await apiCall(`/items?id=${itemId}`, 'DELETE');
-      modal.close();
       showToast('تم الحذف بنجاح', 'success');
-      loadItems(); // تحديث قائمة المواد
+      loadItems(); // تحديث القائمة
     } catch (e) {
       showToast(e.message, 'error');
     }
