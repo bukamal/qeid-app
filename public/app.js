@@ -102,14 +102,14 @@ function showToast(message, type = 'info') {
 
 // ========== المودال ==========
 let activeModal = null;
-function openModal({ title, bodyHTML, footerHTML = '', onClose, size = 'md' }) {
+function openModal({ title, bodyHTML, footerHTML = '', onClose }) {
   const portal = document.getElementById('modal-portal');
   if (activeModal) { activeModal.close(); }
   
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal-box" data-size="${size}">
+    <div class="modal-box">
       <div class="modal-header">
         <h3 class="modal-title">${title}</h3>
         <button class="modal-close" aria-label="إغلاق">${ICONS.x}</button>
@@ -431,7 +431,7 @@ function showItemDetail(itemId) {
     `
   });
 
-  // إغلاق المودال عند النقر على أي من الزرين
+  // إغلاق المودال عند النقر على أي من الزرين (ليتمكن المستمع العام من العمل)
   modal.element.querySelector('.edit-btn').addEventListener('click', () => modal.close());
   modal.element.querySelector('.delete-btn').addEventListener('click', () => modal.close());
 }
@@ -560,14 +560,8 @@ function getSectionOptions(key) {
       prepareAdd: v => ({ type: 'category', name: v.name }),
       prepareEdit: (id, v) => ({ type: 'category', id, name: v.name })
     },
-    // مدخل المواد لتفعيل أزرار الحذف والتعديل عبر الأحداث العامة
     '/items': {
-      cache: itemsCache,
-      title: 'مادة',
-      titlePlural: 'المواد',
-      apiBase: '/items',
-      idField: 'id',
-      nameField: 'name',
+      cache: itemsCache, title: 'مادة', titlePlural: 'المواد', apiBase: '/items', idField: 'id', nameField: 'name',
       extraFields: [],
       addFields: [],
       editFields: [],
@@ -584,15 +578,11 @@ document.addEventListener('click', async (e) => {
   if (!t) return;
   
   if (t.classList.contains('add-btn')) {
-    const key = t.dataset.type;
-    const opts = getSectionOptions(key);
-    if (!opts) return;
-    
+    const key = t.dataset.type; const opts = getSectionOptions(key); if (!opts) return;
     showFormModal({
       title: `إضافة ${opts.title} جديد`,
       fields: opts.addFields,
       onSave: async (values) => {
-        // منع تكرار الاسم للأقسام التي تحتوي على اسم (عملاء، موردين، تصنيفات)
         const name = values.name?.trim();
         if (name) {
           const exists = opts.cache.some(item => item.name?.toLowerCase() === name.toLowerCase());
@@ -606,8 +596,14 @@ document.addEventListener('click', async (e) => {
   else if (t.classList.contains('edit-btn')) {
     const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
     const item = opts.cache.find(x => x[opts.idField] == id); if (!item) return;
-    const init = {}; opts.editFields.forEach(f => init[f.id] = item[f.id] !== undefined ? item[f.id] : '');
-    showFormModal({ title: `تعديل ${opts.title}`, fields: opts.editFields, initialValues: init, onSave: v => apiCall(opts.apiBase, 'PUT', opts.prepareEdit(id, v)), onSuccess: () => loadGenericSection(opts) });
+    
+    // إذا كانت المادة، افتح نافذة التعديل الخاصة، وإلا استخدم النموذج العام
+    if (key === '/items') {
+      showEditItemModal(parseInt(id));
+    } else {
+      const init = {}; opts.editFields.forEach(f => init[f.id] = item[f.id] !== undefined ? item[f.id] : '');
+      showFormModal({ title: `تعديل ${opts.title}`, fields: opts.editFields, initialValues: init, onSave: v => apiCall(opts.apiBase, 'PUT', opts.prepareEdit(id, v)), onSuccess: () => loadGenericSection(opts) });
+    }
   }
   else if (t.classList.contains('delete-btn')) {
     const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
@@ -617,7 +613,12 @@ document.addEventListener('click', async (e) => {
       const delUrl = opts.apiBase.includes('?') ? `${opts.apiBase}&id=${id}` : `${opts.apiBase}?id=${id}`;
       await apiCall(delUrl, 'DELETE');
       showToast('تم الحذف بنجاح', 'success');
-      loadGenericSection(opts);
+      // تحديث القسم المناسب
+      if (key === '/items') {
+        loadItems();
+      } else {
+        loadGenericSection(opts);
+      }
     } catch (err) { showToast(err.message, 'error'); }
   }
 });
