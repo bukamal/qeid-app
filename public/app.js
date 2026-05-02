@@ -623,7 +623,20 @@ function getSectionOptions(key) {
       editFields: [{ id: 'name', label: 'اسم التصنيف' }],
       prepareAdd: v => ({ type: 'category', name: v.name }),
       prepareEdit: (id, v) => ({ type: 'category', id, name: v.name })
-    }
+    },
+    '/items': {
+  cache: itemsCache,
+  title: 'مادة',
+  titlePlural: 'المواد',
+  apiBase: '/items',
+  idField: 'id',
+  nameField: 'name',
+  extraFields: [],
+  addFields: [],
+  editFields: [],
+  prepareAdd: v => ({}),
+  prepareEdit: (id, v) => ({ id })
+}
   };
   return map[key];
 }
