@@ -529,6 +529,14 @@ function buildGenericItemHtml(item, opts) {
 async function loadGenericSection(options) {
   g_currentSection = options;
   try {
+    // جلب البيانات من السيرفر مباشرةً
+    const data = await apiCall(options.apiBase, 'GET');
+    
+    // تحديث الكاش العام حسب النوع
+    if (options.apiBase === '/customers') customersCache = data;
+    else if (options.apiBase === '/suppliers') suppliersCache = data;
+    else if (options.apiBase === '/definitions?type=category') categoriesCache = data;
+
     let html = `
       <div class="card">
         <div class="card-header">
@@ -536,14 +544,15 @@ async function loadGenericSection(options) {
           <button class="btn btn-primary btn-sm add-btn" data-type="${options.apiBase}">${ICONS.plus} إضافة</button>
         </div>
       </div>`;
-    if (!options.cache || !options.cache.length) {
+    if (!data || !data.length) {
       html += emptyState(`لا يوجد ${options.titlePlural || options.title}`, 'ابدأ بإضافة أول سجل');
     } else {
-      options.cache.forEach(item => { html += buildGenericItemHtml(item, options); });
+      data.forEach(item => { html += buildGenericItemHtml(item, options); });
     }
     document.getElementById('tab-content').innerHTML = html;
   } catch (err) { showToast(err.message, 'error'); }
 }
+
 
 function getSectionOptions(key) {
   const map = {
