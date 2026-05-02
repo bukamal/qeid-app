@@ -8,16 +8,53 @@ const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 const cache = {};
 const CACHE_DURATION = 60000;
-function getCached(key) { const entry = cache[key]; if (entry && Date.now() - entry.time < CACHE_DURATION) return entry.data; delete cache[key]; return null; }
+let gScrollY = 0;
+
+function lockScroll() {
+  gScrollY = window.scrollY;
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${gScrollY}px`;
+  document.body.style.width = '100%';
+  document.body.style.overflowY = 'scroll';
+}
+function unlockScroll() {
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  document.body.style.overflowY = '';
+  window.scrollTo(0, gScrollY);
+}
+
+function getCached(key) {
+  const entry = cache[key];
+  if (entry && Date.now() - entry.time < CACHE_DURATION) return entry.data;
+  delete cache[key];
+  return null;
+}
 function setCache(key, data) { cache[key] = { data, time: Date.now() }; }
-function showLoading(msg) { document.getElementById('loading').textContent = msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
-function showError(msg) { document.getElementById('loading').textContent = '❌ ' + msg; document.getElementById('loading').style.display = 'block'; document.getElementById('main').style.display = 'none'; }
+function showLoading(msg) {
+  document.getElementById('loading').textContent = msg;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+}
+function showError(msg) {
+  document.getElementById('loading').textContent = '❌ ' + msg;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+}
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
-  if (method === 'GET' || method === 'DELETE') url += (url.includes('?') ? '&' : '?') + 'initData=' + encodeURIComponent(initData);
-  if (method === 'GET') { const cached = getCached(url); if (cached) return cached; }
+  if (method === 'GET' || method === 'DELETE') {
+    url += (url.includes('?') ? '&' : '?') + 'initData=' + encodeURIComponent(initData);
+  }
+  if (method === 'GET') {
+    const cached = getCached(url);
+    if (cached) return cached;
+  }
   const options = { method, headers: { 'Content-Type': 'application/json' } };
-  if (method !== 'GET' && method !== 'DELETE') options.body = JSON.stringify({ ...body, initData });
+  if (method !== 'GET' && method !== 'DELETE') {
+    options.body = JSON.stringify({ ...body, initData });
+  }
   const res = await fetch(url, options);
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
@@ -42,6 +79,7 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   return json;
 }
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
+
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -50,8 +88,9 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   let fieldsHTML = '';
   for (const field of fields) {
     let input = '';
-    if (field.type === 'select' && field.options) input = `<select id="${field.id}" class="input-field">${field.options}</select>`;
-    else {
+    if (field.type === 'select' && field.options) {
+      input = `<select id="${field.id}" class="input-field">${field.options}</select>`;
+    } else {
       const inputType = field.type || 'text';
       const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
       const value = initialValues[field.id] !== undefined ? `value="${initialValues[field.id]}"` : '';
@@ -59,18 +98,29 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
     }
     fieldsHTML += `<label class="form-label">${field.label}</label>${input}`;
   }
-  const buttonsHTML = confirmMode ? `<button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button>` : `<button class="btn-primary" id="modal-save">حفظ</button><button class="btn-secondary" id="modal-cancel">إلغاء</button>`;
+  const buttonsHTML = confirmMode
+    ? `<button class="btn-danger" id="modal-confirm">نعم، احذف</button><button class="btn-secondary" id="modal-cancel">إلغاء</button>`
+    : `<button class="btn-primary" id="modal-save">حفظ</button><button class="btn-secondary" id="modal-cancel">إلغاء</button>`;
   container.innerHTML = `<h3>${title}</h3>${fieldsHTML}<div class="modal-actions">${buttonsHTML}</div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  document.body.style.overflow = 'hidden';
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); document.body.style.overflow = ''; } };
+  lockScroll();
+
+  const closeModal = () => {
+    if (document.body.contains(overlay)) {
+      document.body.removeChild(overlay);
+      unlockScroll();
+    }
+  };
   document.getElementById('modal-cancel').onclick = closeModal;
   const confirmBtn = document.getElementById(confirmMode ? 'modal-confirm' : 'modal-save');
   confirmBtn.onclick = async () => {
     if (confirmMode) { closeModal(); if (onSuccess) onSuccess(true); return; }
     const values = {};
-    for (const field of fields) { const el = document.getElementById(field.id); if (el) values[field.id] = el.value.trim(); }
+    for (const field of fields) {
+      const el = document.getElementById(field.id);
+      if (el) values[field.id] = el.value.trim();
+    }
     try {
       const result = await onSave(values);
       if (result && result.error) alert('خطأ: ' + result.error.message);
@@ -78,7 +128,11 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
     } catch (e) { alert('خطأ: ' + e.message); }
   };
 }
-function confirmDialog(msg) { return new Promise(resolve => { showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) }); }); }
+function confirmDialog(msg) {
+  return new Promise(resolve => {
+    showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
+  });
+}
 // --- المواد ---
 async function loadItems() {
   try {
@@ -123,8 +177,8 @@ function showItemDetailModal(itemId) {
     </div>
   </div>`;
   document.body.appendChild(overlay);
-  document.body.style.overflow = 'hidden';
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); document.body.style.overflow = ''; } };
+  lockScroll();
+  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
   document.getElementById('edit-item-detail').onclick = () => { closeModal(); showEditItemModal(itemId); };
   document.getElementById('delete-item-detail').onclick = () => { closeModal(); deleteItem(itemId); };
   document.getElementById('close-detail').onclick = closeModal;
@@ -173,7 +227,7 @@ function showEditItemModal(itemId) {
   });
 }
 
-// --- أقسام موحدة (العملاء، الموردين، التصنيفات، الوحدات) ---
+// --- أقسام موحدة ---
 function buildGenericItemHtml(item, { idField, nameField, extraFields }) {
   let info = '';
   extraFields.forEach(f => { const val = item[f.key] !== undefined ? item[f.key] : ''; info += `${f.prefix || ''}${val} `; });
@@ -293,8 +347,8 @@ async function showInvoiceModal(type) {
     </div>`;
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = html;
     document.body.appendChild(overlay);
-    document.body.style.overflow = 'hidden';
-    const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); document.body.style.overflow = ''; } };
+    lockScroll();
+    const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
     document.getElementById('btn-cancel-invoice').onclick = closeModal;
     attachInvoiceEvents(type);
     document.getElementById('btn-save-invoice').onclick = async () => {
@@ -435,8 +489,8 @@ function showAddPaymentModal(customers, suppliers, invoices) {
     <div class="modal-actions"><button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button><button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button></div>
   </div>`;
   document.body.appendChild(overlay);
-  document.body.style.overflow = 'hidden';
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); document.body.style.overflow = ''; } };
+  lockScroll();
+  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
   const updateInvList = (type, eId) => {
     const filt = invoices.filter(inv => type==='customer' ? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
@@ -545,11 +599,11 @@ function showHelpModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   overlay.innerHTML = `<div class="modal-box"><h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div></div>`;
   document.body.appendChild(overlay);
-  document.body.style.overflow = 'hidden';
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); document.body.style.overflow = ''; } };
+  lockScroll();
+  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
   document.getElementById('close-help').onclick = closeModal;
 }
-// --- إخفاء التبويبات عند التمرير ---
+// --- إخفاء شريط التبويبات عند التمرير ---
 (function() {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -563,7 +617,7 @@ function showHelpModal() {
   window.addEventListener('scroll', () => { if (!ticking) { requestAnimationFrame(onScroll); ticking = true; } });
 })();
 
-// --- ربط التبويبات ---
+// --- ربط التبويبات (نقر) ---
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -583,7 +637,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// --- سحب وإفلات التبويبات ---
+// --- سحب وإفلات التبويبات مع حفظ الترتيب ---
 (function () {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -656,3 +710,4 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
+
