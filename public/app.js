@@ -636,7 +636,7 @@ function getSectionOptions(key) {
   editFields: [],
   prepareAdd: v => ({}),
   prepareEdit: (id, v) => ({ id })
-  }
+  },
 }
   return map[key];
 }
