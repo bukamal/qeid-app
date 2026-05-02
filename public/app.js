@@ -957,3 +957,96 @@ document.querySelectorAll('.tab').forEach(tab => {
 // بدء التطبيق
 // -------------------------------
 verifyUser();
+
+// ===== تفعيل السحب والإفلات مع حفظ الترتيب =====
+(function() {
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+
+  const STORAGE_KEY = 'tabOrder';
+  let tabs = Array.from(nav.querySelectorAll('.tab'));
+  let draggedItem = null;
+
+  // دالة حفظ الترتيب الحالي إلى localStorage
+  function saveTabOrder() {
+    const order = Array.from(nav.querySelectorAll('.tab')).map(tab => tab.dataset.tab);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
+  }
+
+  // دالة استعادة الترتيب من localStorage
+  function restoreTabOrder() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    try {
+      const order = JSON.parse(saved);
+      if (!Array.isArray(order)) return;
+      // إعادة ترتيب التبويبات بناءً على القائمة المحفوظة
+      order.forEach(tabName => {
+        const tab = nav.querySelector(`.tab[data-tab="${tabName}"]`);
+        if (tab) nav.appendChild(tab);
+      });
+      // إعادة تعيين المصفوفة بعد التغيير
+      tabs = Array.from(nav.querySelectorAll('.tab'));
+    } catch (e) {
+      // تجاهل أي خطأ
+    }
+  }
+
+  // استعادة الترتيب عند البدء
+  restoreTabOrder();
+
+  // إعداد السحب لجميع التبويبات
+  tabs.forEach(tab => {
+    tab.setAttribute('draggable', 'true');
+    
+    tab.addEventListener('dragstart', function(e) {
+      draggedItem = this;
+      this.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', this.dataset.tab);
+    });
+
+    tab.addEventListener('dragend', function() {
+      this.style.opacity = '1';
+      document.querySelectorAll('.tab.drag-over').forEach(t => t.classList.remove('drag-over'));
+      draggedItem = null;
+      saveTabOrder(); // حفظ الترتيب بعد أي سحب
+    });
+
+    tab.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    });
+
+    tab.addEventListener('dragenter', function(e) {
+      e.preventDefault();
+      if (this !== draggedItem) {
+        this.classList.add('drag-over');
+      }
+    });
+
+    tab.addEventListener('dragleave', function() {
+      this.classList.remove('drag-over');
+    });
+
+    tab.addEventListener('drop', function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (draggedItem !== this) {
+        const parent = this.parentNode;
+        // إدراج المسحوب قبل العنصر الذي تم الإفلات عليه
+        parent.insertBefore(draggedItem, this);
+        // لا داعي لإعادة إدراج this لأنه بقي في مكانه
+      }
+      this.classList.remove('drag-over');
+      saveTabOrder(); // حفظ فوري بعد التبديل
+      return false;
+    });
+  });
+
+  // إضافة تنسيق مؤشر السحب
+  const style = document.createElement('style');
+  style.textContent = `.tab.drag-over { box-shadow: 0 0 0 3px var(--primary); transform: scale(1.03); }`;
+  document.head.appendChild(style);
+})();
