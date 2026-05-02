@@ -36,7 +36,7 @@ function unlockBodyScroll() {
   }
 }
 
-// ---------- توسيط يدوي محسّن (يمنع القطع من الأسفل والأعلى) ----------
+// ---------- توسيط يدوي محسّن (يحترم max-height الأصلي) ----------
 function centerModalBox(overlay) {
   const box = overlay.querySelector('.modal-box');
   if (!box) return;
@@ -69,11 +69,6 @@ function centerModalBox(overlay) {
   requestAnimationFrame(() => {
     requestAnimationFrame(position);
   });
-  window.addEventListener('resize', position);
-  overlay._cleanupResize = () => window.removeEventListener('resize', position);
-}
-  // تشغيل التوسيط بعد إتاحة الوقت للمتصفح لإنهاء التخطيط (reflow)
-  setTimeout(position, 0);
   window.addEventListener('resize', position);
   overlay._cleanupResize = () => window.removeEventListener('resize', position);
 }
@@ -141,12 +136,12 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
 
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 
+// ---------- مودال النماذج العامة ----------
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const container = document.createElement('div');
   container.className = 'modal-box';
-  // السماح بالتمرير داخل المودال وإيقاف انتشاره للخارج
   container.addEventListener('touchmove', e => e.stopPropagation());
 
   let fieldsHTML = '';
@@ -200,6 +195,7 @@ function confirmDialog(msg) {
   });
 }
 
+// ---------- المواد (Items) ----------
 async function loadItems() {
   try {
     let html = `<div class="card"><button class="btn-primary" id="btn-add-item">+ إضافة مادة</button><input id="items-search" type="text" class="input-field" placeholder="🔍 بحث..." style="margin-top:12px;" /></div><div id="items-list"></div>`;
@@ -306,6 +302,7 @@ function showEditItemModal(itemId) {
   });
 }
 
+// ---------- الأقسام العامة (عملاء، موردين، تصنيفات، وحدات) ----------
 let g_currentSection = null;
 
 function buildGenericItemHtml(item, { idField, nameField, extraFields }) {
@@ -402,6 +399,7 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// ---------- فاتورة المبيعات والمشتريات ----------
 async function showInvoiceModal(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
@@ -413,7 +411,7 @@ async function showInvoiceModal(type) {
     container.style.maxWidth = '600px';
     container.style.maxHeight = '90vh';
     container.style.overflowY = 'auto';
-    container.addEventListener('touchmove', e => e.stopPropagation()); // السماح بالتمرير داخل الفاتورة
+    container.addEventListener('touchmove', e => e.stopPropagation());
     container.innerHTML = `
       <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
       <input type="hidden" id="inv-type" value="${type}" />
@@ -579,6 +577,7 @@ function updateInvoiceRemoveButtons() {
   });
 }
 
+// ---------- عرض قائمة الفواتير ----------
 async function loadInvoices() {
   try {
     let html = `<div class="card"><h3>جميع الفواتير</h3><div style="display:flex;gap:8px;margin-bottom:8px;"><button class="filter-tab active" data-filter="all">الكل</button><button class="filter-tab" data-filter="sale">بيع</button><button class="filter-tab" data-filter="purchase">شراء</button></div><input id="invoice-search" type="text" class="input-field" placeholder="🔍 بحث..." /></div><div id="invoices-list"></div>`;
@@ -628,6 +627,7 @@ function printInvoice(invoice) {
   if (w) { w.document.write(html); w.document.close(); } else alert('الرجاء السماح بالنوافذ المنبثقة');
 }
 
+// ---------- المدفوعات (Payments) ----------
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments','GET'), apiCall('/invoices','GET'), apiCall('/customers','GET'), apiCall('/suppliers','GET')]);
@@ -642,6 +642,7 @@ async function loadPayments() {
 function showAddPaymentModal(customers, suppliers, invoices) {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
+  container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>إضافة دفعة جديدة</h3>
     <label class="form-label">النوع</label>
     <select id="pmt-type" class="input-field"><option value="customer">من عميل</option><option value="supplier">إلى مورد</option></select>
@@ -685,6 +686,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
 
 async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`, 'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e){ alert('خطأ: '+e.message); } }
 
+// ---------- المصاريف (Expenses) ----------
 async function loadExpenses() {
   try {
     const expenses = await apiCall('/expenses','GET');
@@ -711,6 +713,7 @@ function showAddExpenseModal() {
 }
 async function deleteExpense(id) { if (!await confirmDialog('متأكد من حذف المصروف؟')) return; try { await apiCall(`/expenses?id=${id}`, 'DELETE'); alert('تم الحذف'); loadExpenses(); } catch(e){ alert('خطأ: '+e.message); } }
 
+// ---------- لوحة التحكم (Dashboard) ----------
 async function loadDashboard() {
   try {
     const data = await apiCall('/summary','GET');
@@ -743,6 +746,7 @@ async function loadDashboard() {
   } catch(err){ document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
 
+// ---------- التقارير (Reports) ----------
 async function loadReports() {
   let html = `<div class="card"><h3>التقارير</h3></div>
     <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
@@ -770,9 +774,11 @@ async function loadAccountLedgerForm() { try{ const accounts=await apiCall('/acc
 async function loadCustomerStatementForm() { try{ const custs=await apiCall('/customers','GET'); const opts=custs.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب عميل</h3><select id="stmt-cust" class="input-field">${opts}</select><button id="btn-stmt-cust" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-cust').addEventListener('click',async()=>{const id=document.getElementById('stmt-cust').value; if(!id)return; try{const lines=await apiCall(`/reports?type=customer_statement&customer_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadSupplierStatementForm() { try{ const supps=await apiCall('/suppliers','GET'); const opts=supps.map(s=>`<option value="${s.id}">${s.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب مورد</h3><select id="stmt-supp" class="input-field">${opts}</select><button id="btn-stmt-supp" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-supp').addEventListener('click',async()=>{const id=document.getElementById('stmt-supp').value; if(!id)return; try{const lines=await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 
+// ---------- المساعدة (Help Modal) ----------
 function showHelpModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
+  container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
@@ -788,7 +794,7 @@ function showHelpModal() {
   document.getElementById('close-help').onclick = closeModal;
 }
 
-// إخفاء التبويبات عند التمرير
+// ---------- إجراءات التبويبات (إخفاء، نقر، سحب وإفلات) ----------
 (function() {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -802,7 +808,6 @@ function showHelpModal() {
   window.addEventListener('scroll', () => { if (!ticking) { requestAnimationFrame(onScroll); ticking = true; } });
 })();
 
-// ربط التبويبات (النقر)
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -822,7 +827,6 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// سحب وإفلات التبويبات (بدون تعطيل النقر)
 (function () {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -918,6 +922,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   }
 })();
 
+// ---------- بدء التطبيق والتحقق ----------
 async function verifyUser() {
   try {
     const data = await apiCall('/verify', 'POST');
@@ -935,3 +940,4 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
+
