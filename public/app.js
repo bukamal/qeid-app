@@ -36,12 +36,16 @@ function unlockBodyScroll() {
   }
 }
 
-// ---------- توسيط يدوي محسّن (يحترم max-height الأصلي) ----------
-function centerModalBox(overlay) {
+// ---------- توسيط ذكي ينتظر أن يصبح للمودال ارتفاع فعلي ----------
+function waitForLayoutThenCenter(overlay) {
   const box = overlay.querySelector('.modal-box');
   if (!box) return;
 
-  function position() {
+  function positionWhenReady() {
+    if (box.offsetHeight === 0) {
+      requestAnimationFrame(positionWhenReady);
+      return;
+    }
     const vh = window.innerHeight;
     const vw = window.innerWidth;
     const boxHeight = box.offsetHeight;
@@ -60,20 +64,14 @@ function centerModalBox(overlay) {
     box.style.top = top + 'px';
     box.style.left = left + 'px';
     box.style.margin = '0';
+
+    window.addEventListener('resize', positionWhenReady);
+    overlay._cleanupResize = () => window.removeEventListener('resize', positionWhenReady);
   }
 
-  // عدة محاولات لضمان القياس الصحيح خاصة للمودالات البسيطة
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      position();
-      setTimeout(position, 50);
-      setTimeout(position, 150);
-    });
-  });
-
-  window.addEventListener('resize', position);
-  overlay._cleanupResize = () => window.removeEventListener('resize', position);
+  requestAnimationFrame(positionWhenReady);
 }
+
 // ---------- التخزين المؤقت ----------
 const cache = {};
 const CACHE_DURATION = 60000;
@@ -166,7 +164,7 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   document.body.appendChild(overlay);
 
   lockBodyScroll(overlay);
-  centerModalBox(overlay);
+  waitForLayoutThenCenter(overlay);
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -245,7 +243,7 @@ function showItemDetailModal(itemId) {
   document.body.appendChild(overlay);
 
   lockBodyScroll(overlay);
-  centerModalBox(overlay);
+  waitForLayoutThenCenter(overlay);
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -437,7 +435,7 @@ async function showInvoiceModal(type) {
     document.body.appendChild(overlay);
 
     lockBodyScroll(overlay);
-    centerModalBox(overlay);
+    waitForLayoutThenCenter(overlay);
 
     const closeModal = () => {
       if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -658,7 +656,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   document.body.appendChild(overlay);
 
   lockBodyScroll(overlay);
-  centerModalBox(overlay);
+  waitForLayoutThenCenter(overlay);
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -785,7 +783,7 @@ function showHelpModal() {
   document.body.appendChild(overlay);
 
   lockBodyScroll(overlay);
-  centerModalBox(overlay);
+  waitForLayoutThenCenter(overlay);
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -941,4 +939,3 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
-
