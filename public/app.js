@@ -45,25 +45,18 @@ function centerModalBox(overlay) {
     const vh = window.innerHeight;
     const vw = window.innerWidth;
 
-    // تعيين أقصى ارتفاع بنسبة 85% من ارتفاع الشاشة (يدويًا لضمان التوافق)
-    const maxHeight = vh * 0.85;
-    box.style.maxHeight = maxHeight + 'px';
-    box.style.overflowY = 'auto';
-
-    // استخدام scrollHeight بدلاً من offsetHeight للحصول على الارتفاع الكامل (ولكن بعد تطبيق max-height، سيكون scrollHeight هو ارتفاع المحتوى إذا كان أكبر، أو offsetHeight إذا كان أصغر)
-    // نريد الارتفاع الفعلي الظاهر، لذا نأخذ offsetHeight بعد تطبيق max-height
-    const visibleHeight = box.offsetHeight;
+    // الارتفاع الفعلي للصندوق (مقيد بـ max-height المحدد سلفاً)
+    const boxHeight = box.offsetHeight;
     const boxWidth = box.offsetWidth;
 
-    // حساب الموقع بحيث يكون في المنتصف تمامًا، مع هوامش دنيا 10px
-    let top = (vh - visibleHeight) / 2;
+    let top = (vh - boxHeight) / 2;
     let left = (vw - boxWidth) / 2;
 
-    // ضمان ألا يلتصق بالأعلى أو الأسفل أو الجوانب
+    // هوامش أمان
     const minMargin = 10;
     if (top < minMargin) top = minMargin;
     if (left < minMargin) left = minMargin;
-    if (top + visibleHeight > vh - minMargin) top = vh - visibleHeight - minMargin;
+    if (top + boxHeight > vh - minMargin) top = vh - boxHeight - minMargin;
     if (left + boxWidth > vw - minMargin) left = vw - boxWidth - minMargin;
 
     box.style.position = 'fixed';
@@ -72,6 +65,13 @@ function centerModalBox(overlay) {
     box.style.margin = '0';
   }
 
+  // انتظار عرض المحتوى أولاً
+  requestAnimationFrame(() => {
+    requestAnimationFrame(position);
+  });
+  window.addEventListener('resize', position);
+  overlay._cleanupResize = () => window.removeEventListener('resize', position);
+}
   // تشغيل التوسيط بعد إتاحة الوقت للمتصفح لإنهاء التخطيط (reflow)
   setTimeout(position, 0);
   window.addEventListener('resize', position);
