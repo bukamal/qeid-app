@@ -660,16 +660,16 @@ document.querySelectorAll('.tab').forEach(tab => {
     return null;
   }
 
-  function onStart(e) {
+function onStart(e) {
     const tab = e.target.closest('.tab');
     if (!tab) return;
-    e.preventDefault();
+    // تم حذف preventDefault() ليشتغل النقر العادي
     const startX = getPos(e);
     dragInfo = { tab, startX, moved: false, startXorig: startX };
     tab.classList.add('dragging');
     tab.style.opacity = '0.6';
     tab.style.zIndex = '1000';
-  }
+}
 
   function onMove(e) {
     if (!dragInfo) return;
