@@ -407,7 +407,6 @@ function emptyState(title, subtitle) {
   </div>`;
 }
 
-
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
@@ -434,21 +433,21 @@ function showItemDetail(itemId) {
     `
   });
 
-  // ربط الأحداث بتأخير بسيط لضمان وجود العناصر
-  setTimeout(() => {
-    const editBtn = modal.element.querySelector('#edit-item-btn');
-    const deleteBtn = modal.element.querySelector('#delete-item-btn');
+  const editBtn = modal.element.querySelector('#edit-item-btn');
+  const deleteBtn = modal.element.querySelector('#delete-item-btn');
 
-    if (editBtn) {
-      editBtn.addEventListener('click', () => {
-        showEditItemModal(itemId); // سيفتح نافذة التعديل (ويغلق الحالية تلقائياً)
-      });
-    }
+  if (editBtn) {
+    editBtn.onclick = () => {
+      modal.close();
+      setTimeout(() => showEditItemModal(itemId), 220);
+    };
+  }
 
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', async () => {
-        // سيتم إغلاق النافذة الحالية تلقائياً عند فتح نافذة التأكيد
-        const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة ${item.name}؟`);
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      modal.close();
+      setTimeout(async () => {
+        const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name}</strong>؟`);
         if (confirmed) {
           try {
             await apiCall(`/items?id=${itemId}`, 'DELETE');
@@ -458,9 +457,9 @@ function showItemDetail(itemId) {
             showToast(e.message, 'error');
           }
         }
-      });
-    }
-  }, 0);
+      }, 220);
+    };
+  }
 }
 
 
