@@ -265,7 +265,7 @@ select.input-field {
   box-shadow: var(--shadow);
 }
 
-/* --- النوافذ المنبثقة (Modals) - مبسطة بدون Flex للتوسيط (يتم التوسيط يدوياً) --- */
+/* --- النوافذ المنبثقة (Modals) - النسخة النهائية باستعمال Flexbox --- */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -275,6 +275,9 @@ select.input-field {
   background: rgba(0,0,0,0.5);
   backdrop-filter: blur(8px);
   z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .modal-box {
   background: var(--card-bg);
@@ -287,7 +290,7 @@ select.input-field {
   overflow-y: auto;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--glass-border);
-  -webkit-overflow-scrolling: touch; /* تحسين التمرير على iOS */
+  -webkit-overflow-scrolling: touch; /* تمرير ناعم على iOS */
 }
 
 /* قفل التمرير */
