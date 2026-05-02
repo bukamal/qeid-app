@@ -8,15 +8,60 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- دوال قفل/تحرير التمرير النهائية ----------
-function lockBodyScroll() {
+// ---------- دوال قفل التمرير ومنع اللمس ----------
+let currentOverlay = null;
+
+function lockBodyScroll(overlayElement) {
+  currentOverlay = overlayElement;
   document.body.classList.add('modal-open');
   document.documentElement.classList.add('modal-open');
+  if (overlayElement) {
+    overlayElement.addEventListener('touchmove', preventTouchMove, { passive: false });
+  }
+}
+
+function preventTouchMove(e) {
+  e.preventDefault();
 }
 
 function unlockBodyScroll() {
   document.body.classList.remove('modal-open');
   document.documentElement.classList.remove('modal-open');
+  if (currentOverlay) {
+    currentOverlay.removeEventListener('touchmove', preventTouchMove);
+    currentOverlay = null;
+  }
+}
+
+// ---------- توسيط يدوي ديناميكي ----------
+function centerModalBox(overlay) {
+  const box = overlay.querySelector('.modal-box');
+  if (!box) return;
+
+  function position() {
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const boxHeight = box.offsetHeight;
+    const boxWidth = box.offsetWidth;
+
+    const maxHeight = parseFloat(getComputedStyle(box).maxHeight) || (vh * 0.85);
+    const actualHeight = Math.min(boxHeight, maxHeight);
+
+    let top = (vh - actualHeight) / 2;
+    let left = (vw - boxWidth) / 2;
+
+    if (top < 10) top = 10;
+    if (left < 10) left = 10;
+
+    box.style.position = 'fixed';
+    box.style.top = top + 'px';
+    box.style.left = left + 'px';
+    box.style.margin = '0';
+  }
+
+  position();
+  window.addEventListener('resize', position);
+  overlay._cleanupResize = () => window.removeEventListener('resize', position);
 }
 
 // ---------- التخزين المؤقت ----------
@@ -81,9 +126,8 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
 }
 
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
-function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
-  lockBodyScroll();
 
+function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const container = document.createElement('div');
@@ -109,9 +153,13 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
+  lockBodyScroll(overlay);
+  centerModalBox(overlay);
+
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
     unlockBodyScroll();
+    if (overlay._cleanupResize) overlay._cleanupResize();
   };
   document.getElementById('modal-cancel').onclick = closeModal;
   const confirmBtn = document.getElementById(confirmMode ? 'modal-confirm' : 'modal-save');
@@ -135,6 +183,7 @@ function confirmDialog(msg) {
     showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
   });
 }
+
 async function loadItems() {
   try {
     let html = `<div class="card"><button class="btn-primary" id="btn-add-item">+ إضافة مادة</button><input id="items-search" type="text" class="input-field" placeholder="🔍 بحث..." style="margin-top:12px;" /></div><div id="items-list"></div>`;
@@ -162,7 +211,6 @@ function renderFilteredItems() {
 function showItemDetailModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
-  lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
   container.innerHTML = `<h3>${item.name}</h3>
@@ -181,7 +229,15 @@ function showItemDetailModal(itemId) {
     </div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
+
+  lockBodyScroll(overlay);
+  centerModalBox(overlay);
+
+  const closeModal = () => {
+    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+    unlockBodyScroll();
+    if (overlay._cleanupResize) overlay._cleanupResize();
+  };
   document.getElementById('edit-item-detail').onclick = () => { closeModal(); showEditItemModal(itemId); };
   document.getElementById('delete-item-detail').onclick = () => { closeModal(); deleteItem(itemId); };
   document.getElementById('close-detail').onclick = closeModal;
@@ -232,6 +288,7 @@ function showEditItemModal(itemId) {
     onSuccess: () => loadItems()
   });
 }
+
 let g_currentSection = null;
 
 function buildGenericItemHtml(item, { idField, nameField, extraFields }) {
@@ -327,9 +384,9 @@ document.addEventListener('click', async (e) => {
     } catch (err) { alert('خطأ: ' + err.message); }
   }
 });
+
 async function showInvoiceModal(type) {
   try {
-    lockBodyScroll();
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
     itemsCache = items; customersCache = customers; suppliersCache = suppliers;
     let entOpts = type === 'sale' ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}` : `<option value="cash">مورد نقدي</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}`;
@@ -362,7 +419,14 @@ async function showInvoiceModal(type) {
     overlay.appendChild(container);
     document.body.appendChild(overlay);
 
-    const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
+    lockBodyScroll(overlay);
+    centerModalBox(overlay);
+
+    const closeModal = () => {
+      if (document.body.contains(overlay)) document.body.removeChild(overlay);
+      unlockBodyScroll();
+      if (overlay._cleanupResize) overlay._cleanupResize();
+    };
     document.getElementById('btn-cancel-invoice').onclick = closeModal;
 
     attachInvoiceEvents(type);
@@ -393,47 +457,109 @@ async function showInvoiceModal(type) {
         closeModal(); alert('تم حفظ الفاتورة بنجاح'); loadInvoices();
       } catch (e) { alert('خطأ: ' + e.message); }
     };
-  } catch (err) { alert('خطأ: ' + err.message); unlockBodyScroll(); }
+  } catch (err) { alert('خطأ: ' + err.message); }
 }
-
+// ---------- دوال أحداث الفاتورة وربط البنود ----------
 function attachInvoiceEvents(invoiceType) {
-  function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; }); return found; }
+  function isItemDuplicate(id, cur) {
+    if (!id) return false;
+    let found = false;
+    document.querySelectorAll('#inv-lines-container .line-row').forEach(r => {
+      if (r !== cur && r.querySelector('.item-select')?.value === id) found = true;
+    });
+    return found;
+  }
   function autoFillPrice(sel, pr) {
-    const id = sel.value; if (!id) { pr.value = ''; return; }
+    const id = sel.value;
+    if (!id) { pr.value = ''; return; }
     const item = itemsCache.find(i => i.id == id);
     if (item) {
       pr.value = (invoiceType === 'sale' ? item.selling_price : item.purchase_price) || 0;
-      const row = sel.closest('.line-row'), qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+      const row = sel.closest('.line-row'),
+            qty = row.querySelector('.qty-input'),
+            tot = row.querySelector('.total-input');
       if (qty && tot) tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0));
     }
   }
+
   document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
-    const sel = row.querySelector('.item-select'), pr = row.querySelector('.price-input');
+    const sel = row.querySelector('.item-select'),
+          pr = row.querySelector('.price-input');
     if (sel && pr) autoFillPrice(sel, pr);
-    sel?.addEventListener('change', function () { if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value = ''; pr.value = ''; return; } autoFillPrice(this, pr); });
-    const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+
+    sel?.addEventListener('change', function () {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً');
+        this.value = '';
+        pr.value = '';
+        return;
+      }
+      autoFillPrice(this, pr);
+    });
+
+    const qty = row.querySelector('.qty-input'),
+          tot = row.querySelector('.total-input');
     const calc = () => { tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0)); };
-    qty?.addEventListener('input', calc); pr?.addEventListener('input', calc);
+    qty?.addEventListener('input', calc);
+    pr?.addEventListener('input', calc);
   });
+
   document.getElementById('btn-add-inv-line')?.addEventListener('click', () => {
     const ctr = document.getElementById('inv-lines-container');
-    const nl = document.createElement('div'); nl.className = 'line-row';
-    nl.innerHTML = `<select class="input-field item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select>
+    const nl = document.createElement('div');
+    nl.className = 'line-row';
+    nl.innerHTML = `
+      <select class="input-field item-select">
+        <option value="">اختر مادة</option>
+        ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
+      </select>
       <input type="number" step="any" class="input-field qty-input" placeholder="الكمية" />
       <input type="number" step="0.01" class="input-field price-input" placeholder="السعر" />
       <input type="number" step="0.01" class="input-field total-input" placeholder="الإجمالي" readonly />
       <button class="btn-remove-line btn-secondary">✕</button>`;
     ctr.appendChild(nl);
     updateInvoiceRemoveButtons();
-    const sel = nl.querySelector('.item-select'), pr = nl.querySelector('.price-input'), qty = nl.querySelector('.qty-input'), tot = nl.querySelector('.total-input');
-    sel.addEventListener('change', function () { if (isItemDuplicate(this.value, this.closest('.line-row'))) { alert('المادة مضافة مسبقاً'); this.value = ''; pr.value = ''; return; } autoFillPrice(this, pr); });
+
+    const sel = nl.querySelector('.item-select'),
+          pr = nl.querySelector('.price-input'),
+          qty = nl.querySelector('.qty-input'),
+          tot = nl.querySelector('.total-input');
+
+    sel.addEventListener('change', function () {
+      if (isItemDuplicate(this.value, this.closest('.line-row'))) {
+        alert('المادة مضافة مسبقاً');
+        this.value = '';
+        pr.value = '';
+        return;
+      }
+      autoFillPrice(this, pr);
+    });
+
     const calc = () => { tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0)); };
-    qty.addEventListener('input', calc); pr.addEventListener('input', calc);
+    qty.addEventListener('input', calc);
+    pr.addEventListener('input', calc);
   });
-  document.getElementById('inv-lines-container')?.addEventListener('click', e => { if (e.target.classList.contains('btn-remove-line')) { const row = e.target.closest('.line-row'); if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) { row.remove(); updateInvoiceRemoveButtons(); } } });
+
+  document.getElementById('inv-lines-container')?.addEventListener('click', e => {
+    if (e.target.classList.contains('btn-remove-line')) {
+      const row = e.target.closest('.line-row');
+      if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) {
+        row.remove();
+        updateInvoiceRemoveButtons();
+      }
+    }
+  });
+
   updateInvoiceRemoveButtons();
 }
-function updateInvoiceRemoveButtons() { document.querySelectorAll('#inv-lines-container .line-row').forEach(row => { const btn = row.querySelector('.btn-remove-line'); if (btn) btn.style.display = document.querySelectorAll('#inv-lines-container .line-row').length > 1 ? 'inline-block' : 'none'; }); }
+
+function updateInvoiceRemoveButtons() {
+  document.querySelectorAll('#inv-lines-container .line-row').forEach(row => {
+    const btn = row.querySelector('.btn-remove-line');
+    if (btn) btn.style.display = document.querySelectorAll('#inv-lines-container .line-row').length > 1 ? 'inline-block' : 'none';
+  });
+}
+
 async function loadInvoices() {
   try {
     let html = `<div class="card"><h3>جميع الفواتير</h3><div style="display:flex;gap:8px;margin-bottom:8px;"><button class="filter-tab active" data-filter="all">الكل</button><button class="filter-tab" data-filter="sale">بيع</button><button class="filter-tab" data-filter="purchase">شراء</button></div><input id="invoice-search" type="text" class="input-field" placeholder="🔍 بحث..." /></div><div id="invoices-list"></div>`;
@@ -482,6 +608,7 @@ function printInvoice(invoice) {
   const w = window.open('', '_blank', 'width=800,height=600');
   if (w) { w.document.write(html); w.document.close(); } else alert('الرجاء السماح بالنوافذ المنبثقة');
 }
+
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments','GET'), apiCall('/invoices','GET'), apiCall('/customers','GET'), apiCall('/suppliers','GET')]);
@@ -494,7 +621,6 @@ async function loadPayments() {
 }
 
 function showAddPaymentModal(customers, suppliers, invoices) {
-  lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
   container.innerHTML = `<h3>إضافة دفعة جديدة</h3>
@@ -510,7 +636,14 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   overlay.appendChild(container);
   document.body.appendChild(overlay);
 
-  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
+  lockBodyScroll(overlay);
+  centerModalBox(overlay);
+
+  const closeModal = () => {
+    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+    unlockBodyScroll();
+    if (overlay._cleanupResize) overlay._cleanupResize();
+  };
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
   const updateInvList = (type, eId) => {
     const filt = invoices.filter(inv => type==='customer' ? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
@@ -532,6 +665,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
 }
 
 async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`, 'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e){ alert('خطأ: '+e.message); } }
+
 async function loadExpenses() {
   try {
     const expenses = await apiCall('/expenses','GET');
@@ -557,6 +691,7 @@ function showAddExpenseModal() {
   });
 }
 async function deleteExpense(id) { if (!await confirmDialog('متأكد من حذف المصروف؟')) return; try { await apiCall(`/expenses?id=${id}`, 'DELETE'); alert('تم الحذف'); loadExpenses(); } catch(e){ alert('خطأ: '+e.message); } }
+
 async function loadDashboard() {
   try {
     const data = await apiCall('/summary','GET');
@@ -588,6 +723,7 @@ async function loadDashboard() {
     }
   } catch(err){ document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 async function loadReports() {
   let html = `<div class="card"><h3>التقارير</h3></div>
     <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
@@ -614,17 +750,26 @@ async function loadBalanceSheet() { try{ const d=await apiCall('/reports?type=ba
 async function loadAccountLedgerForm() { try{ const accounts=await apiCall('/accounts','GET'); const opts=accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الأستاذ العام</h3><select id="ledger-account" class="input-field">${opts}</select><button id="btn-ledger" class="btn-primary">عرض الحركات</button><div id="ledger-result" style="margin-top:15px"></div></div>`; document.getElementById('btn-ledger').addEventListener('click',async()=>{const id=document.getElementById('ledger-account').value; if(!id)return; try{const lines=await apiCall(`/reports?type=account_ledger&account_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('ledger-result').innerHTML=html;}catch(e){document.getElementById('ledger-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadCustomerStatementForm() { try{ const custs=await apiCall('/customers','GET'); const opts=custs.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب عميل</h3><select id="stmt-cust" class="input-field">${opts}</select><button id="btn-stmt-cust" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-cust').addEventListener('click',async()=>{const id=document.getElementById('stmt-cust').value; if(!id)return; try{const lines=await apiCall(`/reports?type=customer_statement&customer_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadSupplierStatementForm() { try{ const supps=await apiCall('/suppliers','GET'); const opts=supps.map(s=>`<option value="${s.id}">${s.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب مورد</h3><select id="stmt-supp" class="input-field">${opts}</select><button id="btn-stmt-supp" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-supp').addEventListener('click',async()=>{const id=document.getElementById('stmt-supp').value; if(!id)return; try{const lines=await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
+
 function showHelpModal() {
-  lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
   container.innerHTML = `<h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
+
+  lockBodyScroll(overlay);
+  centerModalBox(overlay);
+
+  const closeModal = () => {
+    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+    unlockBodyScroll();
+    if (overlay._cleanupResize) overlay._cleanupResize();
+  };
   document.getElementById('close-help').onclick = closeModal;
 }
-// إخفاء التبويبات عند التمرير للأسفل
+
+// إخفاء التبويبات عند التمرير
 (function() {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -658,7 +803,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// سحب وإفلات التبويبات (دون تعطيل النقر)
+// سحب وإفلات التبويبات (بدون تعطيل النقر)
 (function () {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -753,6 +898,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.head.appendChild(style);
   }
 })();
+
 async function verifyUser() {
   try {
     const data = await apiCall('/verify', 'POST');
@@ -770,3 +916,4 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
+

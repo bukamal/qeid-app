@@ -265,7 +265,7 @@ select.input-field {
   box-shadow: var(--shadow);
 }
 
-/* --- النوافذ المنبثقة (Modals) - النسخة النهائية --- */
+/* --- النوافذ المنبثقة (Modals) - مبسطة بدون Flex للتوسيط (يتم التوسيط يدوياً) --- */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -274,9 +274,6 @@ select.input-field {
   height: 100%;
   background: rgba(0,0,0,0.5);
   backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 9999;
 }
 .modal-box {
@@ -290,10 +287,10 @@ select.input-field {
   overflow-y: auto;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--glass-border);
-  margin: auto;
+  /* سيتم تحديد الموضع عبر JavaScript */
 }
 
-/* قفل التمرير دون تغيير الموضع */
+/* قفل التمرير */
 body.modal-open,
 html.modal-open {
   overflow: hidden;
