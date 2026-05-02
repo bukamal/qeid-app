@@ -37,7 +37,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const { data: items, error: itemsError } = await supabase
         .from('items')
-        .select('*, category:categories(name)')
+        .select('*, category:categories(name), item_units(*, unit:units(*))')
         .eq('user_id', userId)
         .order('name');
       if (itemsError) throw itemsError;
@@ -60,59 +60,66 @@ module.exports = async (req, res) => {
 
       const enrichedItems = items.map(item => {
         const q = qtyMap[item.id] || { purchase: 0, sale: 0 };
-        const available = q.purchase - q.sale;
+        const available = (parseFloat(item.quantity) || 0) + q.purchase - q.sale;
         const totalValue = available * (parseFloat(item.purchase_price) || 0);
-        return {
-          ...item,
-          purchase_qty: q.purchase,
-          sale_qty: q.sale,
-          available: available,
-          total_value: totalValue
-        };
+        return { ...item, purchase_qty: q.purchase, sale_qty: q.sale, available, total_value: totalValue };
       });
 
       return res.json(enrichedItems);
     }
 
     if (req.method === 'POST') {
-      const { name, category_id, item_type, purchase_price, selling_price, quantity, item_units } = req.body;
+      const { name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
-      const { data, error } = await supabase
-        .from('items')
-        .insert({
-          user_id: userId,
-          name: name.trim(),
-          category_id: category_id || null,
-          item_type: item_type || 'مخزون',
-          purchase_price: parseFloat(purchase_price) || 0,
-          selling_price: parseFloat(selling_price) || 0,
-          quantity: parseFloat(quantity) || 0
-        })
-        .select()
-        .single();
+      
+      const { data, error } = await supabase.from('items').insert({
+        user_id: userId,
+        name: name.trim(),
+        category_id: category_id || null,
+        item_type: item_type || 'مخزون',
+        purchase_price: parseFloat(purchase_price) || 0,
+        selling_price: parseFloat(selling_price) || 0,
+        quantity: parseFloat(quantity) || 0,
+        base_unit_id: base_unit_id || null
+      }).select().single();
       if (error) throw error;
-      return res.json(data);
+      
+      if (item_units && Array.isArray(item_units) && data) {
+        await supabase.from('item_units').insert(
+          item_units.map(u => ({ item_id: data.id, unit_id: u.unit_id, conversion_factor: u.conversion_factor }))
+        );
+      }
+      
+      const { data: fullData } = await supabase
+        .from('items').select('*, category:categories(name), item_units(*, unit:units(*))').eq('id', data.id).single();
+      return res.json(fullData || data);
     }
 
     if (req.method === 'PUT') {
-      const { id, name, category_id, item_type, purchase_price, selling_price, quantity, item_units } = req.body;
+      const { id, name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
-      const { data, error } = await supabase
-        .from('items')
-        .update({
-          name: name?.trim(),
-          category_id: category_id || null,
-          item_type,
-          purchase_price: parseFloat(purchase_price) || 0,
-          selling_price: parseFloat(selling_price) || 0,
-          quantity: parseFloat(quantity) || 0
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
+      
+      await supabase.from('item_units').delete().eq('item_id', id);
+      if (item_units && Array.isArray(item_units)) {
+        await supabase.from('item_units').insert(
+          item_units.map(u => ({ item_id: id, unit_id: u.unit_id, conversion_factor: u.conversion_factor }))
+        );
+      }
+      
+      const { data, error } = await supabase.from('items').update({
+        name: name?.trim(),
+        category_id: category_id || null,
+        item_type,
+        purchase_price: parseFloat(purchase_price) || 0,
+        selling_price: parseFloat(selling_price) || 0,
+        quantity: parseFloat(quantity) || 0,
+        base_unit_id: base_unit_id || null
+      }).eq('id', id).eq('user_id', userId).select().single();
       if (error) throw error;
-      return res.json(data);
+      
+      const { data: fullData } = await supabase
+        .from('items').select('*, category:categories(name), item_units(*, unit:units(*))').eq('id', id).single();
+      return res.json(fullData || data);
     }
 
     if (req.method === 'DELETE') {
@@ -130,3 +137,4 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+

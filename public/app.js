@@ -407,9 +407,15 @@ function emptyState(title, subtitle) {
   </div>`;
 }
 
+
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
+  const baseUnitName = unitsCache.find(u => u.id === item.base_unit_id)?.name || 'وحدة';
+  const convs = (item.item_units || []).map(iu => {
+    const un = unitsCache.find(u => u.id === iu.unit_id)?.name || 'وحدة';
+    return `<span style="font-size:13px;color:var(--text-secondary);background:var(--bg);padding:4px 10px;border-radius:6px;display:inline-block;margin:2px;">1 ${un} = ${iu.conversion_factor} ${baseUnitName}</span>`;
+  }).join('') || '<span style="color:var(--text-muted);font-size:13px;">لا توجد وحدات تحويل</span>';
 
   const modal = openModal({
     title: item.name,
@@ -417,51 +423,131 @@ function showItemDetail(itemId) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
         <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">الكمية المشتراة</div><div class="stat-value" style="font-size:16px;">${item.purchase_qty ?? 0}</div></div>
         <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">الكمية المباعة</div><div class="stat-value" style="font-size:16px;">${item.sale_qty ?? 0}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;border-color:var(--primary);"><div class="stat-label">المتوفرة</div><div class="stat-value text-primary" style="font-size:20px;">${item.available ?? 0}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;border-color:var(--primary);"><div class="stat-label">المتوفرة</div><div class="stat-value text-primary" style="font-size:20px;">${item.available ?? 0} ${baseUnitName}</div></div>
         <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">القيمة الإجمالية</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.total_value ?? 0)}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر الشراء</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price)}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price)}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر الشراء</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price)} / ${baseUnitName}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price)} / ${baseUnitName}</div></div>
       </div>
-      <div class="form-label">التصنيف</div>
-      <p style="margin-bottom:16px;">${item.category?.name || 'بدون تصنيف'}</p>
-      <div class="form-label">نوع المادة</div>
-      <p>${item.item_type || 'مخزون'}</p>
+      <div class="form-label">التصنيف</div><p style="margin-bottom:12px;">${item.category?.name || 'بدون تصنيف'}</p>
+      <div class="form-label">نوع المادة</div><p style="margin-bottom:12px;">${item.item_type || 'مخزون'}</p>
+      <div class="form-label">الوحدة الأساسية</div><p style="margin-bottom:8px;font-weight:700;">${baseUnitName}</p>
+      <div class="form-label">وحدات التحويل</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${convs}</div>
     `,
-    footerHTML: `
-      <button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button>
-      <button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>
-    `
+    footerHTML: `<button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button><button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>`
   });
 
-  const editBtn = modal.element.querySelector('#edit-item-btn');
-  const deleteBtn = modal.element.querySelector('#delete-item-btn');
-
-  if (editBtn) {
-    editBtn.onclick = () => {
-      modal.close();
-      setTimeout(() => showEditItemModal(itemId), 220);
-    };
-  }
-
-  if (deleteBtn) {
-    deleteBtn.onclick = () => {
-      modal.close();
-      setTimeout(async () => {
-        const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name}</strong>؟`);
-        if (confirmed) {
-          try {
-            await apiCall(`/items?id=${itemId}`, 'DELETE');
-            showToast('تم الحذف بنجاح', 'success');
-            loadItems();
-          } catch (e) {
-            showToast(e.message, 'error');
-          }
-        }
-      }, 220);
-    };
-  }
+  modal.element.querySelector('#edit-item-btn').onclick = () => { modal.close(); setTimeout(() => showEditItemModal(itemId), 220); };
+  modal.element.querySelector('#delete-item-btn').onclick = () => {
+    modal.close();
+    setTimeout(async () => {
+      if (await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name}</strong>؟`)) {
+        try { await apiCall(`/items?id=${itemId}`, 'DELETE'); showToast('تم الحذف بنجاح', 'success'); loadItems(); }
+        catch (e) { showToast(e.message, 'error'); }
+      }
+    }, 220);
+  };
 }
 
+function showEditItemModal(itemId) {
+  const it = itemsCache.find(i => i.id === itemId);
+  if (!it) return;
+
+  const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
+  const unitOpts = unitsCache.map(u => `<option value="${u.id}" ${u.id === it.base_unit_id ? 'selected' : ''}>${u.name}</option>`).join('');
+  let conversions = (it.item_units || []).map(iu => ({
+    unit_id: iu.unit_id,
+    unit_name: iu.unit?.name || unitsCache.find(u => u.id === iu.unit_id)?.name || 'وحدة',
+    conversion_factor: iu.conversion_factor
+  }));
+
+  const body = `
+    <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" value="${it.name || ''}"></div>
+    <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
+    <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
+    <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
+    <div class="form-group"><label class="form-label">الوحدة الأساسية <span style="color:var(--text-muted);font-size:12px;">(وحدة المخزون)</span></label><select class="select" id="fm-base-unit"><option value="">اختر وحدة...</option>${unitOpts}</select></div>
+    <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف وحدة جديدة</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-unit" type="text" placeholder="اسم الوحدة..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-unit" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
+    <div class="form-group"><label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(مثال: صندوق = 12 قطعة)</span></label><div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div><div style="display:flex;gap:8px;align-items:flex-start;"><select class="select" id="conv-unit" style="flex:1;"><option value="">اختر وحدة...</option>${unitsCache.map(u => `<option value="${u.id}">${u.name}</option>`).join('')}</select><input class="input" id="conv-factor" type="number" step="any" placeholder="عدد الوحدات الأساسية" style="width:140px;"><button class="btn btn-secondary" id="btn-add-conv" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
+    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
+    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
+    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
+  `;
+
+  const modal = openModal({ title: 'تعديل المادة', bodyHTML: body, footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>` });
+
+  const convList = modal.element.querySelector('#conversions-list');
+  const refreshConversions = () => {
+    const baseName = modal.element.querySelector('#fm-base-unit option:checked')?.textContent || 'وحدة';
+    convList.innerHTML = conversions.map((c, idx) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:8px 12px;border-radius:8px;">
+        <span style="font-weight:700;">1 ${c.unit_name} = ${c.conversion_factor} ${baseName}</span>
+        <button class="btn btn-ghost btn-sm" data-idx="${idx}" style="color:var(--danger);padding:4px;">${ICONS.trash}</button>
+      </div>`).join('');
+    convList.querySelectorAll('button[data-idx]').forEach(b => { b.onclick = () => { conversions.splice(parseInt(b.dataset.idx), 1); refreshConversions(); }; });
+  };
+  refreshConversions();
+
+  modal.element.querySelector('#btn-add-conv').onclick = () => {
+    const unitSel = modal.element.querySelector('#conv-unit');
+    const factor = parseFloat(modal.element.querySelector('#conv-factor').value);
+    const unitId = unitSel.value, unitName = unitSel.options[unitSel.selectedIndex]?.textContent;
+    const baseUnitId = modal.element.querySelector('#fm-base-unit').value;
+    if (!unitId) return showToast('اختر الوحدة الفرعية', 'warning');
+    if (!factor || factor <= 0) return showToast('أدخل معامل تحويل صحيح', 'warning');
+    if (unitId === baseUnitId) return showToast('لا يمكن إضافة الوحدة الأساسية كوحدة تحويل', 'warning');
+    if (conversions.some(c => c.unit_id == unitId)) return showToast('الوحدة مضافة مسبقاً', 'warning');
+    conversions.push({ unit_id: parseInt(unitId), unit_name: unitName, conversion_factor: factor });
+    modal.element.querySelector('#conv-factor').value = ''; unitSel.value = '';
+    refreshConversions();
+  };
+
+  const quickAdd = async (btnId, inputId, selectId, cacheArr, type, msg) => {
+    const btn = modal.element.querySelector(btnId), input = modal.element.querySelector(inputId), select = modal.element.querySelector(selectId);
+    btn.onclick = async () => {
+      const name = input.value.trim();
+      if (!name) return showToast('أدخل الاسم أولاً', 'warning');
+      if (cacheArr.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('الاسم موجود مسبقاً', 'warning');
+      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span>`;
+      try {
+        const res = await apiCall(`/definitions?type=${type}`, 'POST', { type, name });
+        const newName = res?.name || name, newId = res?.id || res?.data?.id;
+        if (!newId) throw new Error('خطأ في الاستجابة');
+        cacheArr.push({ id: newId, name: newName });
+        [select, modal.element.querySelector('#conv-unit')].forEach(s => {
+          if (s && ![...s.options].some(o => o.value == newId)) { const o = document.createElement('option'); o.value = newId; o.textContent = newName; s.appendChild(o); }
+        });
+        select.value = newId; input.value = '';
+        showToast(msg, 'success');
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = `${ICONS.plus}`; }
+    };
+  };
+
+  quickAdd('#btn-quick-cat', '#fm-new-category', '#fm-category_id', categoriesCache, 'category', 'تم إضافة التصنيف واختياره');
+  quickAdd('#btn-quick-unit', '#fm-new-unit', '#fm-base-unit', unitsCache, 'unit', 'تم إضافة الوحدة واختيارها');
+
+  modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
+  modal.element.querySelector('#fm-save').onclick = async () => {
+    const baseUnitId = modal.element.querySelector('#fm-base-unit').value;
+    if (!baseUnitId) return showToast('الوحدة الأساسية مطلوبة', 'error');
+    const values = {
+      name: modal.element.querySelector('#fm-name').value.trim(),
+      category_id: modal.element.querySelector('#fm-category_id').value || null,
+      item_type: modal.element.querySelector('#fm-item_type').value,
+      purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
+      selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
+      quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
+      base_unit_id: parseInt(baseUnitId),
+      item_units: conversions.map(c => ({ unit_id: c.unit_id, conversion_factor: c.conversion_factor }))
+    };
+    try {
+      const btn = modal.element.querySelector('#fm-save');
+      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      await apiCall('/items', 'PUT', { id: itemId, ...values });
+      modal.close(); showToast('تم الحفظ بنجاح', 'success'); loadItems();
+    } catch (e) { showToast(e.message, 'error'); btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`; }
+  };
+}
 
 
 function showAddItemModal() {
@@ -485,102 +571,99 @@ function showAddItemModal() {
   });
 }
 
+
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  
+  const unitOpts = unitsCache.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
-    
-    <div class="form-group">
-      <label class="form-label">التصنيف</label>
-      <select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select>
-    </div>
-    
-    <div class="form-group">
-      <label class="form-label">أو أضف تصنيف جديد</label>
-      <div style="display:flex;gap:8px;align-items:stretch;">
-        <input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف الجديد..." style="flex:1;">
-        <button class="btn btn-secondary" id="btn-quick-add-cat" type="button" style="width:auto;padding:0 16px;">${ICONS.plus}</button>
-      </div>
-    </div>
-    
+    <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
+    <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
-    <div class="form-group"><label class="form-label">وحدة القياس</label><input class="input" id="fm-unit" type="text" placeholder="قطعة، صندوق، كرتونة..."></div>
-    <div class="form-group"><label class="form-label">سعر الشراء</label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
-    <div class="form-group"><label class="form-label">سعر البيع</label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">الوحدة الأساسية <span style="color:var(--text-muted);font-size:12px;">(وحدة المخزون)</span></label><select class="select" id="fm-base-unit"><option value="">اختر وحدة...</option>${unitOpts}</select></div>
+    <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف وحدة جديدة</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-unit" type="text" placeholder="اسم الوحدة..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-unit" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
+    <div class="form-group"><label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(مثال: صندوق = 12 قطعة)</span></label><div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div><div style="display:flex;gap:8px;align-items:flex-start;"><select class="select" id="conv-unit" style="flex:1;"><option value="">اختر وحدة...</option>${unitOpts}</select><input class="input" id="conv-factor" type="number" step="any" placeholder="عدد الوحدات الأساسية" style="width:140px;"><button class="btn btn-secondary" id="btn-add-conv" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
+    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
+    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
   `;
 
-  const modal = openModal({
-    title: 'إضافة مادة جديدة',
-    bodyHTML: body,
-    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
-  });
+  const modal = openModal({ title: 'إضافة مادة جديدة', bodyHTML: body, footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>` });
 
-  // --- إضافة تصنيف سريعة ---
-  const quickBtn = modal.element.querySelector('#btn-quick-add-cat');
-  const quickInput = modal.element.querySelector('#fm-new-category');
-  const catSelect = modal.element.querySelector('#fm-category_id');
-
-  quickBtn.onclick = async () => {
-    const name = quickInput.value.trim();
-    if (!name) return showToast('أدخل اسم التصنيف', 'warning');
-    if (categoriesCache.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-      return showToast('التصنيف موجود مسبقاً', 'warning');
-    }
-    quickBtn.disabled = true;
-    quickBtn.innerHTML = `<span class="loader-inline"></span>`;
-    try {
-      const res = await apiCall('/definitions?type=category', 'POST', { type: 'category', name });
-      const newId = res?.id || res?.data?.id;
-      const newName = res?.name || res?.data?.name || name;
-      if (!newId) throw new Error('لم يتم إرجاع معرف التصنيف');
-      
-      // تحديث الكاش والقائمة المنسدلة
-      categoriesCache.push({ id: newId, name: newName });
-      const opt = document.createElement('option');
-      opt.value = newId;
-      opt.textContent = newName;
-      catSelect.appendChild(opt);
-      catSelect.value = newId;
-      quickInput.value = '';
-      showToast('تم إضافة التصنيف واختياره', 'success');
-    } catch (e) {
-      showToast(e.message, 'error');
-    } finally {
-      quickBtn.disabled = false;
-      quickBtn.innerHTML = `${ICONS.plus}`;
-    }
+  let conversions = [];
+  const convList = modal.element.querySelector('#conversions-list');
+  const refreshConversions = () => {
+    const baseName = modal.element.querySelector('#fm-base-unit option:checked')?.textContent || 'وحدة';
+    convList.innerHTML = conversions.map((c, idx) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:8px 12px;border-radius:8px;">
+        <span style="font-weight:700;">1 ${c.unit_name} = ${c.conversion_factor} ${baseName}</span>
+        <button class="btn btn-ghost btn-sm" data-idx="${idx}" style="color:var(--danger);padding:4px;">${ICONS.trash}</button>
+      </div>`).join('');
+    convList.querySelectorAll('button[data-idx]').forEach(b => { b.onclick = () => { conversions.splice(parseInt(b.dataset.idx), 1); refreshConversions(); }; });
   };
 
-  // --- حفظ المادة ---
+  modal.element.querySelector('#btn-add-conv').onclick = () => {
+    const unitSel = modal.element.querySelector('#conv-unit');
+    const factor = parseFloat(modal.element.querySelector('#conv-factor').value);
+    const unitId = unitSel.value, unitName = unitSel.options[unitSel.selectedIndex]?.textContent;
+    const baseUnitId = modal.element.querySelector('#fm-base-unit').value;
+    if (!unitId) return showToast('اختر الوحدة الفرعية', 'warning');
+    if (!factor || factor <= 0) return showToast('أدخل معامل تحويل صحيح', 'warning');
+    if (unitId === baseUnitId) return showToast('لا يمكن إضافة الوحدة الأساسية كوحدة تحويل', 'warning');
+    if (conversions.some(c => c.unit_id == unitId)) return showToast('الوحدة مضافة مسبقاً', 'warning');
+    conversions.push({ unit_id: parseInt(unitId), unit_name: unitName, conversion_factor: factor });
+    modal.element.querySelector('#conv-factor').value = ''; unitSel.value = '';
+    refreshConversions();
+  };
+
+  const quickAdd = async (btnId, inputId, selectId, cacheArr, type, msg) => {
+    const btn = modal.element.querySelector(btnId), input = modal.element.querySelector(inputId), select = modal.element.querySelector(selectId);
+    btn.onclick = async () => {
+      const name = input.value.trim();
+      if (!name) return showToast('أدخل الاسم أولاً', 'warning');
+      if (cacheArr.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('الاسم موجود مسبقاً', 'warning');
+      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span>`;
+      try {
+        const res = await apiCall(`/definitions?type=${type}`, 'POST', { type, name });
+        const newName = res?.name || name, newId = res?.id || res?.data?.id;
+        if (!newId) throw new Error('خطأ في الاستجابة');
+        cacheArr.push({ id: newId, name: newName });
+        [select, modal.element.querySelector('#conv-unit')].forEach(s => {
+          if (s && ![...s.options].some(o => o.value == newId)) { const o = document.createElement('option'); o.value = newId; o.textContent = newName; s.appendChild(o); }
+        });
+        select.value = newId; input.value = '';
+        showToast(msg, 'success');
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = `${ICONS.plus}`; }
+    };
+  };
+
+  quickAdd('#btn-quick-cat', '#fm-new-category', '#fm-category_id', categoriesCache, 'category', 'تم إضافة التصنيف واختياره');
+  quickAdd('#btn-quick-unit', '#fm-new-unit', '#fm-base-unit', unitsCache, 'unit', 'تم إضافة الوحدة واختيارها');
+
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
   modal.element.querySelector('#fm-save').onclick = async () => {
+    const baseUnitId = modal.element.querySelector('#fm-base-unit').value;
+    if (!baseUnitId) return showToast('الوحدة الأساسية مطلوبة', 'error');
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
       category_id: modal.element.querySelector('#fm-category_id').value || null,
       item_type: modal.element.querySelector('#fm-item_type').value,
-      unit: modal.element.querySelector('#fm-unit').value.trim(),
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
-      selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0
+      selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
+      quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
+      base_unit_id: parseInt(baseUnitId),
+      item_units: conversions.map(c => ({ unit_id: c.unit_id, conversion_factor: c.conversion_factor }))
     };
     if (!values.name) return showToast('اسم المادة مطلوب', 'error');
-    if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) {
-      return showToast('توجد مادة بنفس الاسم', 'error');
-    }
+    if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) return showToast('توجد مادة بنفس الاسم', 'error');
     try {
       const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = true;
-      btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
       await apiCall('/items', 'POST', values);
-      modal.close();
-      showToast('تم الحفظ بنجاح', 'success');
-      loadItems();
-    } catch (e) {
-      showToast(e.message, 'error');
-      const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = false;
-      btn.innerHTML = `${ICONS.check} حفظ`;
-    }
+      modal.close(); showToast('تم الحفظ بنجاح', 'success'); loadItems();
+    } catch (e) { showToast(e.message, 'error'); btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`; }
   };
 }
 
@@ -786,16 +869,18 @@ async function showInvoiceModal(type) {
       else supp = entity === 'cash' ? null : entity;
 
       const lines = []; const ids = new Set(); let dup = false;
-      modal.element.querySelectorAll('.line-row').forEach(row => {
-        const id = row.querySelector('.item-select').value || null;
-        if (id) { if (ids.has(id)) dup = true; ids.add(id); }
-        const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
-        const price = parseFloat(row.querySelector('.price-input').value) || 0;
-        const total = parseFloat(row.querySelector('.total-input').value) || 0;
-        if (id || qty > 0) lines.push({ item_id: id, description: id ? '' : 'بند', quantity: qty, unit_price: price, total });
-      });
-      if (dup) return showToast('لا يمكن تكرار نفس المادة في الفاتورة', 'error');
-      if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
+modal.element.querySelectorAll('.line-row').forEach(row => {
+  const id = row.querySelector('.item-select').value || null;
+  if (id) { if (ids.has(id)) dup = true; ids.add(id); }
+  const unitOpt = row.querySelector('.unit-select')?.selectedOptions[0];
+  const unitId = unitOpt?.dataset.unitId || null;
+  const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+  const price = parseFloat(row.querySelector('.price-input').value) || 0;
+  const total = parseFloat(row.querySelector('.total-input').value) || 0;
+  if (id || qty > 0) lines.push({ item_id: id, description: unitId ? `${qty} ${unitOpt.value}` : '', quantity: qty, unit_price: price, total, unit_id: unitId || null });
+});
+if (dup) return showToast('لا يمكن تكرار نفس المادة في الفاتورة', 'error');
+if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
 
       try {
         const btn = modal.element.querySelector('#inv-save');
@@ -816,6 +901,7 @@ async function showInvoiceModal(type) {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
+
 function attachInvoiceEvents(invoiceType, container) {
   const linesContainer = container.querySelector('#inv-lines');
   if (!linesContainer) return;
@@ -835,19 +921,34 @@ function attachInvoiceEvents(invoiceType, container) {
     });
     return found;
   }
-  function autoFill(sel, pr) {
+
+  function getUnitOptions(item) {
+    if (!item) return '<option value="">اختر مادة</option>';
+    const baseUnit = unitsCache.find(u => u.id === item.base_unit_id);
+    const baseName = baseUnit?.name || 'وحدة';
+    let opts = `<option value="" data-rate="1" data-unit-id="">${baseName} (أساسي)</option>`;
+    (item.item_units || []).forEach(iu => {
+      const u = unitsCache.find(x => x.id === iu.unit_id);
+      if (u) opts += `<option value="${u.name}" data-rate="${iu.conversion_factor}" data-unit-id="${u.id}">${u.name} (${iu.conversion_factor} ${baseName})</option>`;
+    });
+    return opts;
+  }
+
+  function autoFill(sel, pr, unitSel) {
     const id = sel.value;
-    if (!id) { pr.value = ''; return; }
+    if (!id) { pr.value = ''; if (unitSel) { unitSel.innerHTML = '<option value="">اختر مادة</option>'; unitSel.style.display = 'none'; } return; }
     const item = itemsCache.find(i => i.id == id);
     if (item) {
-      pr.value = (invoiceType === 'sale' ? item.selling_price : item.purchase_price) || 0;
+      const basePrice = invoiceType === 'sale' ? (item.selling_price || 0) : (item.purchase_price || 0);
+      pr.value = basePrice;
+      if (unitSel) { unitSel.innerHTML = getUnitOptions(item); unitSel.style.display = 'block'; unitSel.dataset.basePrice = basePrice; }
       const row = sel.closest('.line-row');
-      const qty = row.querySelector('.qty-input');
-      const tot = row.querySelector('.total-input');
-      if (qty && tot) tot.value = Math.round((parseFloat(qty.value) || 0) * (parseFloat(pr.value) || 0));
+      const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
+      if (qty && tot) tot.value = Math.round((parseFloat(qty.value) || 0) * basePrice);
       updateGrandTotal();
     }
   }
+
   function calc(row) {
     const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
     const pr = parseFloat(row.querySelector('.price-input')?.value) || 0;
@@ -855,39 +956,51 @@ function attachInvoiceEvents(invoiceType, container) {
     if (tot) { tot.value = Math.round(qty * pr); updateGrandTotal(); }
   }
 
+  function handleUnitChange(row) {
+    const sel = row.querySelector('.item-select'), unitSel = row.querySelector('.unit-select'), pr = row.querySelector('.price-input');
+    const item = itemsCache.find(i => i.id == sel.value);
+    if (!item || !unitSel) return;
+    const rate = parseFloat(unitSel.selectedOptions[0]?.dataset.rate || 1);
+    const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
+    pr.value = Math.round(basePrice * rate);
+    calc(row);
+  }
+
   container.querySelectorAll('.line-row').forEach(row => {
-    const sel = row.querySelector('.item-select');
-    const pr = row.querySelector('.price-input');
-    if (sel && pr) autoFill(sel, pr);
+    const sel = row.querySelector('.item-select'), pr = row.querySelector('.price-input'), unitSel = row.querySelector('.unit-select');
+    if (sel && pr) autoFill(sel, pr, unitSel);
     sel?.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; return; }
-      autoFill(this, pr);
+      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; if (unitSel) unitSel.style.display = 'none'; return; }
+      autoFill(this, pr, unitSel);
     });
     row.querySelector('.qty-input')?.addEventListener('input', () => calc(row));
     row.querySelector('.price-input')?.addEventListener('input', () => calc(row));
+    unitSel?.addEventListener('change', () => handleUnitChange(row));
   });
 
   container.querySelector('#btn-add-line')?.addEventListener('click', () => {
     const nl = document.createElement('div'); nl.className = 'line-row';
     nl.innerHTML = `
       <div class="form-group" style="grid-column:1/-1"><select class="select item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select></div>
+      <div class="form-group"><select class="select unit-select" style="display:none;"><option value="">الوحدة</option></select></div>
       <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية"></div>
       <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
       <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
       <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
     `;
     linesContainer.appendChild(nl);
-    const sel = nl.querySelector('.item-select');
-    const pr = nl.querySelector('.price-input');
+    const sel = nl.querySelector('.item-select'), pr = nl.querySelector('.price-input'), unitSel = nl.querySelector('.unit-select');
     sel.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; return; }
-      autoFill(this, pr);
+      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; if (unitSel) unitSel.style.display = 'none'; return; }
+      autoFill(this, pr, unitSel);
     });
     nl.querySelector('.qty-input').addEventListener('input', () => calc(nl));
     nl.querySelector('.price-input').addEventListener('input', () => calc(nl));
+    unitSel?.addEventListener('change', () => handleUnitChange(nl));
     nl.querySelector('.line-remove').addEventListener('click', () => { if (linesContainer.querySelectorAll('.line-row').length > 1) { nl.remove(); updateGrandTotal(); } });
   });
 }
+
 
 // ========== قائمة الفواتير ==========
 async function loadInvoices() {
