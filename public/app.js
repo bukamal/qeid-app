@@ -337,24 +337,59 @@ function initNavigation() {
   });
 }
 
-// مستمعي الأحداث للقوائم
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('menu-toggle').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('open');
+// بناء القوائم
+function initNavigation() {
+  const sidebarNav = document.getElementById('sidebar-nav');
+  const sheetGrid = document.getElementById('sheet-grid');
+  
+  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','payments','expenses','invoices','reports'];
+  const moreTabs = ['purchase-invoice','customers','suppliers','categories','payments','expenses','reports'];
+  
+  mainTabs.forEach(key => {
+    const cfg = tabsConfig[key];
+    if (!cfg) return;
+    const btn = document.createElement('button');
+    btn.className = 'nav-item' + (key === 'dashboard' ? ' active' : '');
+    btn.dataset.tab = key;
+    btn.innerHTML = `${cfg.icon}<span>${cfg.title}</span>`;
+    btn.onclick = () => navigateTo(key);
+    sidebarNav.appendChild(btn);
   });
-  const backdrop = document.querySelector('.sheet-backdrop');
-  if (backdrop) {
-    backdrop.addEventListener('click', () => {
-      document.getElementById('more-menu').style.display = 'none';
-      unlockScroll();
-    });
-  }
-  // مستمعي التبويبات السفلية
-  document.querySelectorAll('.bottom-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tabName = btn.dataset.tab;
-      if (tabName && tabName !== 'more') navigateTo(tabName);
-    });
+  
+  moreTabs.forEach(key => {
+    const cfg = tabsConfig[key];
+    if (!cfg) return;
+    const btn = document.createElement('button');
+    btn.className = 'sheet-item';
+    btn.dataset.tab = key;
+    btn.innerHTML = `${cfg.icon}<span>${cfg.title}</span>`;
+    btn.onclick = () => { unlockScroll(); navigateTo(key); };
+    sheetGrid.appendChild(btn);
+  });
+}
+
+// --- مستمعات الأحداث الثابتة (بدون DOMContentLoaded) ---
+document.getElementById('menu-toggle').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('open');
+});
+
+const moreBackdrop = document.querySelector('.sheet-backdrop');
+if (moreBackdrop) {
+  moreBackdrop.addEventListener('click', () => {
+    document.getElementById('more-menu').style.display = 'none';
+    unlockScroll();
+  });
+}
+
+// تبويبات الشريط السفلي
+document.querySelectorAll('.bottom-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabName = btn.dataset.tab;
+    if (tabName === 'more') {
+      showMoreMenu();
+    } else if (tabName) {
+      navigateTo(tabName);
+    }
   });
 });
 
