@@ -446,7 +446,8 @@ function emptyState(title, subtitle) {
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
-  openModal({
+  
+  const modal = openModal({
     title: item.name,
     bodyHTML: `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
@@ -467,17 +468,24 @@ function showItemDetail(itemId) {
       <button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>
     `
   });
-  const currentOverlay = document.querySelector('#modal-portal .modal-overlay:last-child');
-  if (currentOverlay) {
-    currentOverlay.querySelector('#edit-item-btn').onclick = () => {
-      if (activeModal) activeModal.close();
-      showEditItemModal(itemId);
-    };
-    currentOverlay.querySelector('#delete-item-btn').onclick = () => {
-      if (activeModal) activeModal.close();
-      deleteItem(itemId);
-    };
-  }
+  
+  // ربط الأحداث مباشرة باستخدام المعرفات
+  modal.element.querySelector('#edit-item-btn').onclick = () => {
+    modal.close();
+    showEditItemModal(itemId);
+  };
+  modal.element.querySelector('#delete-item-btn').onclick = async () => {
+    modal.close();
+    if (await confirmDialog('هل أنت متأكد من حذف هذه المادة؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      try {
+        await apiCall(`/items?id=${itemId}`, 'DELETE');
+        showToast('تم الحذف بنجاح', 'success');
+        loadItems();
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+  };
 }
 
 async function deleteItem(id) {
@@ -615,12 +623,30 @@ function getSectionOptions(key) {
 }
 
 // تفويض الأحداث للأزرار العامة
+// حدث أزرار الإضافة (add-btn) مع منع التكرار
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
+  
   if (t.classList.contains('add-btn')) {
-    const key = t.dataset.type; const opts = getSectionOptions(key); if (!opts) return;
-    showFormModal({ title: `إضافة ${opts.title} جديد`, fields: opts.addFields, onSave: v => apiCall(opts.apiBase, 'POST', opts.prepareAdd(v)), onSuccess: () => loadGenericSection(opts) });
+    const key = t.dataset.type;
+    const opts = getSectionOptions(key);
+    if (!opts) return;
+    
+    showFormModal({
+      title: `إضافة ${opts.title} جديد`,
+      fields: opts.addFields,
+      onSave: async (values) => {
+        // منع تكرار الاسم حسب نوع القسم
+        const name = values.name?.trim();
+        if (name) {
+          const exists = opts.cache.some(item => item.name?.toLowerCase() === name.toLowerCase());
+          if (exists) throw new Error(`يوجد ${opts.title} بنفس الاسم`);
+        }
+        return apiCall(opts.apiBase, 'POST', opts.prepareAdd(values));
+      },
+      onSuccess: () => loadGenericSection(opts)
+    });
   }
   else if (t.classList.contains('edit-btn')) {
     const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
@@ -640,7 +666,6 @@ document.addEventListener('click', async (e) => {
     } catch (err) { showToast(err.message, 'error'); }
   }
 });
-
 // ========== الفواتير ==========
 async function showInvoiceModal(type) {
   try {
