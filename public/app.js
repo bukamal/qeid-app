@@ -44,7 +44,7 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ========== المساعدة ==========
+// ========== دوال مساعدة ==========
 function formatNumber(num) {
   if (num === undefined || num === null) return '0.00';
   return Number(num).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -199,7 +199,6 @@ async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
     throw err;
   }
 }
-
 // ========== نماذج عامة ==========
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess }) {
   let body = '';
@@ -337,38 +336,7 @@ function initNavigation() {
   });
 }
 
-// بناء القوائم
-function initNavigation() {
-  const sidebarNav = document.getElementById('sidebar-nav');
-  const sheetGrid = document.getElementById('sheet-grid');
-  
-  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','payments','expenses','invoices','reports'];
-  const moreTabs = ['purchase-invoice','customers','suppliers','categories','payments','expenses','reports'];
-  
-  mainTabs.forEach(key => {
-    const cfg = tabsConfig[key];
-    if (!cfg) return;
-    const btn = document.createElement('button');
-    btn.className = 'nav-item' + (key === 'dashboard' ? ' active' : '');
-    btn.dataset.tab = key;
-    btn.innerHTML = `${cfg.icon}<span>${cfg.title}</span>`;
-    btn.onclick = () => navigateTo(key);
-    sidebarNav.appendChild(btn);
-  });
-  
-  moreTabs.forEach(key => {
-    const cfg = tabsConfig[key];
-    if (!cfg) return;
-    const btn = document.createElement('button');
-    btn.className = 'sheet-item';
-    btn.dataset.tab = key;
-    btn.innerHTML = `${cfg.icon}<span>${cfg.title}</span>`;
-    btn.onclick = () => { unlockScroll(); navigateTo(key); };
-    sheetGrid.appendChild(btn);
-  });
-}
-
-// --- مستمعات الأحداث الثابتة (بدون DOMContentLoaded) ---
+// مستمعات الأحداث الثابتة
 document.getElementById('menu-toggle').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('open');
 });
@@ -392,8 +360,7 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
     }
   });
 });
-
-// ========== المواد ==========
+// ========== المواد (Items) ==========
 async function loadItems() {
   try {
     document.getElementById('tab-content').innerHTML = `
@@ -411,19 +378,14 @@ async function loadItems() {
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
     document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
     renderFilteredItems();
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function renderFilteredItems() {
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
   const filtered = itemsCache.filter(i => (i.name || '').toLowerCase().includes(q));
   const container = document.getElementById('items-list');
-  if (!filtered.length) {
-    container.innerHTML = emptyState('لا توجد مواد مطابقة', 'يمكنك إضافة مواد جديدة من الزر أعلاه');
-    return;
-  }
+  if (!filtered.length) { container.innerHTML = emptyState('لا توجد مواد مطابقة', 'يمكنك إضافة مواد جديدة من الزر أعلاه'); return; }
   let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
   filtered.forEach(item => {
     html += `<tr onclick="showItemDetail(${item.id})">
@@ -442,7 +404,6 @@ function emptyState(title, subtitle) {
     <h3>${title}</h3><p>${subtitle}</p>
   </div>`;
 }
-
 
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
@@ -470,34 +431,9 @@ function showItemDetail(itemId) {
     `
   });
 
-  // إغلاق المودال عند النقر على أي من الزرين (اختياري)
+  // إغلاق المودال عند النقر على أي من الزرين
   modal.element.querySelector('.edit-btn').addEventListener('click', () => modal.close());
   modal.element.querySelector('.delete-btn').addEventListener('click', () => modal.close());
-}
-
-  // ربط الأحداث مباشرة باستخدام المعرفات
-  modal.element.querySelector('#edit-item-btn').onclick = () => {
-    modal.close();
-    showEditItemModal(itemId);
-  };
-  modal.element.querySelector('#delete-item-btn').onclick = async () => {
-    modal.close();
-    if (await confirmDialog('هل أنت متأكد من حذف هذه المادة؟ لا يمكن التراجع عن هذا الإجراء.')) {
-      try {
-        await apiCall(`/items?id=${itemId}`, 'DELETE');
-        showToast('تم الحذف بنجاح', 'success');
-        loadItems();
-      } catch (e) {
-        showToast(e.message, 'error');
-      }
-    }
-  };
-}
-
-async function deleteItem(id) {
-  if (!await confirmDialog('هل أنت متأكد من حذف هذه المادة؟ لا يمكن التراجع عن هذا الإجراء.')) return;
-  try { await apiCall(`/items?id=${id}`, 'DELETE'); showToast('تم الحذف بنجاح', 'success'); loadItems(); }
-  catch (e) { showToast(e.message, 'error'); }
 }
 
 function showAddItemModal() {
@@ -624,25 +560,25 @@ function getSectionOptions(key) {
       prepareAdd: v => ({ type: 'category', name: v.name }),
       prepareEdit: (id, v) => ({ type: 'category', id, name: v.name })
     },
+    // مدخل المواد لتفعيل أزرار الحذف والتعديل عبر الأحداث العامة
     '/items': {
-  cache: itemsCache,
-  title: 'مادة',
-  titlePlural: 'المواد',
-  apiBase: '/items',
-  idField: 'id',
-  nameField: 'name',
-  extraFields: [],
-  addFields: [],
-  editFields: [],
-  prepareAdd: v => ({}),
-  prepareEdit: (id, v) => ({ id })
-  }
-};
+      cache: itemsCache,
+      title: 'مادة',
+      titlePlural: 'المواد',
+      apiBase: '/items',
+      idField: 'id',
+      nameField: 'name',
+      extraFields: [],
+      addFields: [],
+      editFields: [],
+      prepareAdd: v => ({}),
+      prepareEdit: (id, v) => ({ id })
+    }
+  };
   return map[key];
 }
 
-// تفويض الأحداث للأزرار العامة
-// حدث أزرار الإضافة (add-btn) مع منع التكرار
+// مستمع الأحداث العامة (إضافة، تعديل، حذف) لجميع الأقسام
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -656,7 +592,7 @@ document.addEventListener('click', async (e) => {
       title: `إضافة ${opts.title} جديد`,
       fields: opts.addFields,
       onSave: async (values) => {
-        // منع تكرار الاسم حسب نوع القسم
+        // منع تكرار الاسم للأقسام التي تحتوي على اسم (عملاء، موردين، تصنيفات)
         const name = values.name?.trim();
         if (name) {
           const exists = opts.cache.some(item => item.name?.toLowerCase() === name.toLowerCase());
@@ -685,7 +621,7 @@ document.addEventListener('click', async (e) => {
     } catch (err) { showToast(err.message, 'error'); }
   }
 });
-// ========== الفواتير ==========
+// ========== فاتورة المبيعات والمشتريات ==========
 async function showInvoiceModal(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([
@@ -948,7 +884,6 @@ function printInvoice(invoice) {
   if (w) { w.document.write(html); w.document.close(); }
   else showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
 }
-
 // ========== المدفوعات ==========
 async function loadPayments() {
   try {
@@ -1170,7 +1105,6 @@ async function loadDashboard() {
     }
   } catch (err) { showToast(err.message, 'error'); }
 }
-
 // ========== التقارير ==========
 async function loadReports() {
   document.getElementById('tab-content').innerHTML = `
