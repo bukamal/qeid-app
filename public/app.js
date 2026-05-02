@@ -44,15 +44,12 @@ function centerModalBox(overlay) {
   function position() {
     const vh = window.innerHeight;
     const vw = window.innerWidth;
-
-    // الارتفاع الفعلي للصندوق (مقيد بـ max-height المحدد سلفاً)
     const boxHeight = box.offsetHeight;
     const boxWidth = box.offsetWidth;
 
     let top = (vh - boxHeight) / 2;
     let left = (vw - boxWidth) / 2;
 
-    // هوامش أمان
     const minMargin = 10;
     if (top < minMargin) top = minMargin;
     if (left < minMargin) left = minMargin;
@@ -65,14 +62,18 @@ function centerModalBox(overlay) {
     box.style.margin = '0';
   }
 
-  // انتظار عرض المحتوى أولاً
+  // عدة محاولات لضمان القياس الصحيح خاصة للمودالات البسيطة
   requestAnimationFrame(() => {
-    requestAnimationFrame(position);
+    requestAnimationFrame(() => {
+      position();
+      setTimeout(position, 50);
+      setTimeout(position, 150);
+    });
   });
+
   window.addEventListener('resize', position);
   overlay._cleanupResize = () => window.removeEventListener('resize', position);
 }
-
 // ---------- التخزين المؤقت ----------
 const cache = {};
 const CACHE_DURATION = 60000;
