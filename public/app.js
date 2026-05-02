@@ -8,19 +8,15 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- دوال قفل/تحرير تمرير الجسم (النسخة الصاروخية) ----------
-let scrollYBeforeModal = 0;
-
+// ---------- دوال قفل/تحرير التمرير النهائية ----------
 function lockBodyScroll() {
-  scrollYBeforeModal = window.scrollY;
   document.body.classList.add('modal-open');
-  document.body.style.top = `-${scrollYBeforeModal}px`;
+  document.documentElement.classList.add('modal-open');
 }
 
 function unlockBodyScroll() {
   document.body.classList.remove('modal-open');
-  document.body.style.top = '';
-  window.scrollTo(0, scrollYBeforeModal);
+  document.documentElement.classList.remove('modal-open');
 }
 
 // ---------- التخزين المؤقت ----------
@@ -86,7 +82,7 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
 
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
-  lockBodyScroll();  // قفل التمرير
+  lockBodyScroll();
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -115,7 +111,7 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
-    unlockBodyScroll();  // تحرير التمرير
+    unlockBodyScroll();
   };
   document.getElementById('modal-cancel').onclick = closeModal;
   const confirmBtn = document.getElementById(confirmMode ? 'modal-confirm' : 'modal-save');
@@ -399,6 +395,7 @@ async function showInvoiceModal(type) {
     };
   } catch (err) { alert('خطأ: ' + err.message); unlockBodyScroll(); }
 }
+
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; }); return found; }
   function autoFillPrice(sel, pr) {
@@ -661,7 +658,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// سحب وإفلات التبويبات (بدون preventDefault لضمان عمل النقر)
+// سحب وإفلات التبويبات (دون تعطيل النقر)
 (function () {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -684,7 +681,6 @@ document.querySelectorAll('.tab').forEach(tab => {
   function onStart(e) {
     const tab = e.target.closest('.tab');
     if (!tab) return;
-    // لا نمنع الحدث الافتراضي هنا للحفاظ على النقر
     const startX = getPos(e);
     dragInfo = { tab, startX, moved: false, startXorig: startX };
     tab.classList.add('dragging');
@@ -774,4 +770,3 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
-

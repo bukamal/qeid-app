@@ -265,7 +265,7 @@ select.input-field {
   box-shadow: var(--shadow);
 }
 
-/* --- النوافذ المنبثقة (Modals) - نسخة محسّنة ومضمونة --- */
+/* --- النوافذ المنبثقة (Modals) - النسخة النهائية --- */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -290,16 +290,13 @@ select.input-field {
   overflow-y: auto;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--glass-border);
-  margin: auto; /* ضمان التوسيط */
+  margin: auto;
 }
 
-/* --- قفل الجسم عند فتح نافذة (يمنع أي تمرير أو حركة) --- */
-body.modal-open {
-  overflow: hidden !important;
-  position: fixed;
-  width: 100%;
-  top: 0;
-  left: 0;
+/* قفل التمرير دون تغيير الموضع */
+body.modal-open,
+html.modal-open {
+  overflow: hidden;
 }
 
 .report-table-wrapper {
