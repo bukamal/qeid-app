@@ -8,12 +8,19 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ---------- دوال مساعدة لقفل/تحرير التمرير ----------
+// ---------- دوال قفل/تحرير تمرير الجسم (النسخة الصاروخية) ----------
+let scrollYBeforeModal = 0;
+
 function lockBodyScroll() {
-  document.body.style.overflow = 'hidden';
+  scrollYBeforeModal = window.scrollY;
+  document.body.classList.add('modal-open');
+  document.body.style.top = `-${scrollYBeforeModal}px`;
 }
+
 function unlockBodyScroll() {
-  document.body.style.overflow = '';
+  document.body.classList.remove('modal-open');
+  document.body.style.top = '';
+  window.scrollTo(0, scrollYBeforeModal);
 }
 
 // ---------- التخزين المؤقت ----------
@@ -77,16 +84,14 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   return json;
 }
 
-// المتغيرات العامة للكاش
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
   lockBodyScroll();  // قفل التمرير
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const container = document.createElement('div');
   container.className = 'modal-box';
-  // منع تمرير الخلفية عند لمس النافذة نفسها
-  container.addEventListener('touchmove', e => e.stopPropagation());
 
   let fieldsHTML = '';
   for (const field of fields) {
@@ -134,7 +139,6 @@ function confirmDialog(msg) {
     showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
   });
 }
-// --- عرض قائمة المواد ---
 async function loadItems() {
   try {
     let html = `<div class="card"><button class="btn-primary" id="btn-add-item">+ إضافة مادة</button><input id="items-search" type="text" class="input-field" placeholder="🔍 بحث..." style="margin-top:12px;" /></div><div id="items-list"></div>`;
@@ -159,14 +163,12 @@ function renderFilteredItems() {
   document.getElementById('items-list').innerHTML = html;
 }
 
-// --- تفاصيل مادة (مودال) ---
 function showItemDetailModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
   lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
-  container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>${item.name}</h3>
     <p>الوحدة: ${item.unit || '-'}</p>
     <p>الكمية المشتراة: ${item.purchase_qty ?? 0}</p>
@@ -183,7 +185,6 @@ function showItemDetailModal(itemId) {
     </div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-
   const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
   document.getElementById('edit-item-detail').onclick = () => { closeModal(); showEditItemModal(itemId); };
   document.getElementById('delete-item-detail').onclick = () => { closeModal(); deleteItem(itemId); };
@@ -298,7 +299,6 @@ function getSectionOptions(key) {
   return map[key];
 }
 
-// أحداث الأزرار العامة (إضافة، تعديل، حذف)
 document.addEventListener('click', async (e) => {
   const t = e.target;
   if (t.classList.contains('add-btn')) {
@@ -343,7 +343,6 @@ async function showInvoiceModal(type) {
     container.style.maxWidth = '600px';
     container.style.maxHeight = '90vh';
     container.style.overflowY = 'auto';
-    container.addEventListener('touchmove', e => e.stopPropagation());
     container.innerHTML = `
       <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
       <input type="hidden" id="inv-type" value="${type}" />
@@ -400,7 +399,6 @@ async function showInvoiceModal(type) {
     };
   } catch (err) { alert('خطأ: ' + err.message); unlockBodyScroll(); }
 }
-
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; }); return found; }
   function autoFillPrice(sel, pr) {
@@ -438,10 +436,7 @@ function attachInvoiceEvents(invoiceType) {
   document.getElementById('inv-lines-container')?.addEventListener('click', e => { if (e.target.classList.contains('btn-remove-line')) { const row = e.target.closest('.line-row'); if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) { row.remove(); updateInvoiceRemoveButtons(); } } });
   updateInvoiceRemoveButtons();
 }
-
 function updateInvoiceRemoveButtons() { document.querySelectorAll('#inv-lines-container .line-row').forEach(row => { const btn = row.querySelector('.btn-remove-line'); if (btn) btn.style.display = document.querySelectorAll('#inv-lines-container .line-row').length > 1 ? 'inline-block' : 'none'; }); }
-
-// --- عرض قائمة الفواتير ---
 async function loadInvoices() {
   try {
     let html = `<div class="card"><h3>جميع الفواتير</h3><div style="display:flex;gap:8px;margin-bottom:8px;"><button class="filter-tab active" data-filter="all">الكل</button><button class="filter-tab" data-filter="sale">بيع</button><button class="filter-tab" data-filter="purchase">شراء</button></div><input id="invoice-search" type="text" class="input-field" placeholder="🔍 بحث..." /></div><div id="invoices-list"></div>`;
@@ -505,7 +500,6 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
-  container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>إضافة دفعة جديدة</h3>
     <label class="form-label">النوع</label>
     <select id="pmt-type" class="input-field"><option value="customer">من عميل</option><option value="supplier">إلى مورد</option></select>
@@ -521,7 +515,6 @@ function showAddPaymentModal(customers, suppliers, invoices) {
 
   const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
-
   const updateInvList = (type, eId) => {
     const filt = invoices.filter(inv => type==='customer' ? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
     invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv=>`<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join('');
@@ -529,7 +522,6 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   tSel.addEventListener('change', ()=>{ if(tSel.value==='customer'){cBlock.style.display='block';sBlock.style.display='none';updateInvList('customer',cSel.value);}else{cBlock.style.display='none';sBlock.style.display='block';updateInvList('supplier',sSel.value);} });
   cSel.addEventListener('change', ()=>updateInvList('customer',cSel.value));
   sSel.addEventListener('change', ()=>updateInvList('supplier',sSel.value));
-
   document.getElementById('btn-save-pmt').onclick = async () => {
     const type = tSel.value, cust = type==='customer'?(cSel.value||null):null, supp = type==='supplier'?(sSel.value||null):null, invId = invSel.value||null, amount = parseFloat(document.getElementById('pmt-amount').value);
     if (!amount || amount<=0) return alert('المبلغ مطلوب');
@@ -629,14 +621,13 @@ function showHelpModal() {
   lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
   const container = document.createElement('div'); container.className = 'modal-box';
-  container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
   const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
   document.getElementById('close-help').onclick = closeModal;
 }
-// --- إخفاء التبويبات عند التمرير ---
+// إخفاء التبويبات عند التمرير للأسفل
 (function() {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -650,7 +641,7 @@ function showHelpModal() {
   window.addEventListener('scroll', () => { if (!ticking) { requestAnimationFrame(onScroll); ticking = true; } });
 })();
 
-// --- ربط التبويبات (نقر) ---
+// ربط التبويبات (النقر)
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -670,7 +661,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// --- سحب وإفلات التبويبات (يدعم الماوس واللمس) ---
+// سحب وإفلات التبويبات (بدون preventDefault لضمان عمل النقر)
 (function () {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -681,7 +672,6 @@ document.querySelectorAll('.tab').forEach(tab => {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     return clientX;
   }
-
   function findTarget(x) {
     const tabs = Array.from(nav.querySelectorAll('.tab:not(.dragging)'));
     for (let tab of tabs) {
@@ -694,7 +684,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   function onStart(e) {
     const tab = e.target.closest('.tab');
     if (!tab) return;
-    // تمت إزالة e.preventDefault() ليسمح بالنقر
+    // لا نمنع الحدث الافتراضي هنا للحفاظ على النقر
     const startX = getPos(e);
     dragInfo = { tab, startX, moved: false, startXorig: startX };
     tab.classList.add('dragging');
