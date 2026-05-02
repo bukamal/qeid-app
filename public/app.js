@@ -361,6 +361,7 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
   });
 });
 // ========== المواد (Items) ==========
+// ========== المواد (Items) ==========
 async function loadItems() {
   try {
     document.getElementById('tab-content').innerHTML = `
@@ -426,14 +427,31 @@ function showItemDetail(itemId) {
       <p>${item.item_type || 'مخزون'}</p>
     `,
     footerHTML: `
-      <button class="btn btn-secondary edit-btn" data-id="${item.id}" data-type="/items">${ICONS.edit} تعديل</button>
-      <button class="btn btn-danger delete-btn" data-id="${item.id}" data-type="/items">${ICONS.trash} حذف</button>
+      <button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button>
+      <button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>
     `
   });
 
-  // إغلاق المودال عند النقر على أي من الزرين (ليتمكن المستمع العام من العمل)
-  modal.element.querySelector('.edit-btn').addEventListener('click', () => modal.close());
-  modal.element.querySelector('.delete-btn').addEventListener('click', () => modal.close());
+  // ربط الأحداث داخل المودال
+  modal.element.querySelector('#edit-item-btn').onclick = () => {
+    modal.close();
+    showEditItemModal(itemId);
+  };
+
+  modal.element.querySelector('#delete-item-btn').onclick = async () => {
+    // إظهار تأكيد الحذف أولاً
+    const confirmed = await confirmDialog(`هل أنت متأكد من حذف المادة ${item.name}؟`);
+    if (!confirmed) return; // إذا ألغى المستخدم لا نفعل شيء
+    // تنفيذ الحذف
+    try {
+      await apiCall(`/items?id=${itemId}`, 'DELETE');
+      modal.close();
+      showToast('تم الحذف بنجاح', 'success');
+      loadItems(); // تحديث قائمة المواد
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
 }
 
 function showAddItemModal() {
@@ -572,7 +590,7 @@ function getSectionOptions(key) {
   return map[key];
 }
 
-// مستمع الأحداث العامة (إضافة، تعديل، حذف) لجميع الأقسام
+// مستمع الأحداث العامة (إضافة، تعديل، حذف) لجميع الأقسام - مع تجاهل المواد لأنها تعالج داخل المودال
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -595,30 +613,23 @@ document.addEventListener('click', async (e) => {
   }
   else if (t.classList.contains('edit-btn')) {
     const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
+    // بالنسبة للمواد، التعديل يتم من داخل showItemDetail لذلك لا نعالج هنا
+    if (key === '/items') return;
     const item = opts.cache.find(x => x[opts.idField] == id); if (!item) return;
-    
-    // إذا كانت المادة، افتح نافذة التعديل الخاصة، وإلا استخدم النموذج العام
-    if (key === '/items') {
-      showEditItemModal(parseInt(id));
-    } else {
-      const init = {}; opts.editFields.forEach(f => init[f.id] = item[f.id] !== undefined ? item[f.id] : '');
-      showFormModal({ title: `تعديل ${opts.title}`, fields: opts.editFields, initialValues: init, onSave: v => apiCall(opts.apiBase, 'PUT', opts.prepareEdit(id, v)), onSuccess: () => loadGenericSection(opts) });
-    }
+    const init = {}; opts.editFields.forEach(f => init[f.id] = item[f.id] !== undefined ? item[f.id] : '');
+    showFormModal({ title: `تعديل ${opts.title}`, fields: opts.editFields, initialValues: init, onSave: v => apiCall(opts.apiBase, 'PUT', opts.prepareEdit(id, v)), onSuccess: () => loadGenericSection(opts) });
   }
   else if (t.classList.contains('delete-btn')) {
     const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
+    // المواد تُحذف من داخل المودال، لا تفعل شيئًا هنا
+    if (key === '/items') return;
     const found = opts.cache.find(x => x[opts.idField] == id);
     if (!await confirmDialog(`هل أنت متأكد من حذف ${opts.title} <strong>${found?.[opts.nameField] || ''}</strong>؟`)) return;
     try {
       const delUrl = opts.apiBase.includes('?') ? `${opts.apiBase}&id=${id}` : `${opts.apiBase}?id=${id}`;
       await apiCall(delUrl, 'DELETE');
       showToast('تم الحذف بنجاح', 'success');
-      // تحديث القسم المناسب
-      if (key === '/items') {
-        loadItems();
-      } else {
-        loadGenericSection(opts);
-      }
+      loadGenericSection(opts);
     } catch (err) { showToast(err.message, 'error'); }
   }
 });
