@@ -2,36 +2,148 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f172a">
   <title>الراجحي للمحاسبة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
-  <div id="loading" style="display:none;"><div class="loader"></div><p id="loading-msg"></p></div>
-  <div id="main" style="display:none;">
-    <header>
-      <h1>الراجحي للمحاسبة</h1>
-      <div><span id="user-name"></span> <button id="btn-help" class="btn-icon">❓</button></div>
-    </header>
-    <nav>
-      <div class="tab active" data-tab="dashboard">لوحة التحكم</div>
-      <div class="tab" data-tab="items">المواد</div>
-      <div class="tab" data-tab="sale-invoice">فاتورة مبيعات</div>
-      <div class="tab" data-tab="purchase-invoice">فاتورة مشتريات</div>
-      <div class="tab" data-tab="customers">العملاء</div>
-      <div class="tab" data-tab="suppliers">الموردين</div>
-      <div class="tab" data-tab="categories">التصنيفات</div>
-      <div class="tab" data-tab="payments">الدفعات</div>
-      <div class="tab" data-tab="expenses">المصاريف</div>
-      <div class="tab" data-tab="invoices">الفواتير</div>
-      <div class="tab" data-tab="reports">التقارير</div>
-    </nav>
-    <main id="tab-content"></main>
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loader-ring">
+      <div></div><div></div><div></div><div></div>
+    </div>
+    <p>جاري التحميل...</p>
   </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Modal Portal -->
+  <div id="modal-portal"></div>
+
+  <!-- Desktop Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">📊</div>
+      <h2>الراجحي</h2>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-tab="dashboard">
+        <span class="nav-icon">🏠</span>
+        <span>الرئيسية</span>
+      </button>
+      <button class="nav-item" data-tab="items">
+        <span class="nav-icon">📦</span>
+        <span>المواد</span>
+      </button>
+      <button class="nav-item" data-tab="sale-invoice">
+        <span class="nav-icon">🛒</span>
+        <span>فاتورة بيع</span>
+      </button>
+      <button class="nav-item" data-tab="purchase-invoice">
+        <span class="nav-icon">📥</span>
+        <span>فاتورة شراء</span>
+      </button>
+      <button class="nav-item" data-tab="customers">
+        <span class="nav-icon">👥</span>
+        <span>العملاء</span>
+      </button>
+      <button class="nav-item" data-tab="suppliers">
+        <span class="nav-icon">🏭</span>
+        <span>الموردين</span>
+      </button>
+      <button class="nav-item" data-tab="categories">
+        <span class="nav-icon">🏷️</span>
+        <span>التصنيفات</span>
+      </button>
+      <button class="nav-item" data-tab="payments">
+        <span class="nav-icon">💰</span>
+        <span>الدفعات</span>
+      </button>
+      <button class="nav-item" data-tab="expenses">
+        <span class="nav-icon">💸</span>
+        <span>المصاريف</span>
+      </button>
+      <button class="nav-item" data-tab="invoices">
+        <span class="nav-icon">🧾</span>
+        <span>الفواتير</span>
+      </button>
+      <button class="nav-item" data-tab="reports">
+        <span class="nav-icon">📈</span>
+        <span>التقارير</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <span id="user-name-sidebar"></span>
+    </div>
+  </aside>
+
+  <!-- Main Layout -->
+  <div class="layout">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <button class="menu-toggle" id="menu-toggle" aria-label="القائمة">☰</button>
+      <h1 class="page-title" id="page-title">لوحة التحكم</h1>
+      <div class="top-actions">
+        <button class="icon-btn" id="btn-help" title="المساعدة">❓</button>
+      </div>
+    </header>
+
+    <!-- Content Area -->
+    <main class="content" id="tab-content">
+      <!-- Dynamic content loads here -->
+    </main>
+  </div>
+
+  <!-- Mobile Bottom Navigation -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="bottom-item active" data-tab="dashboard" title="الرئيسية">
+      <span class="bottom-icon">🏠</span>
+      <span class="bottom-label">الرئيسية</span>
+    </button>
+    <button class="bottom-item" data-tab="items" title="المواد">
+      <span class="bottom-icon">📦</span>
+      <span class="bottom-label">المواد</span>
+    </button>
+    <button class="bottom-item" data-tab="sale-invoice" title="بيع">
+      <span class="bottom-icon">🛒</span>
+      <span class="bottom-label">بيع</span>
+    </button>
+    <button class="bottom-item" data-tab="invoices" title="الفواتير">
+      <span class="bottom-icon">🧾</span>
+      <span class="bottom-label">الفواتير</span>
+    </button>
+    <button class="bottom-item" data-tab="more" title="المزيد">
+      <span class="bottom-icon">☰</span>
+      <span class="bottom-label">المزيد</span>
+    </button>
+  </nav>
+
+  <!-- Mobile More Menu Modal -->
+  <div id="more-menu" class="sheet-overlay" style="display:none;">
+    <div class="sheet-backdrop"></div>
+    <div class="sheet-content">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">القائمة</div>
+      <div class="sheet-grid">
+        <button class="sheet-item" data-tab="purchase-invoice"><span>📥</span><span>شراء</span></button>
+        <button class="sheet-item" data-tab="customers"><span>👥</span><span>عملاء</span></button>
+        <button class="sheet-item" data-tab="suppliers"><span>🏭</span><span>موردين</span></button>
+        <button class="sheet-item" data-tab="categories"><span>🏷️</span><span>تصنيفات</span></button>
+        <button class="sheet-item" data-tab="payments"><span>💰</span><span>دفعات</span></button>
+        <button class="sheet-item" data-tab="expenses"><span>💸</span><span>مصاريف</span></button>
+        <button class="sheet-item" data-tab="reports"><span>📈</span><span>تقارير</span></button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
+
