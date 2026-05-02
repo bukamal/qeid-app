@@ -8,27 +8,6 @@ const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 const cache = {};
 const CACHE_DURATION = 60000;
-let gScrollY = 0;
-let gScrollbarWidth = 0;
-
-function lockScroll() {
-  gScrollY = window.scrollY;
-  // حساب عرض شريط التمرير لتجنب الإزاحة
-  gScrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-  document.body.style.position = 'fixed';
-  document.body.style.top = `-${gScrollY}px`;
-  document.body.style.width = '100%';
-  document.body.style.paddingRight = gScrollbarWidth + 'px'; // تعويض الإزاحة
-  document.body.style.overflowY = 'scroll'; // إبقاء شريط التمرير موجودًا (يمنع التمدد)
-}
-function unlockScroll() {
-  document.body.style.position = '';
-  document.body.style.top = '';
-  document.body.style.width = '';
-  document.body.style.paddingRight = '';
-  document.body.style.overflowY = '';
-  window.scrollTo(0, gScrollY);
-}
 
 function getCached(key) {
   const entry = cache[key];
@@ -85,11 +64,16 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
 }
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 
+// --- مودال عام (معدّل) ---
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
+  // منع تمرير الخلفية عند لمس overlay
+  overlay.addEventListener('touchmove', e => e.preventDefault());
   const container = document.createElement('div');
   container.className = 'modal-box';
+  // منع تمرير الخلفية عند لمس داخل النافذة (لكن السماح بتمرير محتوى النافذة)
+  container.addEventListener('touchmove', e => e.stopPropagation());
   let fieldsHTML = '';
   for (const field of fields) {
     let input = '';
@@ -109,13 +93,9 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
   container.innerHTML = `<h3>${title}</h3>${fieldsHTML}<div class="modal-actions">${buttonsHTML}</div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  lockScroll();  // تثبيت التمرير مع تعويض الإزاحة
 
   const closeModal = () => {
-    if (document.body.contains(overlay)) {
-      document.body.removeChild(overlay);
-      unlockScroll(); // إعادة التمرير
-    }
+    if (document.body.contains(overlay)) document.body.removeChild(overlay);
   };
   document.getElementById('modal-cancel').onclick = closeModal;
   const confirmBtn = document.getElementById(confirmMode ? 'modal-confirm' : 'modal-save');
@@ -138,7 +118,6 @@ function confirmDialog(msg) {
     showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
   });
 }
-
 // --- المواد ---
 async function loadItems() {
   try {
@@ -166,13 +145,15 @@ function showItemDetailModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box">
-    <h3>${item.name}</h3>
+  overlay.addEventListener('touchmove', e => e.preventDefault());
+  const container = document.createElement('div'); container.className = 'modal-box';
+  container.addEventListener('touchmove', e => e.stopPropagation());
+  container.innerHTML = `<h3>${item.name}</h3>
     <p>الوحدة: ${item.unit || '-'}</p>
     <p>الكمية المشتراة: ${item.purchase_qty ?? 0}</p>
     <p>الكمية المباعة: ${item.sale_qty ?? 0}</p>
     <p>المتوفرة: ${item.available ?? 0}</p>
-    <p>القيمة (بسعر الشراء): ${(item.total_value ?? 0).toFixed(2)}</p>
+    <p>القيمة: ${(item.total_value ?? 0).toFixed(2)}</p>
     <p>التصنيف: ${item.category?.name || 'بدون'}</p>
     <p>سعر الشراء: ${item.purchase_price}</p>
     <p>سعر البيع: ${item.selling_price}</p>
@@ -180,11 +161,10 @@ function showItemDetailModal(itemId) {
       <button class="btn-secondary" id="edit-item-detail">✏️ تعديل</button>
       <button class="btn-danger" id="delete-item-detail">🗑️ حذف</button>
       <button class="btn-secondary" id="close-detail">إغلاق</button>
-    </div>
-  </div>`;
+    </div>`;
+  overlay.appendChild(container);
   document.body.appendChild(overlay);
-  lockScroll();
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
+  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
   document.getElementById('edit-item-detail').onclick = () => { closeModal(); showEditItemModal(itemId); };
   document.getElementById('delete-item-detail').onclick = () => { closeModal(); deleteItem(itemId); };
   document.getElementById('close-detail').onclick = closeModal;
@@ -233,7 +213,7 @@ function showEditItemModal(itemId) {
   });
 }
 
-// --- أقسام موحدة ---
+// --- أقسام موحدة (معدل لدعم المودال الجديد) ---
 function buildGenericItemHtml(item, { idField, nameField, extraFields }) {
   let info = '';
   extraFields.forEach(f => { const val = item[f.key] !== undefined ? item[f.key] : ''; info += `${f.prefix || ''}${val} `; });
@@ -331,7 +311,15 @@ async function showInvoiceModal(type) {
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
     itemsCache = items; customersCache = customers; suppliersCache = suppliers;
     let entOpts = type === 'sale' ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}` : `<option value="cash">مورد نقدي</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}`;
-    const html = `<div class="modal-box" style="max-width:600px;max-height:90vh;overflow-y:auto;">
+    const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+    overlay.addEventListener('touchmove', e => e.preventDefault());
+    const container = document.createElement('div');
+    container.className = 'modal-box';
+    container.style.maxWidth = '600px';
+    container.style.maxHeight = '90vh';
+    container.style.overflowY = 'auto';
+    container.addEventListener('touchmove', e => e.stopPropagation());
+    container.innerHTML = `
       <h3>فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'} جديدة</h3>
       <input type="hidden" id="inv-type" value="${type}" />
       <h4>البنود</h4>
@@ -350,11 +338,10 @@ async function showInvoiceModal(type) {
       <label class="form-label">ملاحظات</label><textarea id="inv-notes" class="input-field"></textarea>
       <label class="form-label">المبلغ المدفوع</label><input id="inv-paid" type="number" step="0.01" class="input-field" />
       <div class="modal-actions"><button class="btn-primary" id="btn-save-invoice">حفظ الفاتورة</button><button class="btn-secondary" id="btn-cancel-invoice">إلغاء</button></div>
-    </div>`;
-    const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.innerHTML = html;
+    `;
+    overlay.appendChild(container);
     document.body.appendChild(overlay);
-    lockScroll();
-    const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
+    const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
     document.getElementById('btn-cancel-invoice').onclick = closeModal;
     attachInvoiceEvents(type);
     document.getElementById('btn-save-invoice').onclick = async () => {
@@ -385,6 +372,10 @@ async function showInvoiceModal(type) {
     };
   } catch (err) { alert('خطأ: ' + err.message); }
 }
+// ... (باقي دوال attachInvoiceEvents، loadInvoices، renderFilteredInvoices، printInvoice، showEditInvoiceModal، deleteInvoice) كما هي ...
+// (يمكنك نسخهم من الجزء 3 السابق دون تغيير حيث لا توجد lockScroll)
+
+// للاختصار سأكتبهم هنا مضغوطين
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; }); return found; }
   function autoFillPrice(sel, pr) {
@@ -469,7 +460,7 @@ function printInvoice(invoice) {
   if (w) { w.document.write(html); w.document.close(); } else alert('الرجاء السماح بالنوافذ المنبثقة');
 }
 
-// --- مدفوعات ---
+// --- مدفوعات (معدل) ---
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments','GET'), apiCall('/invoices','GET'), apiCall('/customers','GET'), apiCall('/suppliers','GET')]);
@@ -482,8 +473,10 @@ async function loadPayments() {
 }
 function showAddPaymentModal(customers, suppliers, invoices) {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box">
-    <h3>إضافة دفعة جديدة</h3>
+  overlay.addEventListener('touchmove', e => e.preventDefault());
+  const container = document.createElement('div'); container.className = 'modal-box';
+  container.addEventListener('touchmove', e => e.stopPropagation());
+  container.innerHTML = `<h3>إضافة دفعة جديدة</h3>
     <label class="form-label">النوع</label>
     <select id="pmt-type" class="input-field"><option value="customer">من عميل</option><option value="supplier">إلى مورد</option></select>
     <div id="pmt-cust-block"><label class="form-label">العميل</label><select id="pmt-customer" class="input-field"><option value="">اختر عميل</option>${customers.map(c=>`<option value="${c.id}">${c.name} (${c.balance})</option>`).join('')}</select></div>
@@ -492,11 +485,10 @@ function showAddPaymentModal(customers, suppliers, invoices) {
     <label class="form-label">المبلغ</label><input id="pmt-amount" type="number" step="0.01" class="input-field" />
     <label class="form-label">التاريخ</label><input id="pmt-date" type="date" class="input-field" value="${new Date().toISOString().split('T')[0]}" />
     <label class="form-label">ملاحظات</label><textarea id="pmt-notes" class="input-field"></textarea>
-    <div class="modal-actions"><button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button><button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button></div>
-  </div>`;
+    <div class="modal-actions"><button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button><button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button></div>`;
+  overlay.appendChild(container);
   document.body.appendChild(overlay);
-  lockScroll();
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
+  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
   const updateInvList = (type, eId) => {
     const filt = invoices.filter(inv => type==='customer' ? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
@@ -575,7 +567,7 @@ async function loadDashboard() {
     }
   } catch(err){ document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
-// --- التقارير ---
+// --- التقارير (نفس الكود السابق دون تغيير) ---
 async function loadReports() {
   let html = `<div class="card"><h3>التقارير</h3></div>
     <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
@@ -595,6 +587,7 @@ async function loadReports() {
     else if (r==='supplier_statement') loadSupplierStatementForm();
   }));
 }
+// دوال التقارير كما هي (loadTrialBalance, ...) مضغوطة، يمكنك نسخها من الجزء 4 السابق
 async function loadTrialBalance() { try{ const data = await apiCall('/reports?type=trial_balance','GET'); let rows = data.map(r=>`<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td>${r.total_credit.toFixed(2)}</td><td class="${r.balance>=0?'positive':'negative'}">${r.balance.toFixed(2)}</td>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>ميزان المراجعة</h3><div class="report-table-wrapper"><table class="report-table"><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${rows}</tbody></table></div></div>`; } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadIncomeStatement() { try{ const d = await apiCall('/reports?type=income_statement','GET'); const iRows=d.income.map(i=>`<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td>`).join(''); const eRows=d.expenses.map(e=>`<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>قائمة الدخل</h3><h4>الإيرادات</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${iRows}</tbody></table><strong>إجمالي الإيرادات: ${d.total_income.toFixed(2)}</strong><h4>المصروفات</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table><strong>إجمالي المصروفات: ${d.total_expenses.toFixed(2)}</strong><hr/><h2>صافي الربح: ${d.net_profit.toFixed(2)}</h2></div>`; } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadBalanceSheet() { try{ const d=await apiCall('/reports?type=balance_sheet','GET'); const aRows=d.assets.map(a=>`<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td>`).join(''); const lRows=d.liabilities.map(l=>`<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td>`).join(''); const eRows=d.equity.map(e=>`<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الميزانية العمومية</h3><h4>الأصول</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${aRows}</tbody></table><strong>إجمالي الأصول: ${d.total_assets.toFixed(2)}</strong><h4>الخصوم</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${lRows}</tbody></table><strong>إجمالي الخصوم: ${d.total_liabilities.toFixed(2)}</strong><h4>حقوق الملكية</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody><tr><strong>إجمالي حقوق الملكية: ${d.total_equity.toFixed(2)}</strong></div>`; } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
@@ -603,13 +596,16 @@ async function loadCustomerStatementForm() { try{ const custs=await apiCall('/cu
 async function loadSupplierStatementForm() { try{ const supps=await apiCall('/suppliers','GET'); const opts=supps.map(s=>`<option value="${s.id}">${s.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب مورد</h3><select id="stmt-supp" class="input-field">${opts}</select><button id="btn-stmt-supp" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-supp').addEventListener('click',async()=>{const id=document.getElementById('stmt-supp').value; if(!id)return; try{const lines=await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 function showHelpModal() {
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal-box"><h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div></div>`;
+  overlay.addEventListener('touchmove', e => e.preventDefault());
+  const container = document.createElement('div'); container.className = 'modal-box';
+  container.addEventListener('touchmove', e => e.stopPropagation());
+  container.innerHTML = `<h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div>`;
+  overlay.appendChild(container);
   document.body.appendChild(overlay);
-  lockScroll();
-  const closeModal = () => { if (document.body.contains(overlay)) { document.body.removeChild(overlay); unlockScroll(); } };
+  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
   document.getElementById('close-help').onclick = closeModal;
 }
-// --- إخفاء شريط التبويبات عند التمرير ---
+// --- إخفاء التبويبات عند التمرير ---
 (function() {
   const nav = document.querySelector('nav');
   if (!nav) return;
@@ -643,59 +639,106 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// --- سحب وإفلات التبويبات مع حفظ الترتيب ---
+// --- سحب وإفلات التبويبات (يدعم الماوس واللمس) ---
 (function () {
   const nav = document.querySelector('nav');
   if (!nav) return;
-  let draggedEl = null, placeholder = null, startX = 0;
+  let dragInfo = null;
+  const THRESHOLD = 5;
 
-  function restoreOrder() { try { const saved = JSON.parse(localStorage.getItem('tabOrder')); if (saved && Array.isArray(saved)) saved.forEach(id => { const el = nav.querySelector(`.tab[data-tab="${id}"]`); if (el) nav.appendChild(el); }); } catch {} }
-  function saveOrder() { try { const order = Array.from(nav.querySelectorAll('.tab')).map(t => t.dataset.tab); localStorage.setItem('tabOrder', JSON.stringify(order)); } catch {} }
-  function cleanUp() { if (placeholder) placeholder.remove(); if (draggedEl) { draggedEl.style.opacity = '1'; draggedEl.style.position = ''; draggedEl.style.zIndex = ''; draggedEl.classList.remove('dragging'); } placeholder = null; draggedEl = null; }
-  restoreOrder();
+  function getPos(e) {
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    return clientX;
+  }
 
-  nav.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('pointerdown', function (e) {
-      startX = e.clientX;
-      draggedEl = this;
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
-      draggedEl.setPointerCapture(e.pointerId);
-      e.preventDefault();
-    });
-    tab.addEventListener('dragstart', e => e.preventDefault());
-  });
+  function findTarget(x) {
+    const tabs = Array.from(nav.querySelectorAll('.tab:not(.dragging)'));
+    for (let tab of tabs) {
+      const rect = tab.getBoundingClientRect();
+      if (x < rect.left + rect.width / 2) return tab;
+    }
+    return null;
+  }
+
+  function onStart(e) {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    e.preventDefault();
+    const startX = getPos(e);
+    dragInfo = { tab, startX, moved: false, startXorig: startX };
+    tab.classList.add('dragging');
+    tab.style.opacity = '0.6';
+    tab.style.zIndex = '1000';
+  }
 
   function onMove(e) {
-    if (!draggedEl) return;
-    if (Math.abs(e.clientX - startX) < 5) return;
-    draggedEl.classList.add('dragging');
-    draggedEl.style.opacity = '0.6'; draggedEl.style.position = 'relative'; draggedEl.style.zIndex = '1000';
-    if (!placeholder) {
-      placeholder = document.createElement('div'); placeholder.className = 'tab-placeholder';
-      placeholder.style.width = draggedEl.offsetWidth + 'px'; placeholder.style.height = draggedEl.offsetHeight + 'px';
-      placeholder.style.flexShrink = '0'; placeholder.style.background = 'transparent';
-      placeholder.style.border = '2px dashed var(--primary)'; placeholder.style.borderRadius = '40px';
-      draggedEl.parentNode.insertBefore(placeholder, draggedEl);
+    if (!dragInfo) return;
+    const x = getPos(e);
+    if (Math.abs(x - dragInfo.startX) < THRESHOLD && !dragInfo.moved) return;
+    if (!dragInfo.moved) {
+      dragInfo.moved = true;
+      // إنشاء placeholder
+      const placeholder = document.createElement('div');
+      placeholder.className = 'tab-placeholder';
+      const style = getComputedStyle(dragInfo.tab);
+      placeholder.style.width = style.width;
+      placeholder.style.height = style.height;
+      placeholder.style.flexShrink = '0';
+      placeholder.style.border = '2px dashed var(--primary)';
+      placeholder.style.borderRadius = '40px';
+      placeholder.style.background = 'transparent';
+      dragInfo.placeholder = placeholder;
+      nav.insertBefore(placeholder, dragInfo.tab);
     }
-    drag(e.clientX);
+    const target = findTarget(x);
+    if (target && target !== dragInfo.placeholder) {
+      nav.insertBefore(dragInfo.placeholder, target);
+    } else if (!target && dragInfo.placeholder) {
+      nav.appendChild(dragInfo.placeholder);
+    }
   }
-  function onUp(e) {
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup', onUp);
-    if (draggedEl && placeholder) { placeholder.parentNode.insertBefore(draggedEl, placeholder); placeholder.remove(); saveOrder(); }
-    cleanUp();
+
+  function onEnd(e) {
+    if (!dragInfo) return;
+    if (dragInfo.moved && dragInfo.placeholder) {
+      nav.insertBefore(dragInfo.tab, dragInfo.placeholder);
+      dragInfo.placeholder.remove();
+      // حفظ الترتيب
+      const order = Array.from(nav.querySelectorAll('.tab')).map(t => t.dataset.tab);
+      localStorage.setItem('tabOrder', JSON.stringify(order));
+    }
+    dragInfo.tab.classList.remove('dragging');
+    dragInfo.tab.style.opacity = '1';
+    dragInfo.tab.style.zIndex = '';
+    if (dragInfo.placeholder) dragInfo.placeholder.remove();
+    dragInfo = null;
   }
-  function drag(clientX) {
-    const siblings = Array.from(nav.querySelectorAll('.tab:not(.dragging)'));
-    let target = null;
-    for (let i = 0; i < siblings.length; i++) { const rect = siblings[i].getBoundingClientRect(); if (clientX < rect.left + rect.width / 2) { target = siblings[i]; break; } }
-    if (target && placeholder) nav.insertBefore(placeholder, target);
-    else if (placeholder) nav.appendChild(placeholder);
+
+  nav.addEventListener('touchstart', onStart, { passive: false });
+  nav.addEventListener('touchmove', onMove, { passive: false });
+  nav.addEventListener('touchend', onEnd);
+  nav.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+
+  // استعادة الترتيب المحفوظ
+  try {
+    const saved = JSON.parse(localStorage.getItem('tabOrder'));
+    if (saved && Array.isArray(saved)) {
+      saved.forEach(id => {
+        const el = nav.querySelector(`.tab[data-tab="${id}"]`);
+        if (el) nav.appendChild(el);
+      });
+    }
+  } catch {}
+
+  // إضافة CSS للـ placeholder (إن لم يوجد)
+  if (!document.getElementById('drag-styles')) {
+    const style = document.createElement('style');
+    style.id = 'drag-styles';
+    style.textContent = `.tab.dragging { opacity: 0.6; transition: none; } .tab-placeholder { transition: all 0.2s; } .tab { user-select: none; touch-action: none; }`;
+    document.head.appendChild(style);
   }
-  const style = document.createElement('style');
-  style.textContent = `.tab { touch-action: none; user-select: none; } .tab.dragging { opacity: 0.6; transition: none; } .tab-placeholder { transition: all 0.2s; }`;
-  document.head.appendChild(style);
 })();
 
 // --- بدء التطبيق ---
@@ -716,4 +759,3 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
-
