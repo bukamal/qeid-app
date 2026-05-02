@@ -3,12 +3,22 @@ tg.ready();
 tg.expand();
 if (tg.colorScheme === 'dark') document.body.classList.add('dark');
 tg.onEvent('themeChanged', () => { document.body.classList.toggle('dark', tg.colorScheme === 'dark'); });
+
 const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
+
+// ---------- دوال مساعدة لقفل/تحرير التمرير ----------
+function lockBodyScroll() {
+  document.body.style.overflow = 'hidden';
+}
+function unlockBodyScroll() {
+  document.body.style.overflow = '';
+}
+
+// ---------- التخزين المؤقت ----------
 const cache = {};
 const CACHE_DURATION = 60000;
-
 function getCached(key) {
   const entry = cache[key];
   if (entry && Date.now() - entry.time < CACHE_DURATION) return entry.data;
@@ -16,6 +26,8 @@ function getCached(key) {
   return null;
 }
 function setCache(key, data) { cache[key] = { data, time: Date.now() }; }
+
+// ---------- واجهة التحميل والأخطاء ----------
 function showLoading(msg) {
   document.getElementById('loading').textContent = msg;
   document.getElementById('loading').style.display = 'block';
@@ -26,6 +38,8 @@ function showError(msg) {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('main').style.display = 'none';
 }
+
+// ---------- استدعاء API ----------
 async function apiCall(endpoint, method = 'GET', body = {}) {
   let url = apiBase + endpoint;
   if (method === 'GET' || method === 'DELETE') {
@@ -62,18 +76,18 @@ async function apiCall(endpoint, method = 'GET', body = {}) {
   }
   return json;
 }
-let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 
-// --- مودال عام (معدّل) ---
+// المتغيرات العامة للكاش
+let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, confirmMode = false }) {
+  lockBodyScroll();  // قفل التمرير
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  // منع تمرير الخلفية عند لمس overlay
-  overlay.addEventListener('touchmove', e => e.preventDefault());
   const container = document.createElement('div');
   container.className = 'modal-box';
-  // منع تمرير الخلفية عند لمس داخل النافذة (لكن السماح بتمرير محتوى النافذة)
+  // منع تمرير الخلفية عند لمس النافذة نفسها
   container.addEventListener('touchmove', e => e.stopPropagation());
+
   let fieldsHTML = '';
   for (const field of fields) {
     let input = '';
@@ -96,6 +110,7 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
 
   const closeModal = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
+    unlockBodyScroll();  // تحرير التمرير
   };
   document.getElementById('modal-cancel').onclick = closeModal;
   const confirmBtn = document.getElementById(confirmMode ? 'modal-confirm' : 'modal-save');
@@ -113,12 +128,13 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess, c
     } catch (e) { alert('خطأ: ' + e.message); }
   };
 }
+
 function confirmDialog(msg) {
   return new Promise(resolve => {
     showFormModal({ title: msg, fields: [], confirmMode: true, onSuccess: (confirmed) => resolve(confirmed) });
   });
 }
-// --- المواد ---
+// --- عرض قائمة المواد ---
 async function loadItems() {
   try {
     let html = `<div class="card"><button class="btn-primary" id="btn-add-item">+ إضافة مادة</button><input id="items-search" type="text" class="input-field" placeholder="🔍 بحث..." style="margin-top:12px;" /></div><div id="items-list"></div>`;
@@ -128,6 +144,7 @@ async function loadItems() {
     renderFilteredItems();
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function renderFilteredItems() {
   const q = document.getElementById('items-search')?.value.trim().toLowerCase() || '';
   let filtered = itemsCache.filter(i => (i.name || '').toLowerCase().includes(q));
@@ -141,11 +158,13 @@ function renderFilteredItems() {
   html += '</tbody></table></div>';
   document.getElementById('items-list').innerHTML = html;
 }
+
+// --- تفاصيل مادة (مودال) ---
 function showItemDetailModal(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
+  lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.addEventListener('touchmove', e => e.preventDefault());
   const container = document.createElement('div'); container.className = 'modal-box';
   container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>${item.name}</h3>
@@ -164,15 +183,18 @@ function showItemDetailModal(itemId) {
     </div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+
+  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
   document.getElementById('edit-item-detail').onclick = () => { closeModal(); showEditItemModal(itemId); };
   document.getElementById('delete-item-detail').onclick = () => { closeModal(); deleteItem(itemId); };
   document.getElementById('close-detail').onclick = closeModal;
 }
+
 async function deleteItem(id) {
   if (!await confirmDialog('متأكد من حذف المادة؟')) return;
   try { await apiCall(`/items?id=${id}`, 'DELETE'); alert('تم الحذف'); loadItems(); } catch (e) { alert('خطأ: ' + e.message); }
 }
+
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   showFormModal({
@@ -193,6 +215,7 @@ function showAddItemModal() {
     onSuccess: () => loadItems()
   });
 }
+
 function showEditItemModal(itemId) {
   const it = itemsCache.find(i => i.id === itemId);
   if (!it) return;
@@ -212,8 +235,8 @@ function showEditItemModal(itemId) {
     onSuccess: () => loadItems()
   });
 }
+let g_currentSection = null;
 
-// --- أقسام موحدة (معدل لدعم المودال الجديد) ---
 function buildGenericItemHtml(item, { idField, nameField, extraFields }) {
   let info = '';
   extraFields.forEach(f => { const val = item[f.key] !== undefined ? item[f.key] : ''; info += `${f.prefix || ''}${val} `; });
@@ -225,7 +248,7 @@ function buildGenericItemHtml(item, { idField, nameField, extraFields }) {
     </div>
   </div>`;
 }
-let g_currentSection = null;
+
 async function loadGenericSection(options) {
   g_currentSection = options;
   const { cache, title } = options;
@@ -236,6 +259,7 @@ async function loadGenericSection(options) {
     document.getElementById('tab-content').innerHTML = html;
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function getSectionOptions(key) {
   const map = {
     '/customers': {
@@ -273,6 +297,8 @@ function getSectionOptions(key) {
   };
   return map[key];
 }
+
+// أحداث الأزرار العامة (إضافة، تعديل، حذف)
 document.addEventListener('click', async (e) => {
   const t = e.target;
   if (t.classList.contains('add-btn')) {
@@ -305,14 +331,13 @@ document.addEventListener('click', async (e) => {
     } catch (err) { alert('خطأ: ' + err.message); }
   }
 });
-// --- فواتير ---
 async function showInvoiceModal(type) {
   try {
+    lockBodyScroll();
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
     itemsCache = items; customersCache = customers; suppliersCache = suppliers;
     let entOpts = type === 'sale' ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}` : `<option value="cash">مورد نقدي</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}`;
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-    overlay.addEventListener('touchmove', e => e.preventDefault());
     const container = document.createElement('div');
     container.className = 'modal-box';
     container.style.maxWidth = '600px';
@@ -341,9 +366,12 @@ async function showInvoiceModal(type) {
     `;
     overlay.appendChild(container);
     document.body.appendChild(overlay);
-    const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+
+    const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
     document.getElementById('btn-cancel-invoice').onclick = closeModal;
+
     attachInvoiceEvents(type);
+
     document.getElementById('btn-save-invoice').onclick = async () => {
       const itype = document.getElementById('inv-type').value;
       const entity = document.getElementById('inv-entity').value;
@@ -370,12 +398,9 @@ async function showInvoiceModal(type) {
         closeModal(); alert('تم حفظ الفاتورة بنجاح'); loadInvoices();
       } catch (e) { alert('خطأ: ' + e.message); }
     };
-  } catch (err) { alert('خطأ: ' + err.message); }
+  } catch (err) { alert('خطأ: ' + err.message); unlockBodyScroll(); }
 }
-// ... (باقي دوال attachInvoiceEvents، loadInvoices، renderFilteredInvoices، printInvoice، showEditInvoiceModal، deleteInvoice) كما هي ...
-// (يمكنك نسخهم من الجزء 3 السابق دون تغيير حيث لا توجد lockScroll)
 
-// للاختصار سأكتبهم هنا مضغوطين
 function attachInvoiceEvents(invoiceType) {
   function isItemDuplicate(id, cur) { if (!id) return false; let found = false; document.querySelectorAll('#inv-lines-container .line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; }); return found; }
   function autoFillPrice(sel, pr) {
@@ -413,7 +438,10 @@ function attachInvoiceEvents(invoiceType) {
   document.getElementById('inv-lines-container')?.addEventListener('click', e => { if (e.target.classList.contains('btn-remove-line')) { const row = e.target.closest('.line-row'); if (document.querySelectorAll('#inv-lines-container .line-row').length > 1) { row.remove(); updateInvoiceRemoveButtons(); } } });
   updateInvoiceRemoveButtons();
 }
+
 function updateInvoiceRemoveButtons() { document.querySelectorAll('#inv-lines-container .line-row').forEach(row => { const btn = row.querySelector('.btn-remove-line'); if (btn) btn.style.display = document.querySelectorAll('#inv-lines-container .line-row').length > 1 ? 'inline-block' : 'none'; }); }
+
+// --- عرض قائمة الفواتير ---
 async function loadInvoices() {
   try {
     let html = `<div class="card"><h3>جميع الفواتير</h3><div style="display:flex;gap:8px;margin-bottom:8px;"><button class="filter-tab active" data-filter="all">الكل</button><button class="filter-tab" data-filter="sale">بيع</button><button class="filter-tab" data-filter="purchase">شراء</button></div><input id="invoice-search" type="text" class="input-field" placeholder="🔍 بحث..." /></div><div id="invoices-list"></div>`;
@@ -423,6 +451,7 @@ async function loadInvoices() {
     renderFilteredInvoices();
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function renderFilteredInvoices() {
   const filt = document.querySelector('.filter-tab.active')?.dataset.filter || 'all';
   const q = document.getElementById('invoice-search')?.value.trim().toLowerCase() || '';
@@ -451,16 +480,16 @@ function renderFilteredInvoices() {
   document.querySelectorAll('.pdf-invoice-btn').forEach(b => b.addEventListener('click', async e => { const id=parseInt(e.target.dataset.id); b.disabled=true; b.textContent='⏳ جاري...'; try{await apiCall('/send-invoice-pdf','POST',{invoiceId:id}); alert('تم إرسال PDF إلى البوت'); }catch(ex){alert('فشل الإرسال: '+ex.message);} finally{b.disabled=false; b.textContent='📥 PDF';} }));
   document.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => deleteInvoice(parseInt(e.target.dataset.id))));
 }
+
 function showEditInvoiceModal(invoice) { alert('سيتم فتح نافذة تعديل الفاتورة قريباً'); }
 async function deleteInvoice(id) { if (!await confirmDialog('متأكد من حذف الفاتورة؟')) return; try { await apiCall(`/invoices?id=${id}`, 'DELETE'); alert('تم الحذف'); loadInvoices(); } catch (e) { alert('خطأ: ' + e.message); } }
+
 function printInvoice(invoice) {
   const rows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name||'-'}</td><td>${l.quantity}</td><td>${l.unit_price}</td><td>${l.total}</td>`).join('')||'';
   const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title><style>body{font-family:Tajawal,sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right}</style></head><body><h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2><p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p><p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''} ${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p><table><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${rows}</tbody></table><h3>الإجمالي: ${Math.round(invoice.total)}</h3><p>المدفوع: ${Math.round(invoice.paid||0)} | الباقي: ${Math.round(invoice.balance||0)}</p><p>${invoice.notes||''}</p><button onclick="window.print();setTimeout(()=>window.close(),500);">🖨️ طباعة</button></body></html>`;
   const w = window.open('', '_blank', 'width=800,height=600');
   if (w) { w.document.write(html); w.document.close(); } else alert('الرجاء السماح بالنوافذ المنبثقة');
 }
-
-// --- مدفوعات (معدل) ---
 async function loadPayments() {
   try {
     const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments','GET'), apiCall('/invoices','GET'), apiCall('/customers','GET'), apiCall('/suppliers','GET')]);
@@ -471,9 +500,10 @@ async function loadPayments() {
     document.getElementById('btn-add-pmt')?.addEventListener('click', () => showAddPaymentModal(customers, suppliers, invoices));
   } catch (err) { document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function showAddPaymentModal(customers, suppliers, invoices) {
+  lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.addEventListener('touchmove', e => e.preventDefault());
   const container = document.createElement('div'); container.className = 'modal-box';
   container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>إضافة دفعة جديدة</h3>
@@ -488,8 +518,10 @@ function showAddPaymentModal(customers, suppliers, invoices) {
     <div class="modal-actions"><button class="btn-primary" id="btn-save-pmt">حفظ الدفعة</button><button class="btn-secondary" id="btn-cancel-pmt">إلغاء</button></div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+
+  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
   const tSel = document.getElementById('pmt-type'), cBlock = document.getElementById('pmt-cust-block'), sBlock = document.getElementById('pmt-supp-block'), invSel = document.getElementById('pmt-invoice'), cSel = document.getElementById('pmt-customer'), sSel = document.getElementById('pmt-supplier');
+
   const updateInvList = (type, eId) => {
     const filt = invoices.filter(inv => type==='customer' ? inv.type==='sale' && inv.customer_id==eId : inv.type==='purchase' && inv.supplier_id==eId);
     invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv=>`<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${inv.total})</option>`).join('');
@@ -497,6 +529,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   tSel.addEventListener('change', ()=>{ if(tSel.value==='customer'){cBlock.style.display='block';sBlock.style.display='none';updateInvList('customer',cSel.value);}else{cBlock.style.display='none';sBlock.style.display='block';updateInvList('supplier',sSel.value);} });
   cSel.addEventListener('change', ()=>updateInvList('customer',cSel.value));
   sSel.addEventListener('change', ()=>updateInvList('supplier',sSel.value));
+
   document.getElementById('btn-save-pmt').onclick = async () => {
     const type = tSel.value, cust = type==='customer'?(cSel.value||null):null, supp = type==='supplier'?(sSel.value||null):null, invId = invSel.value||null, amount = parseFloat(document.getElementById('pmt-amount').value);
     if (!amount || amount<=0) return alert('المبلغ مطلوب');
@@ -508,9 +541,8 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   };
   document.getElementById('btn-cancel-pmt').onclick = closeModal;
 }
-async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`, 'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e){ alert('خطأ: '+e.message); } }
 
-// --- مصاريف ---
+async function deletePayment(id) { if (!await confirmDialog('متأكد من حذف الدفعة؟')) return; try { await apiCall(`/payments?id=${id}`, 'DELETE'); alert('تم الحذف'); loadPayments(); } catch(e){ alert('خطأ: '+e.message); } }
 async function loadExpenses() {
   try {
     const expenses = await apiCall('/expenses','GET');
@@ -521,6 +553,7 @@ async function loadExpenses() {
     document.getElementById('btn-add-expense')?.addEventListener('click', showAddExpenseModal);
   } catch(err){ document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
+
 function showAddExpenseModal() {
   showFormModal({
     title: 'إضافة مصروف جديد',
@@ -535,7 +568,6 @@ function showAddExpenseModal() {
   });
 }
 async function deleteExpense(id) { if (!await confirmDialog('متأكد من حذف المصروف؟')) return; try { await apiCall(`/expenses?id=${id}`, 'DELETE'); alert('تم الحذف'); loadExpenses(); } catch(e){ alert('خطأ: '+e.message); } }
-// --- لوحة التحكم ---
 async function loadDashboard() {
   try {
     const data = await apiCall('/summary','GET');
@@ -567,7 +599,6 @@ async function loadDashboard() {
     }
   } catch(err){ document.getElementById('tab-content').innerHTML = `<div class="card" style="color:red;">⚠️ ${err.message}</div>`; }
 }
-// --- التقارير (نفس الكود السابق دون تغيير) ---
 async function loadReports() {
   let html = `<div class="card"><h3>التقارير</h3></div>
     <div class="card report-link" data-report="trial_balance">📊 ميزان المراجعة</div>
@@ -587,7 +618,7 @@ async function loadReports() {
     else if (r==='supplier_statement') loadSupplierStatementForm();
   }));
 }
-// دوال التقارير كما هي (loadTrialBalance, ...) مضغوطة، يمكنك نسخها من الجزء 4 السابق
+
 async function loadTrialBalance() { try{ const data = await apiCall('/reports?type=trial_balance','GET'); let rows = data.map(r=>`<tr><td>${r.name}</td><td>${r.total_debit.toFixed(2)}</td><td>${r.total_credit.toFixed(2)}</td><td class="${r.balance>=0?'positive':'negative'}">${r.balance.toFixed(2)}</td>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>ميزان المراجعة</h3><div class="report-table-wrapper"><table class="report-table"><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${rows}</tbody></table></div></div>`; } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadIncomeStatement() { try{ const d = await apiCall('/reports?type=income_statement','GET'); const iRows=d.income.map(i=>`<tr><td>${i.name}</td><td>${i.balance.toFixed(2)}</td>`).join(''); const eRows=d.expenses.map(e=>`<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>قائمة الدخل</h3><h4>الإيرادات</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${iRows}</tbody></table><strong>إجمالي الإيرادات: ${d.total_income.toFixed(2)}</strong><h4>المصروفات</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table><strong>إجمالي المصروفات: ${d.total_expenses.toFixed(2)}</strong><hr/><h2>صافي الربح: ${d.net_profit.toFixed(2)}</h2></div>`; } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadBalanceSheet() { try{ const d=await apiCall('/reports?type=balance_sheet','GET'); const aRows=d.assets.map(a=>`<tr><td>${a.name}</td><td>${a.balance.toFixed(2)}</td>`).join(''); const lRows=d.liabilities.map(l=>`<tr><td>${l.name}</td><td>${l.balance.toFixed(2)}</td>`).join(''); const eRows=d.equity.map(e=>`<tr><td>${e.name}</td><td>${e.balance.toFixed(2)}</td>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>الميزانية العمومية</h3><h4>الأصول</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${aRows}</tbody></table><strong>إجمالي الأصول: ${d.total_assets.toFixed(2)}</strong><h4>الخصوم</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${lRows}</tbody></table><strong>إجمالي الخصوم: ${d.total_liabilities.toFixed(2)}</strong><h4>حقوق الملكية</h4><table class="report-table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody><tr><strong>إجمالي حقوق الملكية: ${d.total_equity.toFixed(2)}</strong></div>`; } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
@@ -595,14 +626,14 @@ async function loadAccountLedgerForm() { try{ const accounts=await apiCall('/acc
 async function loadCustomerStatementForm() { try{ const custs=await apiCall('/customers','GET'); const opts=custs.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب عميل</h3><select id="stmt-cust" class="input-field">${opts}</select><button id="btn-stmt-cust" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-cust').addEventListener('click',async()=>{const id=document.getElementById('stmt-cust').value; if(!id)return; try{const lines=await apiCall(`/reports?type=customer_statement&customer_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 async function loadSupplierStatementForm() { try{ const supps=await apiCall('/suppliers','GET'); const opts=supps.map(s=>`<option value="${s.id}">${s.name}</option>`).join(''); document.getElementById('tab-content').innerHTML=`<div class="card"><button class="btn-secondary" onclick="loadReports()">🔙 رجوع</button><h3>كشف حساب مورد</h3><select id="stmt-supp" class="input-field">${opts}</select><button id="btn-stmt-supp" class="btn-primary">عرض الكشف</button><div id="stmt-result"></div></div>`; document.getElementById('btn-stmt-supp').addEventListener('click',async()=>{const id=document.getElementById('stmt-supp').value; if(!id)return; try{const lines=await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`,'GET'); let html='<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>'; lines.forEach(l=>html+=`<tr><td>${l.date||''}</td><td>${l.description||''}</td><td>${(l.debit||0).toFixed(2)}</td><td>${(l.credit||0).toFixed(2)}</td><td class="${(l.balance||0)>=0?'positive':'negative'}">${(l.balance||0).toFixed(2)}</td>`); html+='</tbody></table></div>'; document.getElementById('stmt-result').innerHTML=html;}catch(e){document.getElementById('stmt-result').innerHTML=`<div style="color:red;">⚠️ ${e.message}</div>`;}}); } catch(e){ document.getElementById('tab-content').innerHTML=`<div class="card" style="color:red;">⚠️ ${e.message}</div>`; } }
 function showHelpModal() {
+  lockBodyScroll();
   const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
-  overlay.addEventListener('touchmove', e => e.preventDefault());
   const container = document.createElement('div'); container.className = 'modal-box';
   container.addEventListener('touchmove', e => e.stopPropagation());
   container.innerHTML = `<h3>📚 مركز المساعدة</h3><p>مرحباً بك في نظام الراجحي للمحاسبة. يمكنك:</p><ul><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التيليجرام</li></ul><p>للدعم: @bukamal1991</p><div class="modal-actions"><button class="btn-primary" id="close-help">حسناً</button></div>`;
   overlay.appendChild(container);
   document.body.appendChild(overlay);
-  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+  const closeModal = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); unlockBodyScroll(); };
   document.getElementById('close-help').onclick = closeModal;
 }
 // --- إخفاء التبويبات عند التمرير ---
@@ -660,16 +691,16 @@ document.querySelectorAll('.tab').forEach(tab => {
     return null;
   }
 
-function onStart(e) {
+  function onStart(e) {
     const tab = e.target.closest('.tab');
     if (!tab) return;
-    // تم حذف preventDefault() ليشتغل النقر العادي
+    // تمت إزالة e.preventDefault() ليسمح بالنقر
     const startX = getPos(e);
     dragInfo = { tab, startX, moved: false, startXorig: startX };
     tab.classList.add('dragging');
     tab.style.opacity = '0.6';
     tab.style.zIndex = '1000';
-}
+  }
 
   function onMove(e) {
     if (!dragInfo) return;
@@ -677,7 +708,6 @@ function onStart(e) {
     if (Math.abs(x - dragInfo.startX) < THRESHOLD && !dragInfo.moved) return;
     if (!dragInfo.moved) {
       dragInfo.moved = true;
-      // إنشاء placeholder
       const placeholder = document.createElement('div');
       placeholder.className = 'tab-placeholder';
       const style = getComputedStyle(dragInfo.tab);
@@ -703,7 +733,6 @@ function onStart(e) {
     if (dragInfo.moved && dragInfo.placeholder) {
       nav.insertBefore(dragInfo.tab, dragInfo.placeholder);
       dragInfo.placeholder.remove();
-      // حفظ الترتيب
       const order = Array.from(nav.querySelectorAll('.tab')).map(t => t.dataset.tab);
       localStorage.setItem('tabOrder', JSON.stringify(order));
     }
@@ -721,7 +750,6 @@ function onStart(e) {
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onEnd);
 
-  // استعادة الترتيب المحفوظ
   try {
     const saved = JSON.parse(localStorage.getItem('tabOrder'));
     if (saved && Array.isArray(saved)) {
@@ -732,7 +760,6 @@ function onStart(e) {
     }
   } catch {}
 
-  // إضافة CSS للـ placeholder (إن لم يوجد)
   if (!document.getElementById('drag-styles')) {
     const style = document.createElement('style');
     style.id = 'drag-styles';
@@ -740,8 +767,6 @@ function onStart(e) {
     document.head.appendChild(style);
   }
 })();
-
-// --- بدء التطبيق ---
 async function verifyUser() {
   try {
     const data = await apiCall('/verify', 'POST');
@@ -759,3 +784,4 @@ async function verifyUser() {
   } catch (err) { showError(err.message); }
 }
 verifyUser();
+
