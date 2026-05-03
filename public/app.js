@@ -1,7 +1,6 @@
 /* ============================================
-   الراجحي للمحاسبة - المنطق المحسّن v3 Pro
+   الراجحي للمحاسبة - المنطق المحسّن v3 Pro (موحد)
    ============================================ */
-
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
@@ -33,8 +32,7 @@ const ICONS = {
 
 // ========== الثيم ==========
 function applyTheme() {
-  if (tg.colorScheme === 'dark') document.body.classList.add('dark');
-  else document.body.classList.remove('dark');
+  document.body.classList.toggle('dark', tg.colorScheme === 'dark');
   tg.setHeaderColor(tg.colorScheme === 'dark' ? '#0b1120' : '#f1f5f9');
 }
 applyTheme();
@@ -55,6 +53,7 @@ function formatDate(dateStr) {
   const d = new Date(dateStr);
   return d.toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' });
 }
+
 function debounce(fn, ms = 300) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
@@ -105,8 +104,8 @@ function showToast(message, type = 'info') {
 let activeModal = null;
 function openModal({ title, bodyHTML, footerHTML = '', onClose }) {
   const portal = document.getElementById('modal-portal');
-  if (activeModal) { activeModal.close(); }
-  
+  if (activeModal) activeModal.close();
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
@@ -139,7 +138,7 @@ function openModal({ title, bodyHTML, footerHTML = '', onClose }) {
 
   closeBtn.onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  
+
   const handleEsc = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', handleEsc, { once: true });
 
@@ -151,10 +150,7 @@ function confirmDialog(message) {
     const modal = openModal({
       title: 'تأكيد العملية',
       bodyHTML: `<div style="display:flex;gap:12px;align-items:center;padding:8px 0;"><div style="color:var(--warning);flex-shrink:0;">${ICONS.alert}</div><p style="font-size:15px;line-height:1.7;">${message}</p></div>`,
-      footerHTML: `
-        <button class="btn btn-secondary" id="confirm-cancel">إلغاء</button>
-        <button class="btn btn-danger" id="confirm-ok">تأكيد</button>
-      `,
+      footerHTML: `<button class="btn btn-secondary" id="confirm-cancel">إلغاء</button><button class="btn btn-danger" id="confirm-ok">تأكيد</button>`,
       onClose: () => resolve(false)
     });
     modal.element.querySelector('#confirm-cancel').onclick = () => { modal.close(); resolve(false); };
@@ -178,13 +174,13 @@ async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     options.signal = controller.signal;
-    
+
     const res = await fetch(url, options);
     clearTimeout(timeout);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
     if (method === 'GET') setCache(url, json);
-    
+
     if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
       const base = endpoint.split('?')[0].split('/')[1];
       invalidateCache('/' + base);
@@ -200,6 +196,7 @@ async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
     throw err;
   }
 }
+
 // ========== نماذج عامة ==========
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess }) {
   let body = '';
@@ -259,9 +256,7 @@ const tabsConfig = {
 };
 
 function setActiveTab(tabName) {
-  document.querySelectorAll('.nav-item, .bottom-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.tab === tabName);
-  });
+  document.querySelectorAll('.nav-item, .bottom-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tabName));
   const cfg = tabsConfig[tabName];
   document.getElementById('page-title').textContent = cfg?.title || '';
   document.getElementById('page-subtitle').textContent = cfg?.subtitle || '';
@@ -273,11 +268,11 @@ function navigateTo(tabName) {
   document.getElementById('more-menu').style.display = 'none';
   document.getElementById('sidebar').classList.remove('open');
   if (scrollLockPos !== undefined) unlockScroll();
-  
+
   const content = document.getElementById('tab-content');
   content.style.opacity = '0';
   content.style.transform = 'translateY(10px)';
-  
+
   setTimeout(() => {
     switch (tabName) {
       case 'dashboard': loadDashboard(); break;
@@ -306,14 +301,18 @@ function showMoreMenu() {
   lockScroll();
 }
 
-// بناء القوائم
+// ========== القائمة الفارغة ==========
+function emptyState(title, subtitle) {
+  return `<div class="empty-state"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>${title}</h3><p>${subtitle}</p></div>`;
+}
+
+// ========== بناء القوائم ==========
 function initNavigation() {
   const sidebarNav = document.getElementById('sidebar-nav');
   const sheetGrid = document.getElementById('sheet-grid');
-  
   const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','payments','expenses','invoices','reports'];
   const moreTabs = ['purchase-invoice','customers','suppliers','categories','payments','expenses','reports'];
-  
+
   mainTabs.forEach(key => {
     const cfg = tabsConfig[key];
     if (!cfg) return;
@@ -324,7 +323,7 @@ function initNavigation() {
     btn.onclick = () => navigateTo(key);
     sidebarNav.appendChild(btn);
   });
-  
+
   moreTabs.forEach(key => {
     const cfg = tabsConfig[key];
     if (!cfg) return;
@@ -350,7 +349,6 @@ if (moreBackdrop) {
   });
 }
 
-// تبويبات الشريط السفلي
 document.querySelectorAll('.bottom-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const tabName = btn.dataset.tab;
@@ -361,8 +359,25 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
     }
   });
 });
+
 // ========== المواد (Items) ==========
-// ========== المواد (Items) ==========
+function renderFilteredItems() {
+  const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
+  const filtered = itemsCache.filter(i => (i.name || '').toLowerCase().includes(q));
+  const container = document.getElementById('items-list');
+  if (!filtered.length) return container.innerHTML = emptyState('لا توجد مواد مطابقة', 'يمكنك إضافة مواد جديدة من الزر أعلاه');
+  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
+  filtered.forEach(item => {
+    html += `<tr onclick="showItemDetail(${item.id})" style="cursor:pointer;">
+      <td><div style="font-weight:700;">${item.name}</div><div style="color:var(--text-muted);font-size:12px;">${item.category?.name || 'بدون تصنيف'}</div></td>
+      <td style="font-weight:700;color:${(item.available ?? 0) <= 0 ? 'var(--danger)' : 'var(--success)'}">${item.available ?? 0}</td>
+      <td style="font-weight:700;">${formatNumber(item.total_value ?? 0)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
 async function loadItems() {
   try {
     document.getElementById('tab-content').innerHTML = `
@@ -383,121 +398,7 @@ async function loadItems() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== قائمة الفواتير (محدث) ==========
-function renderFilteredInvoices() {
-  const filt = document.querySelector('.filter-pill.active')?.dataset.filter || 'all';
-  const q = (document.getElementById('invoice-search')?.value || '').trim().toLowerCase();
-  let data = invoicesCache;
-  if (filt !== 'all') data = data.filter(inv => inv.type === filt);
-  if (q) data = data.filter(inv => 
-    (inv.reference || '').includes(q) || 
-    (inv.customer?.name || '').includes(q) || 
-    (inv.supplier?.name || '').includes(q) || 
-    String(inv.total).includes(q)
-  );
-  
-  const container = document.getElementById('invoices-list');
-  if (!data.length) { 
-    container.innerHTML = emptyState('لا توجد فواتير مطابقة', 'جرب تغيير معايير البحث'); 
-    return; 
-  }
-
-  let html = '';
-  data.forEach(inv => {
-    const typeLabel = inv.type === 'sale' ? 'بيع' : 'شراء';
-    const entity = inv.customer?.name || inv.supplier?.name || 'نقدي';
-    const statusColor = (inv.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
-    
-    // عرض ملخص الوحدات المستخدمة
-    let unitsSummary = '';
-    if (inv.invoice_lines && inv.invoice_lines.length > 0) {
-      const unitCounts = {};
-      inv.invoice_lines.forEach(l => {
-        const unit = l.description || 'وحدة أساسية';
-        unitCounts[unit] = (unitCounts[unit] || 0) + (l.quantity || 0);
-      });
-      unitsSummary = Object.entries(unitCounts)
-        .map(([unit, qty]) => `${formatNumber(qty)} ${unit}`)
-        .join(' · ');
-    }
-    
-    html += `
-      <div class="card card-hover">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-          <div style="min-width:0;">
-            <div style="font-weight:800;font-size:15px;display:flex;align-items:center;gap:8px;">
-              <span style="background:${inv.type==='sale'?'var(--success-light)':'var(--warning-light)'};color:${inv.type==='sale'?'var(--success)':'var(--warning)'};padding:2px 10px;border-radius:20px;font-size:12px;">${typeLabel}</span>
-              فاتورة ${inv.reference || ''}
-            </div>
-            <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${formatDate(inv.date)} · ${entity}</div>
-            ${unitsSummary ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${unitsSummary}</div>` : ''}
-          </div>
-          <div style="font-weight:900;font-size:20px;color:var(--primary);white-space:nowrap;">${formatNumber(inv.total)}</div>
-        </div>
-        <div style="display:flex;gap:16px;font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-          <span>مدفوع: <strong>${formatNumber(inv.paid || 0)}</strong></span>
-          <span style="color:${statusColor};font-weight:700;">باقي: ${formatNumber(inv.balance || 0)}</span>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
-          <button class="btn btn-secondary btn-sm edit-invoice-btn" data-id="${inv.id}">${ICONS.edit} تعديل</button>
-          <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
-          <button class="btn btn-primary btn-sm pdf-invoice-btn" data-id="${inv.id}">${ICONS.file} PDF</button>
-          <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
-        </div>
-      </div>`;
-  });
-  container.innerHTML = html;
-
-  // أحداث الأزرار
-  container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = invoicesCache.find(i => i.id === id);
-    if (inv) showInvoiceDetail(inv);
-  }));
-  
-  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    showToast('ميزة تعديل الفاتورة قيد التطوير', 'warning');
-  }));
-  
-  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = invoicesCache.find(i => i.id === id);
-    if (inv) printInvoice(inv);
-  }));
-  
-  container.querySelectorAll('.pdf-invoice-btn').forEach(b => b.addEventListener('click', async e => {
-    const btn = e.target.closest('button'); 
-    const id = parseInt(btn.dataset.id);
-    btn.disabled = true; 
-    btn.innerHTML = `<span class="loader-inline"></span>`;
-    try { 
-      await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); 
-      showToast('تم إرسال PDF إلى البوت', 'success'); 
-    } catch (ex) { 
-      showToast('فشل الإرسال: ' + ex.message, 'error'); 
-    } finally { 
-      btn.disabled = false; 
-      btn.innerHTML = `${ICONS.file} PDF`; 
-    }
-  }));
-  
-  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    deleteInvoice(id);
-  }));
-}
-
-function emptyState(title, subtitle) {
-  return `<div class="empty-state">
-    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-    <h3>${title}</h3><p>${subtitle}</p>
-  </div>`;
-}
-
-
-// ========== عرض تفاصيل المادة (تحديث) ==========
+// ========== تفاصيل المادة ==========
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
@@ -506,36 +407,14 @@ function showItemDetail(itemId) {
   const unit2 = (item.item_units || []).find(u => u.level === 2);
   const unit3 = (item.item_units || []).find(u => u.level === 3);
 
-  let unitsHtml = `
-    <div style="margin-bottom:16px;">
-      <div style="font-weight:700;margin-bottom:8px;color:var(--text-secondary);">نظام الوحدات</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div style="background:var(--success-light);border:1px solid var(--success);border-radius:8px;padding:10px 14px;">
-          <span style="color:var(--success);font-weight:800;">الوحدة 1 (الأساسية):</span>
-          <span style="font-weight:700;"> ${unit1}</span>
-        </div>
-  `;
-  
+  let unitsHtml = `<div style="margin-bottom:16px;"><div style="font-weight:700;margin-bottom:8px;color:var(--text-secondary);">نظام الوحدات</div><div style="display:flex;flex-direction:column;gap:8px;">
+    <div style="background:var(--success-light);border:1px solid var(--success);border-radius:8px;padding:10px 14px;"><span style="color:var(--success);font-weight:800;">الوحدة 1 (الأساسية):</span><span style="font-weight:700;"> ${unit1}</span></div>`;
   if (unit2) {
-    unitsHtml += `
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
-          <span style="color:var(--primary);font-weight:800;">الوحدة 2:</span>
-          <span style="font-weight:700;"> ${unit2.unit_name}</span>
-          <span style="color:var(--text-muted);"> (1 ${unit2.unit_name} = ${unit2.conversion_factor} ${unit1})</span>
-        </div>
-    `;
+    unitsHtml += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;"><span style="color:var(--primary);font-weight:800;">الوحدة 2:</span><span style="font-weight:700;"> ${unit2.unit_name}</span><span style="color:var(--text-muted);"> (1 ${unit2.unit_name} = ${unit2.conversion_factor} ${unit1})</span></div>`;
   }
-  
   if (unit3) {
-    unitsHtml += `
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
-          <span style="color:var(--primary);font-weight:800;">الوحدة 3:</span>
-          <span style="font-weight:700;"> ${unit3.unit_name}</span>
-          <span style="color:var(--text-muted);"> (1 ${unit3.unit_name} = ${unit3.conversion_factor} ${unit2?.unit_name || 'وحدة 2'})</span>
-        </div>
-    `;
+    unitsHtml += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;"><span style="color:var(--primary);font-weight:800;">الوحدة 3:</span><span style="font-weight:700;"> ${unit3.unit_name}</span><span style="color:var(--text-muted);"> (1 ${unit3.unit_name} = ${unit3.conversion_factor} ${unit2?.unit_name || 'وحدة 2'})</span></div>`;
   }
-  
   unitsHtml += `</div></div>`;
 
   const modal = openModal({
@@ -568,164 +447,7 @@ function showItemDetail(itemId) {
   };
 }
 
-// ========== دوال مساعدة للوحدة الأساسية ==========
-const SYSTEM_SETTINGS = {
-  baseUnitName: localStorage.getItem('baseUnitName') || 'قطعة',
-  baseUnitId: parseInt(localStorage.getItem('baseUnitId')) || null
-};
-
-function getBaseUnitName() {
-  return SYSTEM_SETTINGS.baseUnitName;
-}
-
-function getBaseUnitId() {
-  // البحث في الكاش أولاً
-  const unit = unitsCache.find(u => u.name === getBaseUnitName());
-  if (unit) return unit.id;
-  if (SYSTEM_SETTINGS.baseUnitId) return SYSTEM_SETTINGS.baseUnitId;
-  return null;
-}
-
-function saveBaseUnitName(name, id) {
-  SYSTEM_SETTINGS.baseUnitName = name;
-  localStorage.setItem('baseUnitName', name);
-  if (id) {
-    SYSTEM_SETTINGS.baseUnitId = id;
-    localStorage.setItem('baseUnitId', id);
-  }
-}
-
-// ========== تعديل اسم الوحدة الأساسية - نسخة مصححة ==========
-async function editBaseUnitName(modalElement) {
-  const currentName = getBaseUnitName();
-  const currentId = getBaseUnitId();
-  
-  if (!currentId) {
-    showToast('لم يتم العثور على الوحدة الأساسية', 'error');
-    return;
-  }
-  
-  const newName = prompt(
-    `تعديل اسم الوحدة الأساسية\n\n` +
-    `الاسم الحالي: ${currentName}\n\n` +
-    `أدخل الاسم الجديد:`, 
-    currentName
-  );
-  
-  if (!newName || !newName.trim()) return;
-  const trimmedName = newName.trim();
-  if (trimmedName === currentName) return;
-  
-  // التحقق من عدم التكرار
-  const duplicate = unitsCache.find(u => 
-    u.name.toLowerCase() === trimmedName.toLowerCase() && u.id !== currentId
-  );
-  if (duplicate) {
-    showToast(`الاسم "${trimmedName}" مستخدم بوحدة أخرى`, 'error');
-    return;
-  }
-  
-  try {
-    // ===== التعديل في السيرفر - محاولة 1: PUT /definitions =====
-    let res;
-    try {
-      res = await apiCall('/definitions', 'PUT', { 
-        type: 'unit', 
-        id: currentId, 
-        name: trimmedName 
-      });
-    } catch (err1) {
-      console.log('محاولة 1 فشلت:', err1.message);
-      
-      // ===== محاولة 2: PUT /definitions?type=unit&id=X =====
-      try {
-        res = await apiCall(`/definitions?type=unit&id=${currentId}`, 'PUT', { 
-          type: 'unit', 
-          name: trimmedName 
-        });
-      } catch (err2) {
-        console.log('محاولة 2 فشلت:', err2.message);
-        
-        // ===== محاولة 3: POST /definitions?type=unit (إنشاء جديد وحذف القديم) =====
-        // إذا لم يعمل PUT، ننشئ وحدة جديدة ونحذف القديمة
-        try {
-          res = await apiCall(`/definitions?type=unit`, 'POST', { type: 'unit', name: trimmedName });
-          const newId = res?.id || res?.data?.id;
-          if (!newId) throw new Error('فشل إنشاء الوحدة الجديدة');
-          
-          // تحديث جميع المواد التي تستخدم الوحدة القديمة
-          const itemsWithOldUnit = itemsCache.filter(item => item.base_unit_id === currentId);
-          for (const item of itemsWithOldUnit) {
-            await apiCall('/items', 'PUT', {
-              id: item.id,
-              base_unit_id: newId,
-              item_units: (item.item_units || []).map(iu => ({
-                unit_id: iu.unit_id === currentId ? newId : iu.unit_id,
-                conversion_factor: iu.conversion_factor
-              }))
-            });
-          }
-          
-          // حذف الوحدة القديمة
-          try {
-            await apiCall(`/definitions?type=unit&id=${currentId}`, 'DELETE');
-          } catch (delErr) {
-            console.log('لم يتم حذف الوحدة القديمة:', delErr.message);
-          }
-          
-          res = { id: newId, name: trimmedName };
-        } catch (err3) {
-          throw new Error('جميع محاولات التعديل فشلت: ' + err3.message);
-        }
-      }
-    }
-    
-    // ===== تحديث الكاش =====
-    const unitInCache = unitsCache.find(u => u.id === currentId);
-    if (unitInCache) {
-      unitInCache.name = trimmedName;
-    } else {
-      // إذا كان المعرف تغير
-      const newId = res?.id || res?.data?.id || currentId;
-      const existing = unitsCache.find(u => u.id === newId);
-      if (existing) {
-        existing.name = trimmedName;
-      } else {
-        unitsCache.push({ id: newId, name: trimmedName });
-      }
-      saveBaseUnitName(trimmedName, newId);
-    }
-    
-    // حفظ الإعدادات
-    saveBaseUnitName(trimmedName);
-    
-    // ===== تحديث الواجهة =====
-    const displayEl = modalElement.querySelector('#base-unit-display');
-    if (displayEl) displayEl.textContent = trimmedName;
-    
-    // تحديث جميع النصوص
-    const labels = modalElement.querySelectorAll('.form-label span');
-    labels.forEach(span => {
-      if (span.textContent.includes(currentName)) {
-        span.textContent = span.textContent.replace(new RegExp(currentName, 'g'), trimmedName);
-      }
-    });
-    
-    showToast(`تم تغيير اسم الوحدة إلى "${trimmedName}"`, 'success');
-    
-    // إعادة تحميل
-    setTimeout(() => {
-      loadItems();
-      // إعادة فتح نفس المودال إذا كان مفتوحاً
-    }, 500);
-    
-  } catch (e) {
-    console.error('خطأ كامل:', e);
-    showToast(e.message || 'فشل تعديل اسم الوحدة', 'error');
-  }
-}
-
-// ========== إضافة مادة جديدة ==========
+// ========== إضافة مادة ==========
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
@@ -734,97 +456,53 @@ function showAddItemModal() {
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
-    
-    <!-- الوحدة 1 (الأساسية) -->
-    <div class="form-group">
-      <label class="form-label">الوحدة 1 <span style="color:var(--text-muted);font-size:12px;">(الأساسية - الصغرى)</span></label>
-      <input class="input" id="fm-unit1" type="text" placeholder="مثال: قطعة" value="قطعة">
-    </div>
-    
-    <!-- الوحدة 2 (الوسطى) -->
+    <div class="form-group"><label class="form-label">الوحدة 1 <span style="color:var(--text-muted);font-size:12px;">(الأساسية - الصغرى)</span></label><input class="input" id="fm-unit1" type="text" placeholder="مثال: قطعة" value="قطعة"></div>
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
       <label class="form-label">الوحدة 2 <span style="color:var(--text-muted);font-size:12px;">(الوسطى)</span></label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label>
-          <input class="input" id="fm-unit2-name" type="text" placeholder="مثال: صندوق" style="width:100%;">
-        </div>
-        <div style="width:120px;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 2 = كم وحدة 1؟</label>
-          <input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="12" style="width:100%;">
-        </div>
-      </div>
-      <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
-        مثال: 1 <span class="unit1-ref">قطعة</span> = 12 <span class="unit1-ref">قطعة</span>
+        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label><input class="input" id="fm-unit2-name" type="text" placeholder="مثال: صندوق" style="width:100%;"></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 2 = كم وحدة 1؟</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="12" style="width:100%;"></div>
       </div>
     </div>
-    
-    <!-- الوحدة 3 (الكبرى) -->
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
       <label class="form-label">الوحدة 3 <span style="color:var(--text-muted);font-size:12px;">(الكبرى)</span></label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label>
-          <input class="input" id="fm-unit3-name" type="text" placeholder="مثال: كرتونة" style="width:100%;">
-        </div>
-        <div style="width:120px;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 3 = كم وحدة 2؟</label>
-          <input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="10" style="width:100%;">
-        </div>
-      </div>
-      <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
-        مثال: 1 كرتونة = 10 صناديق
+        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label><input class="input" id="fm-unit3-name" type="text" placeholder="مثال: كرتونة" style="width:100%;"></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 3 = كم وحدة 2؟</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="10" style="width:100%;"></div>
       </div>
     </div>
-    
     <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة 1)</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
     <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
     <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
   `;
 
-  const modal = openModal({ 
-    title: 'إضافة مادة جديدة', 
-    bodyHTML: body, 
-    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>` 
+  const modal = openModal({
+    title: 'إضافة مادة جديدة',
+    bodyHTML: body,
+    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
-  // تحديث مراجع الوحدة 1 تلقائياً
-  const unit1Input = modal.element.querySelector('#fm-unit1');
-  const updateUnit1Refs = () => {
-    const name = unit1Input.value.trim() || 'قطعة';
-    modal.element.querySelectorAll('.unit1-ref').forEach(el => el.textContent = name);
-  };
-  unit1Input.addEventListener('input', updateUnit1Refs);
-
-  // تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
     const name = input.value.trim();
     if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
     if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
-    
     try {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      
       categoriesCache.push({ id: newId, name });
       const o = document.createElement('option');
-      o.value = newId; o.textContent = name; 
+      o.value = newId; o.textContent = name;
       select.appendChild(o);
-      select.value = newId; 
+      select.value = newId;
       input.value = '';
       showToast('تم إضافة التصنيف واختياره', 'success');
-    } catch (e) { 
-      showToast(e.message, 'error'); 
-    }
+    } catch (e) { showToast(e.message, 'error'); }
   };
 
-  // إلغاء
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
-  
-  // حفظ
   modal.element.querySelector('#fm-save').onclick = async () => {
     const unit1Name = modal.element.querySelector('#fm-unit1').value.trim() || 'قطعة';
     const unit2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
@@ -832,26 +510,9 @@ function showAddItemModal() {
     const unit3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
     const unit3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
 
-    // بناء مصفوفة الوحدات
     const itemUnits = [];
-    
-    // الوحدة 2
-    if (unit2Name && unit2Factor && unit2Factor > 0) {
-      itemUnits.push({
-        unit_name: unit2Name,
-        conversion_factor: unit2Factor,
-        level: 2
-      });
-    }
-    
-    // الوحدة 3
-    if (unit3Name && unit3Factor && unit3Factor > 0) {
-      itemUnits.push({
-        unit_name: unit3Name,
-        conversion_factor: unit3Factor,
-        level: 3
-      });
-    }
+    if (unit2Name && unit2Factor > 0) itemUnits.push({ unit_name: unit2Name, conversion_factor: unit2Factor, level: 2 });
+    if (unit3Name && unit3Factor > 0) itemUnits.push({ unit_name: unit3Name, conversion_factor: unit3Factor, level: 3 });
 
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
@@ -863,27 +524,22 @@ function showAddItemModal() {
       base_unit_name: unit1Name,
       item_units: itemUnits
     };
-    
+
     if (!values.name) return showToast('اسم المادة مطلوب', 'error');
     if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) return showToast('توجد مادة بنفس الاسم', 'error');
-    
+
     try {
       const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = true; 
-      btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
       await apiCall('/items', 'POST', values);
-      modal.close(); 
-      showToast('تم الحفظ بنجاح', 'success'); 
-      loadItems();
-    } catch (e) { 
-      showToast(e.message, 'error'); 
+      modal.close(); showToast('تم الحفظ بنجاح', 'success'); loadItems();
+    } catch (e) {
+      showToast(e.message, 'error');
       const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = false; 
-      btn.innerHTML = `${ICONS.check} حفظ`; 
+      btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`;
     }
   };
 }
-
 
 // ========== تعديل مادة ==========
 function showEditItemModal(itemId) {
@@ -891,8 +547,6 @@ function showEditItemModal(itemId) {
   if (!it) return;
 
   const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
-
-  // استخراج الوحدات المخزنة
   const unit2 = (it.item_units || []).find(u => u.level === 2) || {};
   const unit3 = (it.item_units || []).find(u => u.level === 3) || {};
 
@@ -901,97 +555,53 @@ function showEditItemModal(itemId) {
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
-    
-    <!-- الوحدة 1 (الأساسية) -->
-    <div class="form-group">
-      <label class="form-label">الوحدة 1 <span style="color:var(--text-muted);font-size:12px;">(الأساسية - الصغرى)</span></label>
-      <input class="input" id="fm-unit1" type="text" placeholder="مثال: قطعة" value="${it.base_unit_name || 'قطعة'}">
-    </div>
-    
-    <!-- الوحدة 2 (الوسطى) -->
+    <div class="form-group"><label class="form-label">الوحدة 1 <span style="color:var(--text-muted);font-size:12px;">(الأساسية - الصغرى)</span></label><input class="input" id="fm-unit1" type="text" value="${it.base_unit_name || 'قطعة'}"></div>
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
       <label class="form-label">الوحدة 2 <span style="color:var(--text-muted);font-size:12px;">(الوسطى)</span></label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label>
-          <input class="input" id="fm-unit2-name" type="text" placeholder="مثال: صندوق" value="${unit2.unit_name || ''}" style="width:100%;">
-        </div>
-        <div style="width:120px;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 2 = كم وحدة 1؟</label>
-          <input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="12" value="${unit2.conversion_factor || ''}" style="width:100%;">
-        </div>
-      </div>
-      <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
-        مثال: 1 <span class="unit1-ref">${it.base_unit_name || 'قطعة'}</span> = 12 <span class="unit1-ref">${it.base_unit_name || 'قطعة'}</span>
+        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">الاسم</label><input class="input" id="fm-unit2-name" type="text" value="${unit2.unit_name || ''}" style="width:100%;"></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);">1 وحدة 2 = كم وحدة 1؟</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" value="${unit2.conversion_factor || ''}" style="width:100%;"></div>
       </div>
     </div>
-    
-    <!-- الوحدة 3 (الكبرى) -->
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
       <label class="form-label">الوحدة 3 <span style="color:var(--text-muted);font-size:12px;">(الكبرى)</span></label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label>
-          <input class="input" id="fm-unit3-name" type="text" placeholder="مثال: كرتونة" value="${unit3.unit_name || ''}" style="width:100%;">
-        </div>
-        <div style="width:120px;">
-          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 3 = كم وحدة 2؟</label>
-          <input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="10" value="${unit3.conversion_factor || ''}" style="width:100%;">
-        </div>
-      </div>
-      <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
-        مثال: 1 كرتونة = 10 صناديق
+        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">الاسم</label><input class="input" id="fm-unit3-name" type="text" value="${unit3.unit_name || ''}" style="width:100%;"></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);">1 وحدة 3 = كم وحدة 2؟</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" value="${unit3.conversion_factor || ''}" style="width:100%;"></div>
       </div>
     </div>
-    
     <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة 1)</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
     <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
     <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
   `;
 
-  const modal = openModal({ 
-    title: 'تعديل المادة', 
-    bodyHTML: body, 
-    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>` 
+  const modal = openModal({
+    title: 'تعديل المادة',
+    bodyHTML: body,
+    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
-  // تحديث مراجع الوحدة 1 تلقائياً
-  const unit1Input = modal.element.querySelector('#fm-unit1');
-  const updateUnit1Refs = () => {
-    const name = unit1Input.value.trim() || 'قطعة';
-    modal.element.querySelectorAll('.unit1-ref').forEach(el => el.textContent = name);
-  };
-  unit1Input.addEventListener('input', updateUnit1Refs);
-
-  // تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
     const name = input.value.trim();
     if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
     if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
-    
     try {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      
       categoriesCache.push({ id: newId, name });
       const o = document.createElement('option');
-      o.value = newId; o.textContent = name; 
+      o.value = newId; o.textContent = name;
       select.appendChild(o);
-      select.value = newId; 
+      select.value = newId;
       input.value = '';
       showToast('تم إضافة التصنيف واختياره', 'success');
-    } catch (e) { 
-      showToast(e.message, 'error'); 
-    }
+    } catch (e) { showToast(e.message, 'error'); }
   };
 
-  // إلغاء
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
-  
-  // حفظ
   modal.element.querySelector('#fm-save').onclick = async () => {
     const unit1Name = modal.element.querySelector('#fm-unit1').value.trim() || 'قطعة';
     const unit2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
@@ -999,26 +609,9 @@ function showEditItemModal(itemId) {
     const unit3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
     const unit3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
 
-    // بناء مصفوفة الوحدات
     const itemUnits = [];
-    
-    // الوحدة 2
-    if (unit2Name && unit2Factor && unit2Factor > 0) {
-      itemUnits.push({
-        unit_name: unit2Name,
-        conversion_factor: unit2Factor,
-        level: 2
-      });
-    }
-    
-    // الوحدة 3
-    if (unit3Name && unit3Factor && unit3Factor > 0) {
-      itemUnits.push({
-        unit_name: unit3Name,
-        conversion_factor: unit3Factor,
-        level: 3
-      });
-    }
+    if (unit2Name && unit2Factor > 0) itemUnits.push({ unit_name: unit2Name, conversion_factor: unit2Factor, level: 2 });
+    if (unit3Name && unit3Factor > 0) itemUnits.push({ unit_name: unit3Name, conversion_factor: unit3Factor, level: 3 });
 
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
@@ -1030,30 +623,23 @@ function showEditItemModal(itemId) {
       base_unit_name: unit1Name,
       item_units: itemUnits
     };
-    
+
     try {
       const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = true; 
-      btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
       await apiCall('/items', 'PUT', { id: itemId, ...values });
-      modal.close(); 
-      showToast('تم الحفظ بنجاح', 'success'); 
-      loadItems();
-    } catch (e) { 
-      showToast(e.message, 'error'); 
+      modal.close(); showToast('تم الحفظ بنجاح', 'success'); loadItems();
+    } catch (e) {
+      showToast(e.message, 'error');
       const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = false; 
-      btn.innerHTML = `${ICONS.check} حفظ`; 
+      btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`;
     }
   };
 }
 
-
 // ========== الأقسام العامة ==========
-let g_currentSection = null;
-
 function buildGenericItemHtml(item, opts) {
-  let info = opts.extraFields.map(f => {
+  const info = opts.extraFields.map(f => {
     const val = item[f.key]; if (val === undefined || val === null) return '';
     return `<span style="color:var(--text-muted);font-size:13px;background:var(--bg);padding:2px 8px;border-radius:6px;">${f.prefix || ''}${val}</span>`;
   }).filter(Boolean).join(' ');
@@ -1075,64 +661,35 @@ function buildGenericItemHtml(item, opts) {
 async function loadGenericSection(options) {
   g_currentSection = options;
   try {
-    // جلب البيانات من السيرفر مباشرةً
     const data = await apiCall(options.apiBase, 'GET');
-    
-    // تحديث الكاش العام حسب النوع
     if (options.apiBase === '/customers') customersCache = data;
     else if (options.apiBase === '/suppliers') suppliersCache = data;
     else if (options.apiBase === '/definitions?type=category') categoriesCache = data;
 
-    let html = `
-      <div class="card">
-        <div class="card-header">
-          <div><h3 class="card-title">${options.titlePlural || options.title}</h3></div>
-          <button class="btn btn-primary btn-sm add-btn" data-type="${options.apiBase}">${ICONS.plus} إضافة</button>
-        </div>
-      </div>`;
-    if (!data || !data.length) {
-      html += emptyState(`لا يوجد ${options.titlePlural || options.title}`, 'ابدأ بإضافة أول سجل');
-    } else {
-      data.forEach(item => { html += buildGenericItemHtml(item, options); });
-    }
+    let html = `<div class="card"><div class="card-header"><div><h3 class="card-title">${options.titlePlural || options.title}</h3></div><button class="btn btn-primary btn-sm add-btn" data-type="${options.apiBase}">${ICONS.plus} إضافة</button></div></div>`;
+    if (!data || !data.length) html += emptyState(`لا يوجد ${options.titlePlural || options.title}`, 'ابدأ بإضافة أول سجل');
+    else data.forEach(item => { html += buildGenericItemHtml(item, options); });
     document.getElementById('tab-content').innerHTML = html;
   } catch (err) { showToast(err.message, 'error'); }
 }
-
 
 function getSectionOptions(key) {
   const map = {
     '/customers': {
       cache: customersCache, title: 'عميل', titlePlural: 'العملاء', apiBase: '/customers', idField: 'id', nameField: 'name',
       extraFields: [{ key: 'balance', prefix: 'الرصيد: ' }, { key: 'phone', prefix: '📞 ' }],
-      addFields: [
-        { id: 'name', label: 'الاسم', placeholder: 'اسم العميل' },
-        { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' },
-        { id: 'address', label: 'العنوان', placeholder: 'العنوان' }
-      ],
-      editFields: [
-        { id: 'name', label: 'الاسم' },
-        { id: 'phone', label: 'الهاتف' },
-        { id: 'address', label: 'العنوان' }
-      ],
+      addFields: [{ id: 'name', label: 'الاسم', placeholder: 'اسم العميل' }, { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' }, { id: 'address', label: 'العنوان', placeholder: 'العنوان' }],
+      editFields: [{ id: 'name', label: 'الاسم' }, { id: 'phone', label: 'الهاتف' }, { id: 'address', label: 'العنوان' }],
       prepareAdd: v => ({ name: v.name, phone: v.phone || null, address: v.address || null }),
-      prepareEdit: (id, v) => ({ id, name: v.name, phone: v.phone || null, address: v.address || null })
+      prepareEdit: (id, v) => ({ id, ...v })
     },
     '/suppliers': {
       cache: suppliersCache, title: 'مورد', titlePlural: 'الموردين', apiBase: '/suppliers', idField: 'id', nameField: 'name',
       extraFields: [{ key: 'balance', prefix: 'الرصيد: ' }, { key: 'phone', prefix: '📞 ' }],
-      addFields: [
-        { id: 'name', label: 'الاسم', placeholder: 'اسم المورد' },
-        { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' },
-        { id: 'address', label: 'العنوان', placeholder: 'العنوان' }
-      ],
-      editFields: [
-        { id: 'name', label: 'الاسم' },
-        { id: 'phone', label: 'الهاتف' },
-        { id: 'address', label: 'العنوان' }
-      ],
+      addFields: [{ id: 'name', label: 'الاسم', placeholder: 'اسم المورد' }, { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' }, { id: 'address', label: 'العنوان', placeholder: 'العنوان' }],
+      editFields: [{ id: 'name', label: 'الاسم' }, { id: 'phone', label: 'الهاتف' }, { id: 'address', label: 'العنوان' }],
       prepareAdd: v => ({ name: v.name, phone: v.phone || null, address: v.address || null }),
-      prepareEdit: (id, v) => ({ id, name: v.name, phone: v.phone || null, address: v.address || null })
+      prepareEdit: (id, v) => ({ id, ...v })
     },
     '/definitions?type=category': {
       cache: categoriesCache, title: 'تصنيف', titlePlural: 'التصنيفات', apiBase: '/definitions?type=category', idField: 'id', nameField: 'name',
@@ -1141,75 +698,45 @@ function getSectionOptions(key) {
       editFields: [{ id: 'name', label: 'اسم التصنيف' }],
       prepareAdd: v => ({ type: 'category', name: v.name }),
       prepareEdit: (id, v) => ({ type: 'category', id, name: v.name })
-    },
-    '/items': {
-      cache: itemsCache, title: 'مادة', titlePlural: 'المواد', apiBase: '/items', idField: 'id', nameField: 'name',
-      extraFields: [],
-      addFields: [],
-      editFields: [],
-      prepareAdd: v => ({}),
-      prepareEdit: (id, v) => ({ id })
     }
   };
   return map[key];
 }
 
-// مستمع الأحداث العامة (إضافة، تعديل، حذف) لجميع الأقسام - مع تجاهل المواد لأنها تعالج داخل المودال
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  
   if (t.classList.contains('add-btn')) {
-    const key = t.dataset.type; const opts = getSectionOptions(key); if (!opts) return;
+    const opts = getSectionOptions(t.dataset.type); if (!opts) return;
     showFormModal({
-      title: `إضافة ${opts.title} جديد`,
-      fields: opts.addFields,
+      title: `إضافة ${opts.title} جديد`, fields: opts.addFields,
       onSave: async (values) => {
-        const name = values.name?.trim();
-        if (name) {
-          const exists = opts.cache.some(item => item.name?.toLowerCase() === name.toLowerCase());
-          if (exists) throw new Error(`يوجد ${opts.title} بنفس الاسم`);
-        }
+        if (values.name?.trim() && opts.cache.some(x => x.name?.toLowerCase() === values.name.trim().toLowerCase())) throw new Error(`يوجد ${opts.title} بنفس الاسم`);
         return apiCall(opts.apiBase, 'POST', opts.prepareAdd(values));
       },
       onSuccess: () => loadGenericSection(opts)
     });
-  }
-  else if (t.classList.contains('edit-btn')) {
-    const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
-    // بالنسبة للمواد، التعديل يتم من داخل showItemDetail لذلك لا نعالج هنا
-    if (key === '/items') return;
-    const item = opts.cache.find(x => x[opts.idField] == id); if (!item) return;
-    const init = {}; opts.editFields.forEach(f => init[f.id] = item[f.id] !== undefined ? item[f.id] : '');
+  } else if (t.classList.contains('edit-btn')) {
+    const opts = getSectionOptions(t.dataset.type); if (!opts) return;
+    const id = t.dataset.id; const item = opts.cache.find(x => x[opts.idField] == id); if (!item) return;
+    const init = {}; opts.editFields.forEach(f => init[f.id] = item[f.id] ?? '');
     showFormModal({ title: `تعديل ${opts.title}`, fields: opts.editFields, initialValues: init, onSave: v => apiCall(opts.apiBase, 'PUT', opts.prepareEdit(id, v)), onSuccess: () => loadGenericSection(opts) });
-  }
-  else if (t.classList.contains('delete-btn')) {
-    const id = t.dataset.id, key = t.dataset.type, opts = getSectionOptions(key); if (!opts) return;
-    // المواد تُحذف من داخل المودال، لا تفعل شيئًا هنا
-    if (key === '/items') return;
-    const found = opts.cache.find(x => x[opts.idField] == id);
+  } else if (t.classList.contains('delete-btn')) {
+    const opts = getSectionOptions(t.dataset.type); if (!opts) return;
+    const id = t.dataset.id; const found = opts.cache.find(x => x[opts.idField] == id);
     if (!await confirmDialog(`هل أنت متأكد من حذف ${opts.title} <strong>${found?.[opts.nameField] || ''}</strong>؟`)) return;
     try {
       const delUrl = opts.apiBase.includes('?') ? `${opts.apiBase}&id=${id}` : `${opts.apiBase}?id=${id}`;
-      await apiCall(delUrl, 'DELETE');
-      showToast('تم الحذف بنجاح', 'success');
-      loadGenericSection(opts);
+      await apiCall(delUrl, 'DELETE'); showToast('تم الحذف بنجاح', 'success'); loadGenericSection(opts);
     } catch (err) { showToast(err.message, 'error'); }
   }
 });
 
-
-// ========== فاتورة المبيعات والمشتريات (مصحح) ==========
+// ========== فاتورة المبيعات والمشتريات ==========
 async function showInvoiceModal(type) {
   try {
-    const [customers, suppliers, items] = await Promise.all([
-      apiCall('/customers', 'GET'), 
-      apiCall('/suppliers', 'GET'), 
-      apiCall('/items', 'GET')
-    ]);
-    itemsCache = items; 
-    customersCache = customers; 
-    suppliersCache = suppliers;
+    const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
+    itemsCache = items; customersCache = customers; suppliersCache = suppliers;
 
     const entOpts = type === 'sale'
       ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}`
@@ -1219,21 +746,14 @@ async function showInvoiceModal(type) {
       <input type="hidden" id="inv-type" value="${type}">
       <div class="invoice-lines" id="inv-lines">
         <div class="line-row">
-          <div class="form-group" style="grid-column:1/-1">
-            <select class="select item-select"><option value="">اختر مادة</option>${items.map(i => `<option value="${i.id}" data-price="${type==='sale'?i.selling_price:i.purchase_price}">${i.name}</option>`).join('')}</select>
-          </div>
-          <div class="form-group">
-            <select class="select unit-select" style="display:none;">
-              <option value="">الوحدة</option>
-            </select>
-          </div>
+          <div class="form-group" style="grid-column:1/-1"><select class="select item-select"><option value="">اختر مادة</option>${items.map(i => `<option value="${i.id}" data-price="${type==='sale'?i.selling_price:i.purchase_price}">${i.name}</option>`).join('')}</select></div>
+          <div class="form-group"><select class="select unit-select" style="display:none;"><option value="">الوحدة</option></select></div>
           <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية"></div>
           <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
           <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
         </div>
       </div>
       <button class="btn btn-secondary btn-sm" id="btn-add-line" style="width:auto;margin-bottom:16px;">${ICONS.plus} إضافة بند</button>
-
       <div class="form-group"><label class="form-label">${type === 'sale' ? 'العميل' : 'المورد'}</label><select class="select" id="inv-entity">${entOpts}</select></div>
       <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="input" id="inv-date" value="${new Date().toISOString().split('T')[0]}"></div>
       <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" placeholder="رقم الفاتورة أو المرجع"></div>
@@ -1241,9 +761,7 @@ async function showInvoiceModal(type) {
       <div style="background:var(--bg);border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div class="form-group" style="margin:0;"><label class="form-label">المبلغ المدفوع</label><input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="0"></div>
         <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">0.00</div></div>
-      </div>
-    `;
-
+      </div>`;
     const modal = openModal({
       title: `فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'}`,
       bodyHTML: body,
@@ -1251,7 +769,6 @@ async function showInvoiceModal(type) {
     });
 
     attachInvoiceEvents(type, modal.element);
-
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
     modal.element.querySelector('#inv-save').onclick = async () => {
       const itype = modal.element.querySelector('#inv-type').value;
@@ -1260,64 +777,33 @@ async function showInvoiceModal(type) {
       if (itype === 'sale') cust = entity === 'cash' ? null : entity;
       else supp = entity === 'cash' ? null : entity;
 
-      const lines = []; 
-      const ids = new Set(); 
-      let dup = false;
-      
+      const lines = []; const ids = new Set(); let dup = false;
       modal.element.querySelectorAll('.line-row').forEach(row => {
         const id = row.querySelector('.item-select').value || null;
-        if (id) { 
-          if (ids.has(id)) dup = true; 
-          ids.add(id); 
-        }
-        
+        if (id) { if (ids.has(id)) dup = true; ids.add(id); }
         const unitOpt = row.querySelector('.unit-select')?.selectedOptions[0];
         const unitLevel = unitOpt?.dataset.level || '1';
         const unitName = unitOpt?.textContent?.split(' (')[0] || '';
         const factor = parseFloat(unitOpt?.dataset.factor || 1);
-        
         const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
         const price = parseFloat(row.querySelector('.price-input').value) || 0;
         const total = parseFloat(row.querySelector('.total-input').value) || 0;
-        
-        if (id || qty > 0) lines.push({ 
-          item_id: id, 
-          description: unitName,
-          quantity: qty, 
-          unit_price: price, 
-          total,
-          unit_level: parseInt(unitLevel),
-          conversion_factor: factor
-        });
+        if (id || qty > 0) lines.push({ item_id: id, description: unitName, quantity: qty, unit_price: price, total, unit_level: parseInt(unitLevel), conversion_factor: factor });
       });
-      
       if (dup) return showToast('لا يمكن تكرار نفس المادة في الفاتورة', 'error');
       if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
-
       try {
         const btn = modal.element.querySelector('#inv-save');
-        btn.disabled = true; 
-        btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+        btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
         await apiCall('/invoices', 'POST', {
-          type: itype, 
-          customer_id: cust, 
-          supplier_id: supp,
-          date: modal.element.querySelector('#inv-date').value,
-          reference: modal.element.querySelector('#inv-ref').value.trim(),
-          notes: modal.element.querySelector('#inv-notes').value.trim(),
-          lines,
-          paid_amount: parseFloat(modal.element.querySelector('#inv-paid').value) || 0
+          type: itype, customer_id: cust, supplier_id: supp, date: modal.element.querySelector('#inv-date').value,
+          reference: modal.element.querySelector('#inv-ref').value.trim(), notes: modal.element.querySelector('#inv-notes').value.trim(),
+          lines, paid_amount: parseFloat(modal.element.querySelector('#inv-paid').value) || 0
         });
-        modal.close();
-        showToast('تم حفظ الفاتورة بنجاح', 'success');
-        loadInvoices();
-      } catch (e) { 
-        showToast(e.message, 'error'); 
-      }
+        modal.close(); showToast('تم حفظ الفاتورة بنجاح', 'success'); loadInvoices();
+      } catch (e) { showToast(e.message, 'error'); }
     };
-  } catch (err) { 
-    showToast(err.message, 'error'); 
-  }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function attachInvoiceEvents(invoiceType, container) {
@@ -1327,205 +813,13 @@ function attachInvoiceEvents(invoiceType, container) {
   function updateGrandTotal() {
     let total = 0;
     container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
-    const el = container.querySelector('#inv-grand-total');
-    if (el) el.textContent = formatNumber(total);
+    const el = container.querySelector('#inv-grand-total'); if (el) el.textContent = formatNumber(total);
   }
 
   function isDup(id, cur) {
     if (!id) return false;
     let found = false;
-    container.querySelectorAll('.line-row').forEach(r => {
-      if (r !== cur && r.querySelector('.item-select')?.value === id) found = true;
-    });
-    return found;
-  }
-
-  // ========== دالة بناء خيارات الوحدات - مصححة ==========
-  function getUnitOptions(item) {
-    if (!item) return '<option value="">اختر مادة أولاً</option>';
-    
-    const unit1 = item.base_unit_name || 'قطعة';
-    let opts = `<option value="1" data-level="1" data-factor="1">${unit1}</option>`;
-    
-    // الوحدة 2
-    const unit2 = (item.item_units || []).find(u => u.level === 2);
-    if (unit2 && unit2.unit_name && unit2.conversion_factor) {
-      opts += `<option value="2" data-level="2" data-factor="${unit2.conversion_factor}">${unit2.unit_name} (${unit2.conversion_factor} ${unit1})</option>`;
-    }
-    
-    // الوحدة 3
-    const unit3 = (item.item_units || []).find(u => u.level === 3);
-    if (unit3 && unit3.unit_name && unit3.conversion_factor && unit2) {
-      const totalFactor = unit2.conversion_factor * unit3.conversion_factor;
-      opts += `<option value="3" data-level="3" data-factor="${totalFactor}">${unit3.unit_name} (${totalFactor} ${unit1})</option>`;
-    }
-    
-    return opts;
-  }
-
-  function autoFill(sel, pr, unitSel) {
-    const id = sel.value;
-    if (!id) { 
-      pr.value = ''; 
-      if (unitSel) { 
-        unitSel.innerHTML = '<option value="">اختر مادة أولاً</option>'; 
-        unitSel.style.display = 'none'; 
-      } 
-      return; 
-    }
-    
-    const item = itemsCache.find(i => i.id == id);
-    if (!item) {
-      showToast('لم يتم العثور على المادة', 'error');
-      return;
-    }
-    
-    const basePrice = invoiceType === 'sale' ? (item.selling_price || 0) : (item.purchase_price || 0);
-    pr.value = basePrice.toFixed(2);
-    
-    if (unitSel) { 
-      unitSel.innerHTML = getUnitOptions(item); 
-      unitSel.style.display = 'block'; 
-      unitSel.dataset.basePrice = basePrice; 
-    }
-    
-    const row = sel.closest('.line-row');
-    const qty = row.querySelector('.qty-input');
-    const tot = row.querySelector('.total-input');
-    if (qty && tot) {
-      tot.value = (parseFloat(qty.value) || 0) * basePrice;
-      updateGrandTotal();
-    }
-  }
-
-  function calc(row) {
-    const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
-    const pr = parseFloat(row.querySelector('.price-input')?.value) || 0;
-    const tot = row.querySelector('.total-input');
-    if (tot) { 
-      tot.value = (qty * pr).toFixed(2); 
-      updateGrandTotal(); 
-    }
-  }
-
-  function handleUnitChange(row) {
-    const sel = row.querySelector('.item-select');
-    const unitSel = row.querySelector('.unit-select');
-    const pr = row.querySelector('.price-input');
-    
-    const item = itemsCache.find(i => i.id == sel.value);
-    if (!item || !unitSel) return;
-    
-    const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
-    const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
-    const newPrice = basePrice * factor;
-    
-    pr.value = newPrice.toFixed(2);
-    calc(row);
-  }
-
-  // ربط الأحداث للصف الأول
-  container.querySelectorAll('.line-row').forEach(row => {
-    const sel = row.querySelector('.item-select');
-    const pr = row.querySelector('.price-input');
-    const unitSel = row.querySelector('.unit-select');
-    
-    if (sel && pr) autoFill(sel, pr, unitSel);
-    
-    sel?.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { 
-        showToast('المادة مضافة مسبقاً', 'warning'); 
-        this.value = ''; 
-        pr.value = ''; 
-        if (unitSel) {
-          unitSel.innerHTML = '<option value="">اختر مادة أولاً</option>';
-          unitSel.style.display = 'none'; 
-        }
-        return; 
-      }
-      autoFill(this, pr, unitSel);
-    });
-    
-    row.querySelector('.qty-input')?.addEventListener('input', () => calc(row));
-    row.querySelector('.price-input')?.addEventListener('input', () => calc(row));
-    unitSel?.addEventListener('change', () => handleUnitChange(row));
-  });
-
-  // إضافة بند جديد
-  container.querySelector('#btn-add-line')?.addEventListener('click', () => {
-    const nl = document.createElement('div'); 
-    nl.className = 'line-row';
-    nl.innerHTML = `
-      <div class="form-group" style="grid-column:1/-1">
-        <select class="select item-select">
-          <option value="">اختر مادة</option>
-          ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <select class="select unit-select" style="display:none;">
-          <option value="">اختر مادة أولاً</option>
-        </select>
-      </div>
-      <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية" value="1"></div>
-      <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
-      <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
-      <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
-    `;
-    
-    linesContainer.appendChild(nl);
-    
-    const sel = nl.querySelector('.item-select');
-    const pr = nl.querySelector('.price-input');
-    const unitSel = nl.querySelector('.unit-select');
-    
-    sel.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { 
-        showToast('المادة مضافة مسبقاً', 'warning'); 
-        this.value = ''; 
-        pr.value = ''; 
-        if (unitSel) {
-          unitSel.innerHTML = '<option value="">اختر مادة أولاً</option>';
-          unitSel.style.display = 'none'; 
-        }
-        return; 
-      }
-      autoFill(this, pr, unitSel);
-    });
-    
-    nl.querySelector('.qty-input').addEventListener('input', () => calc(nl));
-    nl.querySelector('.price-input').addEventListener('input', () => calc(nl));
-    unitSel?.addEventListener('change', () => handleUnitChange(nl));
-    
-    nl.querySelector('.line-remove').addEventListener('click', () => { 
-      if (linesContainer.querySelectorAll('.line-row').length > 1) { 
-        nl.remove(); 
-        updateGrandTotal(); 
-      } else {
-        showToast('لا يمكن حذف البند الوحيد', 'warning');
-      }
-    });
-  });
-}
-
-
-function attachInvoiceEvents(invoiceType, container) {
-  const linesContainer = container.querySelector('#inv-lines');
-  if (!linesContainer) return;
-
-  function updateGrandTotal() {
-    let total = 0;
-    container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
-    const el = container.querySelector('#inv-grand-total');
-    if (el) el.textContent = formatNumber(total);
-  }
-
-  function isDup(id, cur) {
-    if (!id) return false;
-    let found = false;
-    container.querySelectorAll('.line-row').forEach(r => {
-      if (r !== cur && r.querySelector('.item-select')?.value === id) found = true;
-    });
+    container.querySelectorAll('.line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; });
     return found;
   }
 
@@ -1533,43 +827,27 @@ function attachInvoiceEvents(invoiceType, container) {
     if (!item) return '<option value="">اختر مادة</option>';
     const unit1 = item.base_unit_name || 'قطعة';
     let opts = `<option value="1" data-level="1" data-factor="1">${unit1}</option>`;
-    
     const unit2 = (item.item_units || []).find(u => u.level === 2);
-    if (unit2) {
-      opts += `<option value="2" data-level="2" data-factor="${unit2.conversion_factor}">${unit2.unit_name} (${unit2.conversion_factor} ${unit1})</option>`;
-    }
-    
+    if (unit2) opts += `<option value="2" data-level="2" data-factor="${unit2.conversion_factor}">${unit2.unit_name} (${unit2.conversion_factor} ${unit1})</option>`;
     const unit3 = (item.item_units || []).find(u => u.level === 3);
     if (unit3 && unit2) {
       const totalFactor = unit2.conversion_factor * unit3.conversion_factor;
       opts += `<option value="3" data-level="3" data-factor="${totalFactor}">${unit3.unit_name} (${totalFactor} ${unit1})</option>`;
     }
-    
     return opts;
   }
 
   function autoFill(sel, pr, unitSel) {
     const id = sel.value;
-    if (!id) { 
-      pr.value = ''; 
-      if (unitSel) { 
-        unitSel.innerHTML = '<option value="">اختر مادة</option>'; 
-        unitSel.style.display = 'none'; 
-      } 
-      return; 
-    }
+    if (!id) { pr.value = ''; if (unitSel) { unitSel.innerHTML = '<option value="">اختر مادة</option>'; unitSel.style.display = 'none'; } return; }
     const item = itemsCache.find(i => i.id == id);
     if (item) {
       const basePrice = invoiceType === 'sale' ? (item.selling_price || 0) : (item.purchase_price || 0);
       pr.value = basePrice;
-      if (unitSel) { 
-        unitSel.innerHTML = getUnitOptions(item); 
-        unitSel.style.display = 'block'; 
-        unitSel.dataset.basePrice = basePrice; 
-      }
+      if (unitSel) { unitSel.innerHTML = getUnitOptions(item); unitSel.style.display = 'block'; unitSel.dataset.basePrice = basePrice; }
       const row = sel.closest('.line-row');
       const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
-      if (qty && tot) tot.value = Math.round((parseFloat(qty.value) || 0) * basePrice);
+      if (qty && tot) tot.value = (parseFloat(qty.value) || 0) * basePrice;
       updateGrandTotal();
     }
   }
@@ -1578,7 +856,7 @@ function attachInvoiceEvents(invoiceType, container) {
     const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
     const pr = parseFloat(row.querySelector('.price-input')?.value) || 0;
     const tot = row.querySelector('.total-input');
-    if (tot) { tot.value = Math.round(qty * pr); updateGrandTotal(); }
+    if (tot) { tot.value = (qty * pr).toFixed(2); updateGrandTotal(); }
   }
 
   function handleUnitChange(row) {
@@ -1587,7 +865,7 @@ function attachInvoiceEvents(invoiceType, container) {
     if (!item || !unitSel) return;
     const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
     const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
-    pr.value = Math.round(basePrice * factor);
+    pr.value = (basePrice * factor).toFixed(2);
     calc(row);
   }
 
@@ -1595,13 +873,7 @@ function attachInvoiceEvents(invoiceType, container) {
     const sel = row.querySelector('.item-select'), pr = row.querySelector('.price-input'), unitSel = row.querySelector('.unit-select');
     if (sel && pr) autoFill(sel, pr, unitSel);
     sel?.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { 
-        showToast('المادة مضافة مسبقاً', 'warning'); 
-        this.value = ''; 
-        pr.value = ''; 
-        if (unitSel) unitSel.style.display = 'none'; 
-        return; 
-      }
+      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; if (unitSel) unitSel.style.display = 'none'; return; }
       autoFill(this, pr, unitSel);
     });
     row.querySelector('.qty-input')?.addEventListener('input', () => calc(row));
@@ -1617,32 +889,21 @@ function attachInvoiceEvents(invoiceType, container) {
       <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية"></div>
       <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
       <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
-      <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
-    `;
+      <button class="line-remove" title="حذف البند">${ICONS.trash}</button>`;
     linesContainer.appendChild(nl);
     const sel = nl.querySelector('.item-select'), pr = nl.querySelector('.price-input'), unitSel = nl.querySelector('.unit-select');
     sel.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { 
-        showToast('المادة مضافة مسبقاً', 'warning'); 
-        this.value = ''; 
-        pr.value = ''; 
-        if (unitSel) unitSel.style.display = 'none'; 
-        return; 
-      }
+      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; if (unitSel) unitSel.style.display = 'none'; return; }
       autoFill(this, pr, unitSel);
     });
     nl.querySelector('.qty-input').addEventListener('input', () => calc(nl));
     nl.querySelector('.price-input').addEventListener('input', () => calc(nl));
     unitSel?.addEventListener('change', () => handleUnitChange(nl));
-    nl.querySelector('.line-remove').addEventListener('click', () => { 
-      if (linesContainer.querySelectorAll('.line-row').length > 1) { 
-        nl.remove(); 
-        updateGrandTotal(); 
-      } 
+    nl.querySelector('.line-remove').addEventListener('click', () => {
+      if (linesContainer.querySelectorAll('.line-row').length > 1) { nl.remove(); updateGrandTotal(); }
     });
   });
 }
-
 
 // ========== قائمة الفواتير ==========
 async function loadInvoices() {
@@ -1657,8 +918,7 @@ async function loadInvoices() {
         </div>
         <div class="form-group" style="margin-bottom:0;"><input type="text" class="input" id="invoice-search" placeholder="البحث في الفواتير..."></div>
       </div>
-      <div id="invoices-list"></div>
-    `;
+      <div id="invoices-list"></div>`;
     document.querySelectorAll('.filter-pill').forEach(tab => {
       tab.addEventListener('click', function() { document.querySelectorAll('.filter-pill').forEach(t => t.classList.remove('active')); this.classList.add('active'); renderFilteredInvoices(); });
     });
@@ -1673,9 +933,10 @@ function renderFilteredInvoices() {
   let data = invoicesCache;
   if (filt !== 'all') data = data.filter(inv => inv.type === filt);
   if (q) data = data.filter(inv => (inv.reference || '').includes(q) || (inv.customer?.name || '').includes(q) || (inv.supplier?.name || '').includes(q) || String(inv.total).includes(q));
+
   const container = document.getElementById('invoices-list');
-  if (!data.length) { container.innerHTML = emptyState('لا توجد فواتير مطابقة', 'جرب تغيير معايير البحث'); return; }
-  
+  if (!data.length) return container.innerHTML = emptyState('لا توجد فواتير مطابقة', 'جرب تغيير معايير البحث');
+
   let html = '';
   data.forEach(inv => {
     const typeLabel = inv.type === 'sale' ? 'بيع' : 'شراء';
@@ -1698,7 +959,7 @@ function renderFilteredInvoices() {
           <span style="color:${statusColor};font-weight:700;">باقي: ${formatNumber(inv.balance || 0)}</span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary btn-sm edit-invoice-btn" data-id="${inv.id}">${ICONS.edit} تعديل</button>
+          <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
           <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
           <button class="btn btn-primary btn-sm pdf-invoice-btn" data-id="${inv.id}">${ICONS.file} PDF</button>
           <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
@@ -1707,9 +968,10 @@ function renderFilteredInvoices() {
   });
   container.innerHTML = html;
 
-  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
+  container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
-    showToast('ميزة تعديل الفاتورة قيد التطوير', 'warning');
+    const inv = invoicesCache.find(i => i.id === id);
+    if (inv) showInvoiceDetail(inv);
   }));
   container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
@@ -1735,93 +997,17 @@ async function deleteInvoice(id) {
   catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== عرض تفاصيل الفاتورة (محدث) ==========
-function printInvoice(invoice) {
-  const rows = invoice.invoice_lines?.map(l => {
-    const item = itemsCache.find(i => i.id === l.item_id);
-    const unitName = l.description || (item?.base_unit_name || 'قطعة');
-    const level = l.unit_level || 1;
-    const factor = l.conversion_factor || 1;
-    
-    let unitDisplay = unitName;
-    if (level > 1 && item) {
-      unitDisplay = `${unitName} (مستوى ${level})`;
-    }
-    
-    return `<tr>
-      <td>${l.item?.name || '-'}</td>
-      <td>${l.quantity} ${unitDisplay}</td>
-      <td>${formatNumber(l.unit_price)}</td>
-      <td>${formatNumber(l.total)}</td>
-    </tr>`;
-  }).join('') || '';
-
-  const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-      body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto}
-      table{width:100%;border-collapse:collapse;margin:16px 0}
-      th,td{border:1px solid #ddd;padding:10px;text-align:right}
-      th{background:#f8fafc}
-      .total{font-size:20px;font-weight:800;margin-top:16px}
-      button{padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}
-      .unit-info{color:#666;font-size:12px}
-    </style></head><body>
-    <h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2>
-    <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>
-    <p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''}${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p>
-    <table>
-      <thead>
-        <tr>
-          <th>المادة</th>
-          <th>الكمية</th>
-          <th>السعر</th>
-          <th>الإجمالي</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div class="total">الإجمالي: ${formatNumber(invoice.total)}</div>
-    <p>مدفوع: ${formatNumber(invoice.paid||0)} | باقي: ${formatNumber(invoice.balance||0)}</p>
-    <button onclick="window.print();setTimeout(()=>window.close(),500)">طباعة</button>
-    </body></html>`;
-    
-  const w = window.open('', '_blank', 'width=800,height=600');
-  if (w) { 
-    w.document.write(html); 
-    w.document.close(); 
-  } else {
-    showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
-  }
-}
-
-
-
-
-// ========== عرض تفاصيل الفاتورة في مودال ==========
 function showInvoiceDetail(invoice) {
   const lines = invoice.invoice_lines?.map(l => {
     const item = itemsCache.find(i => i.id === l.item_id);
     const unitName = l.description || (item?.base_unit_name || 'قطعة');
     const level = l.unit_level || 1;
     const factor = l.conversion_factor || 1;
-    
-    // حساب الكمية بالوحدة الأساسية
     const baseQty = l.quantity * factor;
     const baseUnit = item?.base_unit_name || 'قطعة';
-    
     let qtyDisplay = `${l.quantity} ${unitName}`;
-    if (level > 1) {
-      qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
-    }
-    
-    return `
-      <tr>
-        <td style="font-weight:700;">${l.item?.name || '-'}</td>
-        <td>${qtyDisplay}</td>
-        <td>${formatNumber(l.unit_price)}</td>
-        <td style="font-weight:800;">${formatNumber(l.total)}</td>
-      </tr>`;
+    if (level > 1) qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
+    return `<tr><td style="font-weight:700;">${l.item?.name || '-'}</td><td>${qtyDisplay}</td><td>${formatNumber(l.unit_price)}</td><td style="font-weight:800;">${formatNumber(l.total)}</td></tr>`;
   }).join('') || '';
 
   const typeLabel = invoice.type === 'sale' ? 'مبيعات' : 'مشتريات';
@@ -1833,85 +1019,52 @@ function showInvoiceDetail(invoice) {
     bodyHTML: `
       <div style="margin-bottom:16px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-          <div style="background:var(--bg);border-radius:8px;padding:12px;">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div>
-            <div style="font-weight:700;">${formatDate(invoice.date)}</div>
-          </div>
-          <div style="background:var(--bg);border-radius:8px;padding:12px;">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${invoice.type === 'sale' ? 'العميل' : 'المورد'}</div>
-            <div style="font-weight:700;">${entity}</div>
-          </div>
+          <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div><div style="font-weight:700;">${formatDate(invoice.date)}</div></div>
+          <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${invoice.type === 'sale' ? 'العميل' : 'المورد'}</div><div style="font-weight:700;">${entity}</div></div>
         </div>
-        
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>المادة</th>
-                <th>الكمية</th>
-                <th>السعر</th>
-                <th>الإجمالي</th>
-              </tr>
-            </thead>
-            <tbody>${lines}</tbody>
-          </table>
-        </div>
-        
+        <div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${lines}</tbody></table></div>
         <div style="background:var(--bg);border-radius:12px;padding:16px;margin-top:16px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:var(--text-muted);">الإجمالي</span>
-            <span style="font-weight:800;font-size:18px;">${formatNumber(invoice.total)}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:var(--text-muted);">المدفوع</span>
-            <span style="font-weight:700;color:var(--success);">${formatNumber(invoice.paid || 0)}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:var(--text-muted);">المتبقي</span>
-            <span style="font-weight:800;color:${statusColor};">${formatNumber(invoice.balance || 0)}</span>
-          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">الإجمالي</span><span style="font-weight:800;font-size:18px;">${formatNumber(invoice.total)}</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">المدفوع</span><span style="font-weight:700;color:var(--success);">${formatNumber(invoice.paid || 0)}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">المتبقي</span><span style="font-weight:800;color:${statusColor};">${formatNumber(invoice.balance || 0)}</span></div>
         </div>
-        
         ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
-      </div>
-    `,
-    footerHTML: `
-      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button>
-      <button class="btn btn-primary" onclick="printInvoiceById(${invoice.id})">${ICONS.print} طباعة</button>
-    `
+      </div>`,
+    footerHTML: `<button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button><button class="btn btn-primary" id="print-detail-btn">${ICONS.print} طباعة</button>`
   });
 
+  const printBtn = document.querySelector('#print-detail-btn');
+  if (printBtn) printBtn.onclick = () => printInvoice(invoice);
+}
+
+function printInvoice(invoice) {
+  const rows = invoice.invoice_lines?.map(l => {
+    const item = itemsCache.find(i => i.id === l.item_id);
+    const unitName = l.description || (item?.base_unit_name || 'قطعة');
+    return `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity} ${unitName}</td><td>${formatNumber(l.unit_price)}</td><td>${formatNumber(l.total)}</td></tr>`;
+  }).join('') || '';
+
+  const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap'); body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto} table{width:100%;border-collapse:collapse;margin:16px 0} th,td{border:1px solid #ddd;padding:10px;text-align:right} th{background:#f8fafc} .total{font-size:20px;font-weight:800;margin-top:16px} button{padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}</style></head><body>
+    <h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2><p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>
+    <p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''}${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p>
+    <table><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="total">الإجمالي: ${formatNumber(invoice.total)}</div><p>مدفوع: ${formatNumber(invoice.paid||0)} | باقي: ${formatNumber(invoice.balance||0)}</p>
+    <button onclick="window.print();setTimeout(()=>window.close(),500)">طباعة</button></body></html>`;
+  const w = window.open('', '_blank', 'width=800,height=600');
+  if (w) { w.document.write(html); w.document.close(); } else showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+}
 
 // ========== المدفوعات ==========
 async function loadPayments() {
   try {
-    const [payments, invoices, customers, suppliers] = await Promise.all([
-      apiCall('/payments', 'GET'), apiCall('/invoices', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET')
-    ]);
-    let html = `
-      <div class="card">
-        <div class="card-header"><div><h3 class="card-title">الدفعات</h3><span class="card-subtitle">سجل المقبوضات والمدفوعات</span></div><button class="btn btn-primary btn-sm" id="btn-add-pmt">${ICONS.plus} إضافة</button></div>
-      </div>`;
+    const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments', 'GET'), apiCall('/invoices', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET')]);
+    let html = `<div class="card"><div class="card-header"><div><h3 class="card-title">الدفعات</h3><span class="card-subtitle">سجل المقبوضات والمدفوعات</span></div><button class="btn btn-primary btn-sm" id="btn-add-pmt">${ICONS.plus} إضافة</button></div></div>`;
     if (!payments.length) html += emptyState('لا توجد دفعات مسجلة', 'سجل أول دفعة باستخدام الزر أعلاه');
     else {
       payments.forEach(p => {
         const isIn = !!p.customer_id;
-        html += `
-          <div class="card" style="border-right:3px solid ${isIn?'var(--success)':'var(--danger)'};">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-weight:900;font-size:20px;color:${isIn?'var(--success)':'var(--danger)'};">${isIn?'+':'-'} ${formatNumber(p.amount)}</div>
-                <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${formatDate(p.payment_date)}</div>
-              </div>
-              <button class="btn btn-ghost btn-sm" onclick="deletePayment(${p.id})">${ICONS.trash}</button>
-            </div>
-            <div style="margin-top:10px;font-size:13px;color:var(--text-secondary);line-height:1.6;">
-              ${p.customer?.name ? '<span style="color:var(--success);font-weight:700;">▲ عميل: ' + p.customer.name + '</span>' : ''}
-              ${p.supplier?.name ? '<span style="color:var(--danger);font-weight:700;">▼ مورد: ' + p.supplier.name + '</span>' : ''}
-              ${p.invoice ? '· فاتورة: ' + (p.invoice.type==='sale'?'بيع':'شراء') + ' ' + (p.invoice.reference||'') : ''}
-              ${p.notes ? '<div style="margin-top:4px;color:var(--text-muted);">' + p.notes + '</div>' : ''}
-            </div>
-          </div>`;
+        html += `<div class="card" style="border-right:3px solid ${isIn?'var(--success)':'var(--danger)'};"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:900;font-size:20px;color:${isIn?'var(--success)':'var(--danger)'};">${isIn?'+':'-'} ${formatNumber(p.amount)}</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${formatDate(p.payment_date)}</div></div><button class="btn btn-ghost btn-sm" onclick="deletePayment(${p.id})">${ICONS.trash}</button></div><div style="margin-top:10px;font-size:13px;color:var(--text-secondary);line-height:1.6;">${p.customer?.name ? '<span style="color:var(--success);font-weight:700;">▲ عميل: ' + p.customer.name + '</span>' : ''}${p.supplier?.name ? '<span style="color:var(--danger);font-weight:700;">▼ مورد: ' + p.supplier.name + '</span>' : ''}${p.invoice ? '· فاتورة: ' + (p.invoice.type==='sale'?'بيع':'شراء') + ' ' + (p.invoice.reference||'') : ''}${p.notes ? '<div style="margin-top:4px;color:var(--text-muted);">' + p.notes + '</div>' : ''}</div></div>`;
       });
     }
     document.getElementById('tab-content').innerHTML = html;
@@ -1927,33 +1080,19 @@ function showAddPaymentModal(customers, suppliers, invoices) {
     <div class="form-group"><label class="form-label">الفاتورة (اختياري)</label><select class="select" id="pmt-invoice"><option value="">بدون فاتورة</option></select></div>
     <div class="form-group"><label class="form-label">المبلغ</label><input type="number" step="0.01" class="input" id="pmt-amount" placeholder="0.00"></div>
     <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="input" id="pmt-date" value="${new Date().toISOString().split('T')[0]}"></div>
-    <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="pmt-notes" placeholder="وصف الدفعة..."></textarea></div>
-  `;
+    <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="pmt-notes" placeholder="وصف الدفعة..."></textarea></div>`;
   const modal = openModal({ title: 'تسجيل دفعة جديدة', bodyHTML: body, footerHTML: `<button class="btn btn-secondary" id="pmt-cancel">إلغاء</button><button class="btn btn-primary" id="pmt-save">${ICONS.check} حفظ</button>` });
-  
-  const tSel = modal.element.querySelector('#pmt-type');
-  const cBlock = modal.element.querySelector('#pmt-cust-block');
-  const sBlock = modal.element.querySelector('#pmt-supp-block');
-  const invSel = modal.element.querySelector('#pmt-invoice');
-  const cSel = modal.element.querySelector('#pmt-customer');
-  const sSel = modal.element.querySelector('#pmt-supplier');
-
+  const tSel = modal.element.querySelector('#pmt-type'), cBlock = modal.element.querySelector('#pmt-cust-block'), sBlock = modal.element.querySelector('#pmt-supp-block'), invSel = modal.element.querySelector('#pmt-invoice'), cSel = modal.element.querySelector('#pmt-customer'), sSel = modal.element.querySelector('#pmt-supplier');
   const updateInv = (type, eId) => {
     const filt = invoices.filter(inv => type === 'customer' ? inv.type === 'sale' && inv.customer_id == eId : inv.type === 'purchase' && inv.supplier_id == eId);
     invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${formatNumber(inv.total)})</option>`).join('');
   };
-  tSel.addEventListener('change', () => {
-    if (tSel.value === 'customer') { cBlock.style.display = 'block'; sBlock.style.display = 'none'; updateInv('customer', cSel.value); }
-    else { cBlock.style.display = 'none'; sBlock.style.display = 'block'; updateInv('supplier', sSel.value); }
-  });
+  tSel.addEventListener('change', () => { if (tSel.value === 'customer') { cBlock.style.display = 'block'; sBlock.style.display = 'none'; updateInv('customer', cSel.value); } else { cBlock.style.display = 'none'; sBlock.style.display = 'block'; updateInv('supplier', sSel.value); } });
   cSel.addEventListener('change', () => updateInv('customer', cSel.value));
   sSel.addEventListener('change', () => updateInv('supplier', sSel.value));
-
   modal.element.querySelector('#pmt-cancel').onclick = () => modal.close();
   modal.element.querySelector('#pmt-save').onclick = async () => {
-    const type = tSel.value;
-    const cust = type === 'customer' ? (cSel.value || null) : null;
-    const supp = type === 'supplier' ? (sSel.value || null) : null;
+    const type = tSel.value, cust = type === 'customer' ? (cSel.value || null) : null, supp = type === 'supplier' ? (sSel.value || null) : null;
     const amount = parseFloat(modal.element.querySelector('#pmt-amount').value);
     if (!amount || amount <= 0) return showToast('المبلغ مطلوب', 'error');
     if (!cust && !supp) return showToast('اختر عميلاً أو مورداً', 'error');
@@ -1974,26 +1113,9 @@ async function deletePayment(id) {
 async function loadExpenses() {
   try {
     const expenses = await apiCall('/expenses', 'GET');
-    let html = `
-      <div class="card">
-        <div class="card-header"><div><h3 class="card-title">المصاريف</h3><span class="card-subtitle">تتبع المصاريف التشغيلية</span></div><button class="btn btn-primary btn-sm" id="btn-add-expense">${ICONS.plus} إضافة</button></div>
-      </div>`;
+    let html = `<div class="card"><div class="card-header"><div><h3 class="card-title">المصاريف</h3><span class="card-subtitle">تتبع المصاريف التشغيلية</span></div><button class="btn btn-primary btn-sm" id="btn-add-expense">${ICONS.plus} إضافة</button></div></div>`;
     if (!expenses.length) html += emptyState('لا توجد مصاريف مسجلة', 'سجل أول مصروف باستخدام الزر أعلاه');
-    else {
-      expenses.forEach(ex => {
-        html += `
-          <div class="card" style="border-right:3px solid var(--danger);">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-weight:900;font-size:20px;color:var(--danger);">${formatNumber(ex.amount)}</div>
-                <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${formatDate(ex.expense_date)}</div>
-              </div>
-              <button class="btn btn-ghost btn-sm" onclick="deleteExpense(${ex.id})">${ICONS.trash}</button>
-            </div>
-            ${ex.description ? `<div style="margin-top:10px;font-size:14px;color:var(--text-secondary);">${ex.description}</div>` : ''}
-          </div>`;
-      });
-    }
+    else expenses.forEach(ex => { html += `<div class="card" style="border-right:3px solid var(--danger);"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:900;font-size:20px;color:var(--danger);">${formatNumber(ex.amount)}</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${formatDate(ex.expense_date)}</div></div><button class="btn btn-ghost btn-sm" onclick="deleteExpense(${ex.id})">${ICONS.trash}</button></div>${ex.description ? `<div style="margin-top:10px;font-size:14px;color:var(--text-secondary);">${ex.description}</div>` : ''}</div>`; });
     document.getElementById('tab-content').innerHTML = html;
     document.getElementById('btn-add-expense')?.addEventListener('click', showAddExpenseModal);
   } catch (err) { showToast(err.message, 'error'); }
@@ -2002,11 +1124,7 @@ async function loadExpenses() {
 function showAddExpenseModal() {
   showFormModal({
     title: 'إضافة مصروف جديد',
-    fields: [
-      { id: 'amount', label: 'المبلغ', type: 'number', placeholder: '0.00' },
-      { id: 'expense_date', label: 'التاريخ', type: 'date' },
-      { id: 'description', label: 'الوصف', type: 'textarea', placeholder: 'وصف المصروف...' }
-    ],
+    fields: [{ id: 'amount', label: 'المبلغ', type: 'number', placeholder: '0.00' }, { id: 'expense_date', label: 'التاريخ', type: 'date' }, { id: 'description', label: 'الوصف', type: 'textarea', placeholder: 'وصف المصروف...' }],
     initialValues: { expense_date: new Date().toISOString().split('T')[0] },
     onSave: values => apiCall('/expenses', 'POST', { ...values, amount: parseFloat(values.amount) }),
     onSuccess: () => loadExpenses()
@@ -2023,86 +1141,22 @@ async function deleteExpense(id) {
 async function loadDashboard() {
   try {
     const data = await apiCall('/summary', 'GET');
-    const totalSales = data.total_sales || 0;
-    const totalPurchases = data.total_purchases || 0;
-
-    let html = `
-      <div class="stats-grid">
-        <div class="stat-card profit">
-          <div class="stat-label">صافي الربح</div>
-          <div class="stat-value ${data.net_profit >= 0 ? 'positive' : 'negative'}" style="font-size:24px;">${formatNumber(data.net_profit)}</div>
-          ${data.net_profit >= 0 ? '<div class="stat-trend up">↑ ربح</div>' : '<div class="stat-trend down">↓ خسارة</div>'}
-        </div>
-        <div class="stat-card cash">
-          <div class="stat-label">رصيد الصندوق</div>
-          <div class="stat-value ${data.cash_balance >= 0 ? 'positive' : 'negative'}">${formatNumber(data.cash_balance)}</div>
-        </div>
-        <div class="stat-card receivables">
-          <div class="stat-label">الذمم المدينة</div>
-          <div class="stat-value">${formatNumber(data.receivables)}</div>
-        </div>
-        <div class="stat-card payables">
-          <div class="stat-label">الذمم الدائنة</div>
-          <div class="stat-value">${formatNumber(data.payables)}</div>
-        </div>
-      </div>
-
-      <div class="chart-card">
-        <div class="chart-title">المبيعات vs المشتريات</div>
-        <canvas id="incomeChart"></canvas>
-      </div>
-    `;
-
-    if (data.monthly) {
-      html += `
-        <div class="chart-card">
-          <div class="chart-title">الحركات المالية الشهرية</div>
-          <canvas id="paymentsChart"></canvas>
-        </div>
-      `;
-    }
-    if (data.daily?.dates.length) {
-      html += `
-        <div class="chart-card">
-          <div class="chart-title">الربح اليومي (آخر 30 يوم)</div>
-          <canvas id="profitChart"></canvas>
-        </div>
-      `;
-    }
-
+    let html = `<div class="stats-grid">
+      <div class="stat-card profit"><div class="stat-label">صافي الربح</div><div class="stat-value ${data.net_profit>=0?'positive':'negative'}" style="font-size:24px;">${formatNumber(data.net_profit)}</div>${data.net_profit>=0?'<div class="stat-trend up">↑ ربح</div>':'<div class="stat-trend down">↓ خسارة</div>'}</div>
+      <div class="stat-card cash"><div class="stat-label">رصيد الصندوق</div><div class="stat-value ${data.cash_balance>=0?'positive':'negative'}">${formatNumber(data.cash_balance)}</div></div>
+      <div class="stat-card receivables"><div class="stat-label">الذمم المدينة</div><div class="stat-value">${formatNumber(data.receivables)}</div></div>
+      <div class="stat-card payables"><div class="stat-label">الذمم الدائنة</div><div class="stat-value">${formatNumber(data.payables)}</div></div>
+    </div><div class="chart-card"><div class="chart-title">المبيعات vs المشتريات</div><canvas id="incomeChart"></canvas></div>`;
+    if (data.monthly) html += `<div class="chart-card"><div class="chart-title">الحركات المالية الشهرية</div><canvas id="paymentsChart"></canvas></div>`;
+    if (data.daily?.dates.length) html += `<div class="chart-card"><div class="chart-title">الربح اليومي (آخر 30 يوم)</div><canvas id="profitChart"></canvas></div>`;
     document.getElementById('tab-content').innerHTML = html;
 
-    new Chart(document.getElementById('incomeChart'), {
-      type: 'doughnut',
-      data: { labels: ['مبيعات', 'مشتريات'], datasets: [{ data: [totalSales, totalPurchases], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 0, hoverOffset: 4 }] },
-      options: { responsive: true, cutout: '70%', plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tajawal' } } } } }
-    });
-
-    if (data.monthly) {
-      new Chart(document.getElementById('paymentsChart'), {
-        type: 'bar',
-        data: {
-          labels: data.monthly.labels,
-          datasets: [
-            { label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#4f46e5', borderRadius: 6 },
-            { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444', borderRadius: 6 }
-          ]
-        },
-        options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } }
-      });
-    }
-
-    if (data.daily?.dates.length) {
-      const last30 = data.daily.dates.slice(-30);
-      const profits30 = data.daily.profits.slice(-30);
-      new Chart(document.getElementById('profitChart'), {
-        type: 'line',
-        data: { labels: last30, datasets: [{ label: 'صافي الربح', data: profits30, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5 }] },
-        options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } }
-      });
-    }
+    new Chart(document.getElementById('incomeChart'), { type: 'doughnut', data: { labels: ['مبيعات', 'مشتريات'], datasets: [{ data: [data.total_sales, data.total_purchases], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 0, hoverOffset: 4 }] }, options: { responsive: true, cutout: '70%', plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tajawal' } } } } } });
+    if (data.monthly) new Chart(document.getElementById('paymentsChart'), { type: 'bar', data: { labels: data.monthly.labels, datasets: [{ label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#4f46e5', borderRadius: 6 }, { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444', borderRadius: 6 }] }, options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } } });
+    if (data.daily?.dates.length) new Chart(document.getElementById('profitChart'), { type: 'line', data: { labels: data.daily.dates.slice(-30), datasets: [{ label: 'صافي الربح', data: data.daily.profits.slice(-30), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5 }] }, options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } } });
   } catch (err) { showToast(err.message, 'error'); }
 }
+
 // ========== التقارير ==========
 async function loadReports() {
   document.getElementById('tab-content').innerHTML = `
@@ -2112,8 +1166,7 @@ async function loadReports() {
     <div class="report-card" data-report="balance_sheet"><div class="report-icon">${ICONS.chart}</div><div class="report-info"><h4>الميزانية العمومية</h4><p>الأصول والخصوم وحقوق الملكية</p></div></div>
     <div class="report-card" data-report="account_ledger"><div class="report-icon">${ICONS.fileText}</div><div class="report-info"><h4>الأستاذ العام</h4><p>كشف حساب تفصيلي</p></div></div>
     <div class="report-card" data-report="customer_statement"><div class="report-icon">${ICONS.users}</div><div class="report-info"><h4>كشف حساب عميل</h4><p>حركات عميل محدد</p></div></div>
-    <div class="report-card" data-report="supplier_statement"><div class="report-icon">${ICONS.factory}</div><div class="report-info"><h4>كشف حساب مورد</h4><p>حركات مورد محدد</p></div></div>
-  `;
+    <div class="report-card" data-report="supplier_statement"><div class="report-icon">${ICONS.factory}</div><div class="report-info"><h4>كشف حساب مورد</h4><p>حركات مورد محدد</p></div></div>`;
   document.querySelectorAll('.report-card').forEach(el => {
     el.addEventListener('click', () => {
       const r = el.dataset.report;
@@ -2130,13 +1183,8 @@ async function loadReports() {
 async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance', 'GET');
-    const rows = data.map(r => `<tr><td style="font-weight:700;">${r.name}</td><td>${formatNumber(r.total_debit)}</td><td>${formatNumber(r.total_credit)}</td><td class="${r.balance >= 0 ? 'text-success' : 'text-danger'}" style="font-weight:800;">${formatNumber(r.balance)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
-        <h3 class="card-title">ميزان المراجعة</h3>
-        <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${rows}</tbody></table></div>
-      </div>`;
+    const rows = data.map(r => `<tr><td style="font-weight:700;">${r.name}</td><td>${formatNumber(r.total_debit)}</td><td>${formatNumber(r.total_credit)}</td><td class="${r.balance>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(r.balance)}</td></tr>`).join('');
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button><h3 class="card-title">ميزان المراجعة</h3><div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2145,19 +1193,7 @@ async function loadIncomeStatement() {
     const d = await apiCall('/reports?type=income_statement', 'GET');
     const iRows = d.income.map(i => `<tr><td>${i.name}</td><td style="font-weight:700;color:var(--success);">${formatNumber(i.balance)}</td></tr>`).join('');
     const eRows = d.expenses.map(e => `<tr><td>${e.name}</td><td style="font-weight:700;color:var(--danger);">${formatNumber(e.balance)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
-        <h3 class="card-title">قائمة الدخل</h3>
-        <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">الإيرادات</h4>
-        <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${iRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;font-size:16px;text-align:left;">إجمالي الإيرادات: <span style="color:var(--success);">${formatNumber(d.total_income)}</span></p>
-        <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">المصروفات</h4>
-        <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;font-size:16px;text-align:left;">إجمالي المصروفات: <span style="color:var(--danger);">${formatNumber(d.total_expenses)}</span></p>
-        <hr style="border-color:var(--border);margin:16px 0;">
-        <h2 style="color:${d.net_profit >= 0 ? 'var(--success)' : 'var(--danger)'};font-size:24px;font-weight:900;text-align:center;">صافي الربح: ${formatNumber(d.net_profit)}</h2>
-      </div>`;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button><h3 class="card-title">قائمة الدخل</h3><h4>الإيرادات</h4><div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${iRows}</tbody></table></div><p style="font-weight:800;text-align:left;">إجمالي الإيرادات: <span style="color:var(--success);">${formatNumber(d.total_income)}</span></p><h4>المصروفات</h4><div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div><p style="font-weight:800;text-align:left;">إجمالي المصروفات: <span style="color:var(--danger);">${formatNumber(d.total_expenses)}</span></p><hr><h2 style="color:${d.net_profit>=0?'var(--success)':'var(--danger)'};font-size:24px;font-weight:900;text-align:center;">صافي الربح: ${formatNumber(d.net_profit)}</h2></div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2167,20 +1203,7 @@ async function loadBalanceSheet() {
     const aRows = d.assets.map(a => `<tr><td>${a.name}</td><td style="font-weight:700;">${formatNumber(a.balance)}</td></tr>`).join('');
     const lRows = d.liabilities.map(l => `<tr><td>${l.name}</td><td style="font-weight:700;">${formatNumber(l.balance)}</td></tr>`).join('');
     const eRows = d.equity.map(e => `<tr><td>${e.name}</td><td style="font-weight:700;">${formatNumber(e.balance)}</td></tr>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
-        <h3 class="card-title">الميزانية العمومية</h3>
-        <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">الأصول</h4>
-        <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${aRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;text-align:left;">إجمالي الأصول: ${formatNumber(d.total_assets)}</p>
-        <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">الخصوم</h4>
-        <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${lRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;text-align:left;">إجمالي الخصوم: ${formatNumber(d.total_liabilities)}</p>
-        <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-muted);font-weight:800;">حقوق الملكية</h4>
-        <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div>
-        <p style="font-weight:800;margin:8px 0;text-align:left;">إجمالي حقوق الملكية: ${formatNumber(d.total_equity)}</p>
-      </div>`;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button><h3 class="card-title">الميزانية العمومية</h3><h4>الأصول</h4><div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${aRows}</tbody></table></div><p style="font-weight:800;text-align:left;">إجمالي الأصول: ${formatNumber(d.total_assets)}</p><h4>الخصوم</h4><div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${lRows}</tbody></table></div><p style="font-weight:800;text-align:left;">إجمالي الخصوم: ${formatNumber(d.total_liabilities)}</p><h4>حقوق الملكية</h4><div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div><p style="font-weight:800;text-align:left;">إجمالي حقوق الملكية: ${formatNumber(d.total_equity)}</p></div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2188,20 +1211,13 @@ async function loadAccountLedgerForm() {
   try {
     const accounts = await apiCall('/accounts', 'GET');
     const opts = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
-        <h3 class="card-title">الأستاذ العام</h3>
-        <div class="form-group"><select class="select" id="ledger-account">${opts}</select></div>
-        <button class="btn btn-primary" id="btn-ledger" style="width:auto;">عرض الحركات</button>
-        <div id="ledger-result" style="margin-top:16px"></div>
-      </div>`;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button><h3 class="card-title">الأستاذ العام</h3><div class="form-group"><select class="select" id="ledger-account">${opts}</select></div><button class="btn btn-primary" id="btn-ledger" style="width:auto;">عرض الحركات</button><div id="ledger-result" style="margin-top:16px"></div></div>`;
     document.getElementById('btn-ledger').addEventListener('click', async () => {
       const id = document.getElementById('ledger-account').value; if (!id) return;
       try {
         const lines = await apiCall(`/reports?type=account_ledger&account_id=${id}`, 'GET');
         let html = '<div class="table-wrap"><table class="table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>';
-        lines.forEach(l => html += `<tr><td>${formatDate(l.date)}</td><td>${l.description || ''}</td><td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td><td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td><td class="${(l.balance || 0) >= 0 ? 'text-success' : 'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`);
+        lines.forEach(l => html += `<tr><td>${formatDate(l.date)}</td><td>${l.description||''}</td><td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td><td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td><td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`);
         html += '</tbody></table></div>';
         document.getElementById('ledger-result').innerHTML = html;
       } catch (e) { showToast(e.message, 'error'); }
@@ -2213,20 +1229,13 @@ async function loadCustomerStatementForm() {
   try {
     const custs = await apiCall('/customers', 'GET');
     const opts = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
-        <h3 class="card-title">كشف حساب عميل</h3>
-        <div class="form-group"><select class="select" id="stmt-cust">${opts}</select></div>
-        <button class="btn btn-primary" id="btn-stmt-cust" style="width:auto;">عرض الكشف</button>
-        <div id="stmt-result" style="margin-top:16px"></div>
-      </div>`;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button><h3 class="card-title">كشف حساب عميل</h3><div class="form-group"><select class="select" id="stmt-cust">${opts}</select></div><button class="btn btn-primary" id="btn-stmt-cust" style="width:auto;">عرض الكشف</button><div id="stmt-result" style="margin-top:16px"></div></div>`;
     document.getElementById('btn-stmt-cust').addEventListener('click', async () => {
       const id = document.getElementById('stmt-cust').value; if (!id) return;
       try {
         const lines = await apiCall(`/reports?type=customer_statement&customer_id=${id}`, 'GET');
         let html = '<div class="table-wrap"><table class="table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>';
-        lines.forEach(l => html += `<tr><td>${formatDate(l.date)}</td><td>${l.description || ''}</td><td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td><td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td><td class="${(l.balance || 0) >= 0 ? 'text-success' : 'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`);
+        lines.forEach(l => html += `<tr><td>${formatDate(l.date)}</td><td>${l.description||''}</td><td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td><td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td><td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`);
         html += '</tbody></table></div>';
         document.getElementById('stmt-result').innerHTML = html;
       } catch (e) { showToast(e.message, 'error'); }
@@ -2238,20 +1247,13 @@ async function loadSupplierStatementForm() {
   try {
     const supps = await apiCall('/suppliers', 'GET');
     const opts = supps.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
-        <h3 class="card-title">كشف حساب مورد</h3>
-        <div class="form-group"><select class="select" id="stmt-supp">${opts}</select></div>
-        <button class="btn btn-primary" id="btn-stmt-supp" style="width:auto;">عرض الكشف</button>
-        <div id="stmt-result" style="margin-top:16px"></div>
-      </div>`;
+    document.getElementById('tab-content').innerHTML = `<div class="card"><button class="btn btn-secondary btn-sm" onclick="loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button><h3 class="card-title">كشف حساب مورد</h3><div class="form-group"><select class="select" id="stmt-supp">${opts}</select></div><button class="btn btn-primary" id="btn-stmt-supp" style="width:auto;">عرض الكشف</button><div id="stmt-result" style="margin-top:16px"></div></div>`;
     document.getElementById('btn-stmt-supp').addEventListener('click', async () => {
       const id = document.getElementById('stmt-supp').value; if (!id) return;
       try {
         const lines = await apiCall(`/reports?type=supplier_statement&supplier_id=${id}`, 'GET');
         let html = '<div class="table-wrap"><table class="table"><thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>';
-        lines.forEach(l => html += `<tr><td>${formatDate(l.date)}</td><td>${l.description || ''}</td><td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td><td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td><td class="${(l.balance || 0) >= 0 ? 'text-success' : 'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`);
+        lines.forEach(l => html += `<tr><td>${formatDate(l.date)}</td><td>${l.description||''}</td><td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td><td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td><td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`);
         html += '</tbody></table></div>';
         document.getElementById('stmt-result').innerHTML = html;
       } catch (e) { showToast(e.message, 'error'); }
@@ -2263,26 +1265,9 @@ async function loadSupplierStatementForm() {
 function showHelpModal() {
   openModal({
     title: 'مركز المساعدة',
-    bodyHTML: `
-      <div style="line-height:1.8;">
-        <p style="margin-bottom:16px;">مرحباً بك في <strong>نظام الراجحي للمحاسبة</strong>. يمكنك من خلال هذا النظام:</p>
-        <ul style="padding-right:20px;margin-bottom:16px;">
-          <li>إدارة المواد والعملاء والموردين</li>
-          <li>إنشاء فواتير المبيعات والمشتريات</li>
-          <li>تسجيل الدفعات والمصاريف</li>
-          <li>عرض التقارير المالية المتكاملة</li>
-          <li>إرسال الفواتير PDF إلى التلغرام</li>
-        </ul>
-        <div style="background:var(--bg);border-radius:12px;padding:16px;">
-          <div style="font-weight:700;margin-bottom:4px;">💡 نصائح سريعة</div>
-          <div style="font-size:13px;color:var(--text-secondary);">استخدم البحث للوصول السريع للفواتير والمواد. يمكنك طباعة أي فاتورة مباشرة من قائمة الفواتير.</div>
-        </div>
-        <p style="margin-top:16px;color:var(--text-muted);font-size:13px;">للدعم الفني: @bukamal1991</p>
-      </div>
-    `
+    bodyHTML: `<div style="line-height:1.8;"><p>مرحباً بك في <strong>نظام الراجحي للمحاسبة</strong>. يمكنك من خلال هذا النظام:</p><ul style="padding-right:20px;margin-bottom:16px;"><li>إدارة المواد والعملاء والموردين</li><li>إنشاء فواتير المبيعات والمشتريات</li><li>تسجيل الدفعات والمصاريف</li><li>عرض التقارير المالية المتكاملة</li><li>إرسال الفواتير PDF إلى التلغرام</li></ul><div style="background:var(--bg);border-radius:12px;padding:16px;"><div style="font-weight:700;margin-bottom:4px;">💡 نصائح سريعة</div><div style="font-size:13px;color:var(--text-secondary);">استخدم البحث للوصول السريع للفواتير والمواد. يمكنك طباعة أي فاتورة مباشرة من قائمة الفواتير.</div></div><p style="margin-top:16px;color:var(--text-muted);font-size:13px;">للدعم الفني: @bukamal1991</p></div>`
   });
 }
-
 document.getElementById('btn-help').addEventListener('click', showHelpModal);
 
 // ========== بدء التطبيق ==========
@@ -2293,12 +1278,10 @@ async function verifyUser() {
       document.getElementById('user-name-sidebar').textContent = user?.first_name || 'مستخدم';
       document.getElementById('user-avatar').textContent = (user?.first_name?.[0] || 'م').toUpperCase();
       initNavigation();
-      
       [itemsCache, customersCache, suppliersCache, invoicesCache, categoriesCache, unitsCache] = await Promise.all([
         apiCall('/items', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'),
         apiCall('/invoices', 'GET'), apiCall('/definitions?type=category', 'GET'), apiCall('/definitions?type=unit', 'GET')
       ]);
-      
       document.getElementById('loading-screen').classList.add('hidden');
       loadDashboard();
     } else {
