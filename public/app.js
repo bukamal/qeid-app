@@ -1422,7 +1422,7 @@ function showInvoiceDetail(invoice) {
       }
     };
   }
-
+}
 
 // ========== طباعة الفاتورة (متاحة عالمياً) ==========
 window.printInvoice = function(invoice) {
