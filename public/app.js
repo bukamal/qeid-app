@@ -1332,13 +1332,19 @@ function renderFilteredInvoices() {
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
           <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
-          <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
           <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
         </div>
       </div>`;
   });
   container.innerHTML = html;
-      container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
+
+  container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    const inv = invoicesCache.find(i => i.id === id);
+    if (inv) showInvoiceDetail(inv);
+  }));
+
+  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
     if (inv) {
@@ -1353,22 +1359,12 @@ function renderFilteredInvoices() {
     }
   }));
 
-    const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = invoicesCache.find(i => i.id === id);
-    if (inv) printInvoice(inv);
-  }));
-  container.querySelectorAll('.pdf-invoice-btn').forEach(b => b.addEventListener('click', async e => {
-    const btn = e.target.closest('button'); const id = parseInt(btn.dataset.id);
-    btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span>`;
-    try { await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); showToast('تم إرسال PDF إلى البوت', 'success'); }
-    catch (ex) { showToast('فشل الإرسال: ' + ex.message, 'error'); }
-    finally { btn.disabled = false; btn.innerHTML = `${ICONS.file} PDF`; }
-  }));
   container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     deleteInvoice(id);
   }));
 }
+
 
 async function deleteInvoice(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟ سيتم التراجع عن جميع التأثيرات المالية.')) return;
@@ -1392,7 +1388,7 @@ function showInvoiceDetail(invoice) {
   const entity = invoice.customer?.name || invoice.supplier?.name || 'نقدي';
   const statusColor = (invoice.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
 
-  openModal({
+  const modal = openModal({
     title: `فاتورة ${typeLabel} ${invoice.reference || ''}`,
     bodyHTML: `
       <div style="margin-bottom:16px;">
@@ -1421,8 +1417,12 @@ function showInvoiceDetail(invoice) {
         console.error('window.printInvoice is not defined');
       }
     };
+  }
+}
+
 
 // ========== طباعة الفاتورة (متاحة عالمياً) ==========
+
 window.printInvoice = function(invoice) {
   if (!invoice) {
     showToast('لا توجد بيانات للطباعة', 'error');
@@ -1488,7 +1488,7 @@ window.printInvoice = function(invoice) {
     <tr><th style="width:40%">الصنف</th><th style="width:15%">الكمية</th><th style="width:22%">السعر</th><th style="width:23%">المجموع</th></tr>
     ${items.map(l => `
       <tr>
-        <td class="name">${(l.item?.name || l.item?.name || '-').substring(0, 12)}</td>
+        <td class="name">${(l.item?.name || '-').substring(0, 12)}</td>
         <td class="num">${l.quantity} <span style="font-size:8px;color:#666">${l.unit?.name || ''}</span></td>
         <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
         <td class="num bold">${parseFloat(l.total || 0).toFixed(2)}</td>
@@ -1516,11 +1516,10 @@ window.printInvoice = function(invoice) {
         setTimeout(function() { window.close(); }, 1000);
       }, 300);
     };
-  </script>
+  <\/script>
 </body>
 </html>`;
 
-  // فتح نافذة صغيرة للطباعة
   const printWindow = window.open('', '_blank', 'width=400,height=700,scrollbars=yes,resizable=yes');
   if (printWindow) {
     printWindow.document.open();
@@ -1529,7 +1528,6 @@ window.printInvoice = function(invoice) {
     showToast('جاري فتح نافذة الطباعة', 'info');
   } else {
     showToast('الرجاء السماح بالنوافذ المنبثقة للطباعة', 'warning');
-    // بديل: فتح في نفس النافذة
     const newTab = window.open('about:blank');
     if (newTab) {
       newTab.document.write(html);
@@ -1537,7 +1535,6 @@ window.printInvoice = function(invoice) {
     }
   }
 };
-
 
 
 // ========== المدفوعات ==========
