@@ -451,14 +451,11 @@ function showItemDetail(itemId) {
 
 
 // ========== إضافة مادة جديدة ==========
-
 // ========== إضافة مادة جديدة ==========
 function showAddItemModal() {
-  // التأكد من وجود وحدة "قطعة" في الكاش
   ensureDefaultUnit();
 
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  // استبعاد "قطعة" من قائمة وحدات التحويل لأنها الوحدة الأساسية
   const conversionUnitOpts = unitsCache
     .filter(u => u.name !== 'قطعة')
     .map(u => `<option value="${u.id}">${u.name}</option>`).join('');
@@ -469,34 +466,42 @@ function showAddItemModal() {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
     
-    <!-- الوحدة الأساسية: قطعة (ثابتة) -->
+    <!-- الوحدة الأساسية: قطعة + زر إظهار وحدات التحويل -->
     <div class="form-group">
-      <label class="form-label">الوحدة الأساسية <span style="color:var(--success);font-size:12px;">(قطعة - افتراضية)</span></label>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-weight:700;color:var(--text-secondary);">
-        قطعة
+      <label class="form-label">الوحدة الأساسية</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
+          <span style="background:var(--success-light);color:var(--success);padding:2px 10px;border-radius:20px;font-size:12px;">افتراضية</span>
+          قطعة
+        </div>
+        <button class="btn btn-secondary" id="btn-toggle-conversions" type="button" style="width:auto;padding:0 14px;height:42px;" title="إضافة وحدات تحويل">
+          ${ICONS.plus} <span style="margin-right:4px;">وحدات</span>
+        </button>
       </div>
       <input type="hidden" id="fm-base-unit" value="${getDefaultUnitId()}">
     </div>
     
-    <!-- إضافة وحدات تحويل -->
-    <div class="form-group">
-      <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم قطعة في كل وحدة؟)</span></label>
-      <div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
-      
-      <div style="background:var(--bg);border-radius:12px;padding:12px;border:1px dashed var(--border);">
-        <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
-          <select class="select" id="conv-unit" style="flex:1;">
-            <option value="">اختر وحدة تحويل...</option>
-            ${conversionUnitOpts}
-          </select>
-          <button class="btn btn-secondary" id="btn-add-new-unit" type="button" style="width:auto;padding:0 12px;white-space:nowrap;">${ICONS.plus} وحدة جديدة</button>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <div style="flex:1;">
-            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم قطعة؟</label>
-            <input class="input" id="conv-factor" type="number" step="any" min="0.001" placeholder="مثال: 12" style="width:100%;">
+    <!-- قسم وحدات التحويل (مخفي افتراضياً) -->
+    <div id="conversions-section" style="display:none;">
+      <div class="form-group" style="margin-top:8px;">
+        <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم قطعة في كل وحدة؟)</span></label>
+        <div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        
+        <div style="background:var(--bg);border-radius:12px;padding:12px;border:1px dashed var(--border);">
+          <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+            <select class="select" id="conv-unit" style="flex:1;">
+              <option value="">اختر وحدة تحويل...</option>
+              ${conversionUnitOpts}
+            </select>
+            <button class="btn btn-secondary" id="btn-add-new-unit" type="button" style="width:auto;padding:0 12px;white-space:nowrap;">${ICONS.plus} جديدة</button>
           </div>
-          <button class="btn btn-primary" id="btn-add-conv" type="button" style="width:auto;padding:0 16px;margin-top:18px;">${ICONS.plus} إضافة</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div style="flex:1;">
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم قطعة؟</label>
+              <input class="input" id="conv-factor" type="number" step="any" min="0.001" placeholder="مثال: 12" style="width:100%;">
+            </div>
+            <button class="btn btn-primary" id="btn-add-conv" type="button" style="width:auto;padding:0 16px;margin-top:18px;">${ICONS.plus} إضافة</button>
+          </div>
         </div>
       </div>
     </div>
@@ -513,9 +518,27 @@ function showAddItemModal() {
   });
 
   let conversions = [];
+  const convSection = modal.element.querySelector('#conversions-section');
   const convList = modal.element.querySelector('#conversions-list');
-  
-  // تحديث اسم الوحدة في حقل المعامل
+  const toggleBtn = modal.element.querySelector('#btn-toggle-conversions');
+  let isConversionsVisible = false;
+
+  // تبديل إظهار/إخفاء وحدات التحويل
+  toggleBtn.addEventListener('click', () => {
+    isConversionsVisible = !isConversionsVisible;
+    convSection.style.display = isConversionsVisible ? 'block' : 'none';
+    toggleBtn.innerHTML = isConversionsVisible 
+      ? `${ICONS.x} <span style="margin-right:4px;">إخفاء</span>` 
+      : `${ICONS.plus} <span style="margin-right:4px;">وحدات</span>`;
+    toggleBtn.className = isConversionsVisible 
+      ? 'btn btn-ghost' 
+      : 'btn btn-secondary';
+    toggleBtn.style.cssText = isConversionsVisible
+      ? 'width:auto;padding:0 14px;height:42px;color:var(--danger);border-color:var(--danger);'
+      : 'width:auto;padding:0 14px;height:42px;';
+  });
+
+  // تحديث اسم الوحدة
   const unitSelect = modal.element.querySelector('#conv-unit');
   unitSelect.addEventListener('change', function() {
     const name = this.selectedOptions[0]?.textContent || 'الوحدة';
@@ -525,7 +548,7 @@ function showAddItemModal() {
   // عرض قائمة وحدات التحويل
   const refreshConversions = () => {
     if (conversions.length === 0) {
-      convList.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:12px;font-size:13px;">لا توجد وحدات تحويل مضافة</div>`;
+      convList.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:12px;font-size:13px;">لا توجد وحدات تحويل</div>`;
       return;
     }
     
@@ -551,7 +574,7 @@ function showAddItemModal() {
   };
   refreshConversions();
 
-  // إضافة وحدة تحويل جديدة
+  // إضافة وحدة تحويل
   modal.element.querySelector('#btn-add-conv').onclick = () => {
     const unitSel = modal.element.querySelector('#conv-unit');
     const factor = parseFloat(modal.element.querySelector('#conv-factor').value);
@@ -559,14 +582,10 @@ function showAddItemModal() {
     const unitName = unitSel.selectedOptions[0]?.textContent;
     
     if (!unitId) return showToast('اختر وحدة التحويل أولاً', 'warning');
-    if (!factor || factor <= 0) return showToast('أدخل معامل تحويل صحيح (أكبر من صفر)', 'warning');
+    if (!factor || factor <= 0) return showToast('أدخل معامل تحويل صحيح', 'warning');
     if (conversions.some(c => c.unit_id == unitId)) return showToast('هذه الوحدة مضافة مسبقاً', 'warning');
     
-    conversions.push({ 
-      unit_id: parseInt(unitId), 
-      unit_name: unitName, 
-      conversion_factor: factor 
-    });
+    conversions.push({ unit_id: parseInt(unitId), unit_name: unitName, conversion_factor: factor });
     
     modal.element.querySelector('#conv-factor').value = ''; 
     unitSel.value = '';
@@ -575,9 +594,9 @@ function showAddItemModal() {
     showToast(`تمت إضافة: 1 ${unitName} = ${factor} قطعة`, 'success');
   };
 
-  // إضافة وحدة جديدة للنظام (صندوق، كرتونة، طن...)
+  // إضافة وحدة جديدة للنظام
   modal.element.querySelector('#btn-add-new-unit').onclick = async () => {
-    const name = prompt('أدخل اسم الوحدة الجديدة (مثال: صندوق، كرتونة، طن، شوال):');
+    const name = prompt('أدخل اسم الوحدة الجديدة:\nمثال: صندوق، كرتونة، طن، شوال، علبة');
     if (!name || !name.trim()) return;
     
     const trimmedName = name.trim();
@@ -595,14 +614,11 @@ function showAddItemModal() {
       
       unitsCache.push({ id: newId, name: trimmedName });
       
-      // إضافة للقائمة المنسدلة
       const opt = document.createElement('option');
       opt.value = newId;
       opt.textContent = trimmedName;
       unitSel.appendChild(opt);
       unitSel.value = newId;
-      
-      // تحديث الاسم المعروض
       modal.element.querySelector('#conv-unit-name').textContent = trimmedName;
       
       showToast(`تم إضافة الوحدة "${trimmedName}" واختيارها`, 'success');
@@ -611,42 +627,30 @@ function showAddItemModal() {
     }
   };
 
-  // إضافة تصنيف سريع
-  const quickAddCat = async () => {
-    const btn = modal.element.querySelector('#btn-quick-cat');
+  // تصنيف سريع
+  modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
+    const name = input.value.trim();
+    if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
+    if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
     
-    btn.onclick = async () => {
-      const name = input.value.trim();
-      if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
-      if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
+    try {
+      const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
+      const newId = res?.id || res?.data?.id;
+      if (!newId) throw new Error('خطأ في الاستجابة');
       
-      btn.disabled = true; 
-      btn.innerHTML = `<span class="loader-inline"></span>`;
-      
-      try {
-        const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
-        const newId = res?.id || res?.data?.id;
-        if (!newId) throw new Error('خطأ في الاستجابة');
-        
-        categoriesCache.push({ id: newId, name });
-        const o = document.createElement('option');
-        o.value = newId; 
-        o.textContent = name; 
-        select.appendChild(o);
-        select.value = newId; 
-        input.value = '';
-        showToast('تم إضافة التصنيف واختياره', 'success');
-      } catch (e) { 
-        showToast(e.message, 'error'); 
-      } finally { 
-        btn.disabled = false; 
-        btn.innerHTML = `${ICONS.plus}`; 
-      }
-    };
+      categoriesCache.push({ id: newId, name });
+      const o = document.createElement('option');
+      o.value = newId; o.textContent = name; 
+      select.appendChild(o);
+      select.value = newId; 
+      input.value = '';
+      showToast('تم إضافة التصنيف واختياره', 'success');
+    } catch (e) { 
+      showToast(e.message, 'error'); 
+    }
   };
-  quickAddCat();
 
   // إلغاء
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
@@ -689,22 +693,20 @@ function showEditItemModal(itemId) {
   const it = itemsCache.find(i => i.id === itemId);
   if (!it) return;
 
-  // التأكد من وجود وحدة "قطعة"
   ensureDefaultUnit();
 
   const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
-  
-  // وحدات التحويل المتاحة (استبعاد الوحدة الأساسية)
   const conversionUnitOpts = unitsCache
     .filter(u => u.name !== 'قطعة')
     .map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 
-  // وحدات التحويل الحالية للمادة
   let conversions = (it.item_units || []).map(iu => ({
     unit_id: iu.unit_id,
     unit_name: iu.unit?.name || unitsCache.find(u => u.id === iu.unit_id)?.name || 'وحدة',
     conversion_factor: iu.conversion_factor
   }));
+
+  const hasConversions = conversions.length > 0;
 
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" value="${it.name || ''}"></div>
@@ -712,34 +714,42 @@ function showEditItemModal(itemId) {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
     
-    <!-- الوحدة الأساسية: قطعة (ثابتة) -->
+    <!-- الوحدة الأساسية: قطعة + زر إظهار وحدات التحويل -->
     <div class="form-group">
-      <label class="form-label">الوحدة الأساسية <span style="color:var(--success);font-size:12px;">(قطعة - افتراضية)</span></label>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-weight:700;color:var(--text-secondary);">
-        قطعة
+      <label class="form-label">الوحدة الأساسية</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
+          <span style="background:var(--success-light);color:var(--success);padding:2px 10px;border-radius:20px;font-size:12px;">افتراضية</span>
+          قطعة
+        </div>
+        <button class="btn ${hasConversions ? 'btn-ghost' : 'btn-secondary'}" id="btn-toggle-conversions" type="button" style="width:auto;padding:0 14px;height:42px;${hasConversions ? 'color:var(--danger);border-color:var(--danger);' : ''}" title="إضافة وحدات تحويل">
+          ${hasConversions ? ICONS.x : ICONS.plus} <span style="margin-right:4px;">${hasConversions ? 'إخفاء' : 'وحدات'}</span>
+        </button>
       </div>
       <input type="hidden" id="fm-base-unit" value="${getDefaultUnitId()}">
     </div>
     
-    <!-- إضافة وحدات تحويل -->
-    <div class="form-group">
-      <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم قطعة في كل وحدة؟)</span></label>
-      <div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
-      
-      <div style="background:var(--bg);border-radius:12px;padding:12px;border:1px dashed var(--border);">
-        <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
-          <select class="select" id="conv-unit" style="flex:1;">
-            <option value="">اختر وحدة تحويل...</option>
-            ${conversionUnitOpts}
-          </select>
-          <button class="btn btn-secondary" id="btn-add-new-unit" type="button" style="width:auto;padding:0 12px;white-space:nowrap;">${ICONS.plus} وحدة جديدة</button>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <div style="flex:1;">
-            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم قطعة؟</label>
-            <input class="input" id="conv-factor" type="number" step="any" min="0.001" placeholder="مثال: 12" style="width:100%;">
+    <!-- قسم وحدات التحويل -->
+    <div id="conversions-section" style="display:${hasConversions ? 'block' : 'none'};">
+      <div class="form-group" style="margin-top:8px;">
+        <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم قطعة في كل وحدة؟)</span></label>
+        <div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        
+        <div style="background:var(--bg);border-radius:12px;padding:12px;border:1px dashed var(--border);">
+          <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+            <select class="select" id="conv-unit" style="flex:1;">
+              <option value="">اختر وحدة تحويل...</option>
+              ${conversionUnitOpts}
+            </select>
+            <button class="btn btn-secondary" id="btn-add-new-unit" type="button" style="width:auto;padding:0 12px;white-space:nowrap;">${ICONS.plus} جديدة</button>
           </div>
-          <button class="btn btn-primary" id="btn-add-conv" type="button" style="width:auto;padding:0 16px;margin-top:18px;">${ICONS.plus} إضافة</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div style="flex:1;">
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم قطعة؟</label>
+              <input class="input" id="conv-factor" type="number" step="any" min="0.001" placeholder="مثال: 12" style="width:100%;">
+            </div>
+            <button class="btn btn-primary" id="btn-add-conv" type="button" style="width:auto;padding:0 16px;margin-top:18px;">${ICONS.plus} إضافة</button>
+          </div>
         </div>
       </div>
     </div>
@@ -755,8 +765,24 @@ function showEditItemModal(itemId) {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>` 
   });
 
+  const convSection = modal.element.querySelector('#conversions-section');
   const convList = modal.element.querySelector('#conversions-list');
-  
+  const toggleBtn = modal.element.querySelector('#btn-toggle-conversions');
+  let isConversionsVisible = hasConversions;
+
+  // تبديل إظهار/إخفاء
+  toggleBtn.addEventListener('click', () => {
+    isConversionsVisible = !isConversionsVisible;
+    convSection.style.display = isConversionsVisible ? 'block' : 'none';
+    toggleBtn.innerHTML = isConversionsVisible 
+      ? `${ICONS.x} <span style="margin-right:4px;">إخفاء</span>` 
+      : `${ICONS.plus} <span style="margin-right:4px;">وحدات</span>`;
+    toggleBtn.className = isConversionsVisible ? 'btn btn-ghost' : 'btn btn-secondary';
+    toggleBtn.style.cssText = isConversionsVisible
+      ? 'width:auto;padding:0 14px;height:42px;color:var(--danger);border-color:var(--danger);'
+      : 'width:auto;padding:0 14px;height:42px;';
+  });
+
   // تحديث اسم الوحدة
   const unitSelect = modal.element.querySelector('#conv-unit');
   unitSelect.addEventListener('change', function() {
@@ -767,7 +793,7 @@ function showEditItemModal(itemId) {
   // عرض وحدات التحويل
   const refreshConversions = () => {
     if (conversions.length === 0) {
-      convList.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:12px;font-size:13px;">لا توجد وحدات تحويل مضافة</div>`;
+      convList.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:12px;font-size:13px;">لا توجد وحدات تحويل</div>`;
       return;
     }
     
@@ -801,14 +827,10 @@ function showEditItemModal(itemId) {
     const unitName = unitSel.selectedOptions[0]?.textContent;
     
     if (!unitId) return showToast('اختر وحدة التحويل أولاً', 'warning');
-    if (!factor || factor <= 0) return showToast('أدخل معامل تحويل صحيح (أكبر من صفر)', 'warning');
+    if (!factor || factor <= 0) return showToast('أدخل معامل تحويل صحيح', 'warning');
     if (conversions.some(c => c.unit_id == unitId)) return showToast('هذه الوحدة مضافة مسبقاً', 'warning');
     
-    conversions.push({ 
-      unit_id: parseInt(unitId), 
-      unit_name: unitName, 
-      conversion_factor: factor 
-    });
+    conversions.push({ unit_id: parseInt(unitId), unit_name: unitName, conversion_factor: factor });
     
     modal.element.querySelector('#conv-factor').value = ''; 
     unitSel.value = '';
@@ -817,9 +839,9 @@ function showEditItemModal(itemId) {
     showToast(`تمت إضافة: 1 ${unitName} = ${factor} قطعة`, 'success');
   };
 
-  // إضافة وحدة جديدة للنظام
+  // إضافة وحدة جديدة
   modal.element.querySelector('#btn-add-new-unit').onclick = async () => {
-    const name = prompt('أدخل اسم الوحدة الجديدة (مثال: صندوق، كرتونة، طن، شوال):');
+    const name = prompt('أدخل اسم الوحدة الجديدة:\nمثال: صندوق، كرتونة، طن، شوال، علبة');
     if (!name || !name.trim()) return;
     
     const trimmedName = name.trim();
@@ -850,42 +872,30 @@ function showEditItemModal(itemId) {
     }
   };
 
-  // إضافة تصنيف سريع
-  const quickAddCat = async () => {
-    const btn = modal.element.querySelector('#btn-quick-cat');
+  // تصنيف سريع
+  modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
+    const name = input.value.trim();
+    if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
+    if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
     
-    btn.onclick = async () => {
-      const name = input.value.trim();
-      if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
-      if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
+    try {
+      const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
+      const newId = res?.id || res?.data?.id;
+      if (!newId) throw new Error('خطأ في الاستجابة');
       
-      btn.disabled = true; 
-      btn.innerHTML = `<span class="loader-inline"></span>`;
-      
-      try {
-        const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
-        const newId = res?.id || res?.data?.id;
-        if (!newId) throw new Error('خطأ في الاستجابة');
-        
-        categoriesCache.push({ id: newId, name });
-        const o = document.createElement('option');
-        o.value = newId; 
-        o.textContent = name; 
-        select.appendChild(o);
-        select.value = newId; 
-        input.value = '';
-        showToast('تم إضافة التصنيف واختياره', 'success');
-      } catch (e) { 
-        showToast(e.message, 'error'); 
-      } finally { 
-        btn.disabled = false; 
-        btn.innerHTML = `${ICONS.plus}`; 
-      }
-    };
+      categoriesCache.push({ id: newId, name });
+      const o = document.createElement('option');
+      o.value = newId; o.textContent = name; 
+      select.appendChild(o);
+      select.value = newId; 
+      input.value = '';
+      showToast('تم إضافة التصنيف واختياره', 'success');
+    } catch (e) { 
+      showToast(e.message, 'error'); 
+    }
   };
-  quickAddCat();
 
   // إلغاء
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
