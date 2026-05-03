@@ -1,0 +1,18 @@
+{
+  "name": "alrajhi-accounting-api",
+  "version": "1.0.0",
+  "description": "الراجحي للمحاسبة - API Backend",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}
+
