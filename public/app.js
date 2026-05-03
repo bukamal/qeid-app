@@ -47,8 +47,9 @@ const apiBase = '/api';
 // ========== دوال مساعدة ==========
 function formatNumber(num) {
   if (num === undefined || num === null) return '0.00';
-  return Number(num).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
 function formatDate(dateStr) {
   if (!dateStr) return '-';
   const d = new Date(dateStr);
@@ -548,29 +549,6 @@ function showEditItemModal(itemId) {
     } catch (e) { showToast(e.message, 'error'); btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`; }
   };
 }
-
-
-function showAddItemModal() {
-  const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  showFormModal({
-    title: 'إضافة مادة جديدة',
-    fields: [
-      { id: 'name', label: 'اسم المادة', placeholder: 'مثال: حبر طابعة' },
-      { id: 'category_id', label: 'التصنيف', type: 'select', options: `<option value="">بدون تصنيف</option>${catOpts}` },
-      { id: 'item_type', label: 'نوع المادة', type: 'select', options: '<option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option>' },
-      { id: 'unit', label: 'وحدة القياس', placeholder: 'قطعة، صندوق، كرتونة...' },
-      { id: 'purchase_price', label: 'سعر الشراء', type: 'number', placeholder: '0.00' },
-      { id: 'selling_price', label: 'سعر البيع', type: 'number', placeholder: '0.00' }
-    ],
-    onSave: async (values) => {
-      const payload = { ...values, category_id: values.category_id || null, purchase_price: parseFloat(values.purchase_price) || 0, selling_price: parseFloat(values.selling_price) || 0 };
-      if (itemsCache.some(i => i.name.toLowerCase() === payload.name.toLowerCase())) throw new Error('توجد مادة بنفس الاسم');
-      return apiCall('/items', 'POST', payload);
-    },
-    onSuccess: () => loadItems()
-  });
-}
-
 
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
