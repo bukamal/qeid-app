@@ -1433,7 +1433,7 @@ window.printInvoice = function(invoice) {
   const paid = invoice.paid || 0;
   const balance = (invoice.total || 0) - paid;
 
-  const html = `<!DOCTYPE html>
+  const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
@@ -1520,20 +1520,49 @@ window.printInvoice = function(invoice) {
 </body>
 </html>`;
 
-  const printWindow = window.open('', '_blank', 'width=400,height=700,scrollbars=yes,resizable=yes');
+  // محاولة 1: فتح نافذة جديدة (تعمل على الكمبيوتر)
+  let printWindow = null;
+  try {
+    printWindow = window.open('about:blank', '_blank', 'width=400,height=700,scrollbars=yes,resizable=yes');
+  } catch (e) {
+    console.error('فشل فتح النافذة:', e);
+  }
+
   if (printWindow) {
     printWindow.document.open();
-    printWindow.document.write(html);
+    printWindow.document.write(htmlContent);
     printWindow.document.close();
     showToast('جاري فتح نافذة الطباعة', 'info');
-  } else {
-    showToast('الرجاء السماح بالنوافذ المنبثقة للطباعة', 'warning');
-    const newTab = window.open('about:blank');
-    if (newTab) {
-      newTab.document.write(html);
-      newTab.document.close();
-    }
+    return;
   }
+
+  // محاولة 2: iframe مخفي (للجوال / Telegram WebView)
+  showToast('جاري تحضير الطباعة...', 'info');
+  let iframe = document.getElementById('print-iframe');
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.bottom = '-10000px';
+    iframe.style.width = '80mm';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+  }
+
+  const iframeDoc = iframe.contentWindow.document;
+  iframeDoc.open();
+  iframeDoc.write(htmlContent);
+  iframeDoc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      showToast('تعذر الطباعة. تأكد من السماح بالنوافذ المنبثقة.', 'error');
+    }
+  }, 600);
 };
 
 
