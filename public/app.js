@@ -1409,73 +1409,96 @@ function showInvoiceDetail(invoice) {
 
 function printInvoice(invoice) {
   const items = invoice.invoice_lines || [];
-  const payments = []; // fetch from cache or API
-  const paid = payments.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
-  const balance = parseFloat(invoice.total) - paid;
+  const paid = invoice.paid || 0;
+  const balance = invoice.balance || 0;
 
-  // HTML مُحسَّن للطابعات الحرارية (58mm أو 80mm)
+  // HTML مُحسَّن للطابعات الحرارية — يعتمد على خطوط نظام الجوال
   const html = `
 <!DOCTYPE html>
-<html dir="rtl">
+<html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>فاتورة</title>
+<meta name="viewport" content="width=80mm, initial-scale=1">
+<title>فاتورة حرارية</title>
 <style>
   @page { size: 80mm auto; margin: 0; }
-  * { margin: 0; padding: 0; font-family: 'Courier New', monospace; }
-  body { width: 72mm; font-size: 11px; line-height: 1.3; padding: 2mm; }
-  .center { text-align: center; }
-  .bold { font-weight: bold; }
-  .large { font-size: 14px; }
-  .line { border-top: 1px dashed #000; margin: 2mm 0; }
-  table { width: 100%; border-collapse: collapse; }
-  td { padding: 1px 0; }
-  .right { text-align: right; }
-  .total-row { font-size: 12px; font-weight: bold; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    width: 80mm; 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Tahoma', sans-serif;
+    font-size: 12px; 
+    line-height: 1.4; 
+    padding: 3mm;
+    color: #000;
+  }
+  .header { text-align: center; margin-bottom: 4px; }
+  .shop { font-size: 16px; font-weight: 900; }
+  .type { font-size: 13px; }
+  .line { border-top: 1px dashed #000; margin: 3px 0; }
+  .row { display: flex; justify-content: space-between; }
+  .label { color: #333; }
+  .value { font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin: 4px 0; }
+  th { text-align: right; font-size: 10px; color: #555; border-bottom: 1px solid #999; }
+  td { padding: 2px 0; vertical-align: top; }
+  .name { font-weight: 700; max-width: 90px; word-wrap: break-word; }
+  .num { text-align: left; font-family: 'Courier New', monospace; }
+  .total { font-size: 14px; font-weight: 900; margin-top: 4px; }
+  .footer { text-align: center; font-size: 10px; color: #555; margin-top: 6px; }
+  .qr { width: 60px; height: 60px; margin: 4px auto; background: #f0f0f0; }
 </style>
 </head>
-<body onload="window.print(); setTimeout(()=>window.close(), 1000);">
-  <div class="center bold large">الراجحي للمحاسبة</div>
-  <div class="center">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
+<body onload="setTimeout(()=>window.print(), 300)">
+  <div class="header">
+    <div class="shop">الراجحي للمحاسبة</div>
+    <div class="type">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
+  </div>
+  
   <div class="line"></div>
-  <div>التاريخ: ${invoice.date}</div>
-  <div>المرجع: ${invoice.reference || '-'}</div>
-  ${invoice.customer?.name ? `<div>العميل: ${invoice.customer.name}</div>` : ''}
+  
+  <div class="row"><span class="label">التاريخ:</span><span class="value">${invoice.date}</span></div>
+  <div class="row"><span class="label">المرجع:</span><span class="value">${invoice.reference || '-'}</span></div>
+  ${invoice.customer?.name ? `<div class="row"><span class="label">العميل:</span><span class="value">${invoice.customer.name}</span></div>` : ''}
+  
   <div class="line"></div>
   
   <table>
-    <tr class="bold"><td>الصنف</td><td class="right">الكمية</td><td class="right">السعر</td><td class="right">المجموع</td></tr>
+    <tr><th style="width:45%">الصنف</th><th style="width:15%">الكمية</th><th style="width:20%">السعر</th><th style="width:20%">المجموع</th></tr>
     ${items.map(l => `
       <tr>
-        <td>${(l.item?.name || '-').substring(0, 10)}</td>
-        <td class="right">${l.quantity}</td>
-        <td class="right">${parseFloat(l.unit_price).toFixed(2)}</td>
-        <td class="right">${parseFloat(l.total).toFixed(2)}</td>
+        <td class="name">${(l.item?.name || '-').substring(0, 12)}</td>
+        <td class="num">${l.quantity}</td>
+        <td class="num">${parseFloat(l.unit_price).toFixed(2)}</td>
+        <td class="num">${parseFloat(l.total).toFixed(2)}</td>
       </tr>
     `).join('')}
   </table>
   
   <div class="line"></div>
-  <table>
-    <tr class="total-row"><td>الإجمالي</td><td class="right">${parseFloat(invoice.total).toFixed(2)}</td></tr>
-    <tr><td>المدفوع</td><td class="right">${paid.toFixed(2)}</td></tr>
-    <tr class="bold"><td>الباقي</td><td class="right">${balance.toFixed(2)}</td></tr>
-  </table>
+  
+  <div class="row total"><span>الإجمالي:</span><span>${parseFloat(invoice.total).toFixed(2)} ر.س</span></div>
+  <div class="row"><span>المدفوع:</span><span>${paid.toFixed(2)} ر.س</span></div>
+  <div class="row" style="font-weight:900"><span>الباقي:</span><span>${balance.toFixed(2)} ر.س</span></div>
+  
   <div class="line"></div>
-  <div class="center">شكراً لتعاملكم</div>
-  <div class="center">📞 للدعم: @bukamal1991</div>
+  
+  <div class="footer">
+    <div>شكراً لتعاملكم</div>
+    <div>للدعم: @bukamal1991</div>
+  </div>
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'width=400,height=700');
+  // فتح نافذة صغيرة وطباعة تلقائية
+  const w = window.open('', '_blank', 'width=400,height=700,scrollbars=yes');
   if (w) {
     w.document.write(html);
     w.document.close();
   } else {
-    showToast('الرجاء السماح بالنوافذ المنبثقة للطباعة', 'warning');
+    showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
   }
 }
+
 
 
 // ========== المدفوعات ==========
