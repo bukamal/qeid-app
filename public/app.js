@@ -383,23 +383,111 @@ async function loadItems() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-function renderFilteredItems() {
-  const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
-  const filtered = itemsCache.filter(i => (i.name || '').toLowerCase().includes(q));
-  const container = document.getElementById('items-list');
-  if (!filtered.length) { container.innerHTML = emptyState('لا توجد مواد مطابقة', 'يمكنك إضافة مواد جديدة من الزر أعلاه'); return; }
-  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
-  filtered.forEach(item => {
-    html += `<tr onclick="showItemDetail(${item.id})">
-      <td><div style="font-weight:700;">${item.name}</div><div style="color:var(--text-muted);font-size:12px;">${item.category?.name || 'بدون تصنيف'}</div></td>
-      <td style="font-weight:700;color:${(item.available ?? 0) <= 0 ? 'var(--danger)' : 'var(--success)'}">${item.available ?? 0}</td>
-      <td style="font-weight:700;">${formatNumber(item.total_value ?? 0)}</td>
-    </tr>`;
-  });
-  html += '</tbody></table></div>';
-  container.innerHTML = html;
-}
+// ========== قائمة الفواتير (محدث) ==========
+function renderFilteredInvoices() {
+  const filt = document.querySelector('.filter-pill.active')?.dataset.filter || 'all';
+  const q = (document.getElementById('invoice-search')?.value || '').trim().toLowerCase();
+  let data = invoicesCache;
+  if (filt !== 'all') data = data.filter(inv => inv.type === filt);
+  if (q) data = data.filter(inv => 
+    (inv.reference || '').includes(q) || 
+    (inv.customer?.name || '').includes(q) || 
+    (inv.supplier?.name || '').includes(q) || 
+    String(inv.total).includes(q)
+  );
+  
+  const container = document.getElementById('invoices-list');
+  if (!data.length) { 
+    container.innerHTML = emptyState('لا توجد فواتير مطابقة', 'جرب تغيير معايير البحث'); 
+    return; 
+  }
 
+  let html = '';
+  data.forEach(inv => {
+    const typeLabel = inv.type === 'sale' ? 'بيع' : 'شراء';
+    const entity = inv.customer?.name || inv.supplier?.name || 'نقدي';
+    const statusColor = (inv.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
+    
+    // عرض ملخص الوحدات المستخدمة
+    let unitsSummary = '';
+    if (inv.invoice_lines && inv.invoice_lines.length > 0) {
+      const unitCounts = {};
+      inv.invoice_lines.forEach(l => {
+        const unit = l.description || 'وحدة أساسية';
+        unitCounts[unit] = (unitCounts[unit] || 0) + (l.quantity || 0);
+      });
+      unitsSummary = Object.entries(unitCounts)
+        .map(([unit, qty]) => `${formatNumber(qty)} ${unit}`)
+        .join(' · ');
+    }
+    
+    html += `
+      <div class="card card-hover">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+          <div style="min-width:0;">
+            <div style="font-weight:800;font-size:15px;display:flex;align-items:center;gap:8px;">
+              <span style="background:${inv.type==='sale'?'var(--success-light)':'var(--warning-light)'};color:${inv.type==='sale'?'var(--success)':'var(--warning)'};padding:2px 10px;border-radius:20px;font-size:12px;">${typeLabel}</span>
+              فاتورة ${inv.reference || ''}
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${formatDate(inv.date)} · ${entity}</div>
+            ${unitsSummary ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${unitsSummary}</div>` : ''}
+          </div>
+          <div style="font-weight:900;font-size:20px;color:var(--primary);white-space:nowrap;">${formatNumber(inv.total)}</div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+          <span>مدفوع: <strong>${formatNumber(inv.paid || 0)}</strong></span>
+          <span style="color:${statusColor};font-weight:700;">باقي: ${formatNumber(inv.balance || 0)}</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
+          <button class="btn btn-secondary btn-sm edit-invoice-btn" data-id="${inv.id}">${ICONS.edit} تعديل</button>
+          <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
+          <button class="btn btn-primary btn-sm pdf-invoice-btn" data-id="${inv.id}">${ICONS.file} PDF</button>
+          <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
+        </div>
+      </div>`;
+  });
+  container.innerHTML = html;
+
+  // أحداث الأزرار
+  container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    const inv = invoicesCache.find(i => i.id === id);
+    if (inv) showInvoiceDetail(inv);
+  }));
+  
+  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    showToast('ميزة تعديل الفاتورة قيد التطوير', 'warning');
+  }));
+  
+  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    const inv = invoicesCache.find(i => i.id === id);
+    if (inv) printInvoice(inv);
+  }));
+  
+  container.querySelectorAll('.pdf-invoice-btn').forEach(b => b.addEventListener('click', async e => {
+    const btn = e.target.closest('button'); 
+    const id = parseInt(btn.dataset.id);
+    btn.disabled = true; 
+    btn.innerHTML = `<span class="loader-inline"></span>`;
+    try { 
+      await apiCall('/send-invoice-pdf', 'POST', { invoiceId: id }); 
+      showToast('تم إرسال PDF إلى البوت', 'success'); 
+    } catch (ex) { 
+      showToast('فشل الإرسال: ' + ex.message, 'error'); 
+    } finally { 
+      btn.disabled = false; 
+      btn.innerHTML = `${ICONS.file} PDF`; 
+    }
+  }));
+  
+  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    deleteInvoice(id);
+  }));
+}
 
 function emptyState(title, subtitle) {
   return `<div class="empty-state">
@@ -1647,22 +1735,153 @@ async function deleteInvoice(id) {
   catch (e) { showToast(e.message, 'error'); }
 }
 
+// ========== عرض تفاصيل الفاتورة (محدث) ==========
 function printInvoice(invoice) {
-  const rows = invoice.invoice_lines?.map(l => `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity}</td><td>${formatNumber(l.unit_price)}</td><td>${formatNumber(l.total)}</td></tr>`).join('') || '';
+  const rows = invoice.invoice_lines?.map(l => {
+    const item = itemsCache.find(i => i.id === l.item_id);
+    const unitName = l.description || (item?.base_unit_name || 'قطعة');
+    const level = l.unit_level || 1;
+    const factor = l.conversion_factor || 1;
+    
+    let unitDisplay = unitName;
+    if (level > 1 && item) {
+      unitDisplay = `${unitName} (مستوى ${level})`;
+    }
+    
+    return `<tr>
+      <td>${l.item?.name || '-'}</td>
+      <td>${l.quantity} ${unitDisplay}</td>
+      <td>${formatNumber(l.unit_price)}</td>
+      <td>${formatNumber(l.total)}</td>
+    </tr>`;
+  }).join('') || '';
+
   const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title>
-    <style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border:1px solid #ddd;padding:10px;text-align:right}th{background:#f8fafc}.total{font-size:20px;font-weight:800;margin-top:16px}button{padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}</style></head><body>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+      body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto}
+      table{width:100%;border-collapse:collapse;margin:16px 0}
+      th,td{border:1px solid #ddd;padding:10px;text-align:right}
+      th{background:#f8fafc}
+      .total{font-size:20px;font-weight:800;margin-top:16px}
+      button{padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}
+      .unit-info{color:#666;font-size:12px}
+    </style></head><body>
     <h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2>
     <p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>
     <p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''}${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p>
-    <table><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${rows}</tbody></table>
+    <table>
+      <thead>
+        <tr>
+          <th>المادة</th>
+          <th>الكمية</th>
+          <th>السعر</th>
+          <th>الإجمالي</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
     <div class="total">الإجمالي: ${formatNumber(invoice.total)}</div>
     <p>مدفوع: ${formatNumber(invoice.paid||0)} | باقي: ${formatNumber(invoice.balance||0)}</p>
     <button onclick="window.print();setTimeout(()=>window.close(),500)">طباعة</button>
     </body></html>`;
+    
   const w = window.open('', '_blank', 'width=800,height=600');
-  if (w) { w.document.write(html); w.document.close(); }
-  else showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+  if (w) { 
+    w.document.write(html); 
+    w.document.close(); 
+  } else {
+    showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+  }
 }
+
+
+
+
+// ========== عرض تفاصيل الفاتورة في مودال ==========
+function showInvoiceDetail(invoice) {
+  const lines = invoice.invoice_lines?.map(l => {
+    const item = itemsCache.find(i => i.id === l.item_id);
+    const unitName = l.description || (item?.base_unit_name || 'قطعة');
+    const level = l.unit_level || 1;
+    const factor = l.conversion_factor || 1;
+    
+    // حساب الكمية بالوحدة الأساسية
+    const baseQty = l.quantity * factor;
+    const baseUnit = item?.base_unit_name || 'قطعة';
+    
+    let qtyDisplay = `${l.quantity} ${unitName}`;
+    if (level > 1) {
+      qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
+    }
+    
+    return `
+      <tr>
+        <td style="font-weight:700;">${l.item?.name || '-'}</td>
+        <td>${qtyDisplay}</td>
+        <td>${formatNumber(l.unit_price)}</td>
+        <td style="font-weight:800;">${formatNumber(l.total)}</td>
+      </tr>`;
+  }).join('') || '';
+
+  const typeLabel = invoice.type === 'sale' ? 'مبيعات' : 'مشتريات';
+  const entity = invoice.customer?.name || invoice.supplier?.name || 'نقدي';
+  const statusColor = (invoice.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
+
+  openModal({
+    title: `فاتورة ${typeLabel} ${invoice.reference || ''}`,
+    bodyHTML: `
+      <div style="margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div style="background:var(--bg);border-radius:8px;padding:12px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div>
+            <div style="font-weight:700;">${formatDate(invoice.date)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:8px;padding:12px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${invoice.type === 'sale' ? 'العميل' : 'المورد'}</div>
+            <div style="font-weight:700;">${entity}</div>
+          </div>
+        </div>
+        
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>المادة</th>
+                <th>الكمية</th>
+                <th>السعر</th>
+                <th>الإجمالي</th>
+              </tr>
+            </thead>
+            <tbody>${lines}</tbody>
+          </table>
+        </div>
+        
+        <div style="background:var(--bg);border-radius:12px;padding:16px;margin-top:16px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:var(--text-muted);">الإجمالي</span>
+            <span style="font-weight:800;font-size:18px;">${formatNumber(invoice.total)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:var(--text-muted);">المدفوع</span>
+            <span style="font-weight:700;color:var(--success);">${formatNumber(invoice.paid || 0)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--text-muted);">المتبقي</span>
+            <span style="font-weight:800;color:${statusColor};">${formatNumber(invoice.balance || 0)}</span>
+          </div>
+        </div>
+        
+        ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
+      </div>
+    `,
+    footerHTML: `
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button>
+      <button class="btn btn-primary" onclick="printInvoiceById(${invoice.id})">${ICONS.print} طباعة</button>
+    `
+  });
+
+
 // ========== المدفوعات ==========
 async function loadPayments() {
   try {
