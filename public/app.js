@@ -466,7 +466,13 @@ function showEditItemModal(itemId) {
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
-    <div class="form-group"><label class="form-label">الوحدة الأساسية <span style="color:var(--text-muted);font-size:12px;">(وحدة المخزون)</span></label><select class="select" id="fm-base-unit"><option value="">اختر وحدة...</option>${unitOpts}</select></div>
+    <div class="form-group">
+      <label class="form-label">الوحدة الأساسية <span style="color:var(--text-muted);font-size:12px;">(وحدة المخزون)</span></label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select class="select" id="fm-base-unit" style="flex:1;"><option value="">اختر وحدة...</option>${unitOpts}</select>
+        <button class="btn btn-ghost btn-sm" id="btn-delete-base-unit" type="button" style="color:var(--danger);padding:6px;" title="حذف الوحدة">${ICONS.trash}</button>
+      </div>
+    </div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف وحدة جديدة</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-unit" type="text" placeholder="اسم الوحدة..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-unit" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(مثال: صندوق = 12 قطعة)</span></label><div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div><div style="display:flex;gap:8px;align-items:flex-start;"><select class="select" id="conv-unit" style="flex:1;"><option value="">اختر وحدة...</option>${unitsCache.map(u => `<option value="${u.id}">${u.name}</option>`).join('')}</select><input class="input" id="conv-factor" type="number" step="any" placeholder="عدد الوحدات الأساسية" style="width:140px;"><button class="btn btn-secondary" id="btn-add-conv" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
@@ -502,6 +508,35 @@ function showEditItemModal(itemId) {
     refreshConversions();
   };
 
+  // --- زر حذف الوحدة الأساسية (نفس منطق نافذة الإضافة) ---
+  modal.element.querySelector('#btn-delete-base-unit').addEventListener('click', async () => {
+    const select = modal.element.querySelector('#fm-base-unit');
+    const unitId = select.value;
+    if (!unitId) return showToast('اختر وحدة أولاً', 'warning');
+    const unitName = select.selectedOptions[0]?.textContent;
+    if (!await confirmDialog(`هل أنت متأكد من حذف الوحدة "${unitName}" نهائياً؟`)) return;
+    try {
+      await apiCall(`/definitions?type=unit&id=${unitId}`, 'DELETE');
+      // تحديث الكاش
+      unitsCache = unitsCache.filter(u => u.id != unitId);
+      // إزالة الخيار من القائمة
+      select.querySelector(`option[value="${unitId}"]`).remove();
+      const convSelect = modal.element.querySelector('#conv-unit');
+      if (convSelect) {
+        const opt = convSelect.querySelector(`option[value="${unitId}"]`);
+        if (opt) opt.remove();
+      }
+      select.value = '';
+      // إذا كانت الوحدة المحذوفة هي المختارة حالياً في conversions، نمسحها من القائمة
+      conversions = conversions.filter(c => c.unit_id != unitId);
+      refreshConversions();
+      showToast('تم حذف الوحدة بنجاح', 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  });
+
+  // زر إضافة تصنيف / وحدة سريع (مثل نافذة الإضافة)
   const quickAdd = async (btnId, inputId, selectId, cacheArr, type, msg) => {
     const btn = modal.element.querySelector(btnId), input = modal.element.querySelector(inputId), select = modal.element.querySelector(selectId);
     btn.onclick = async () => {
