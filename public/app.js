@@ -449,29 +449,150 @@ function showItemDetail(itemId) {
   };
 }
 
-
-// ========== إعدادات النظام ==========
+// ========== دوال مساعدة للوحدة الأساسية ==========
 const SYSTEM_SETTINGS = {
   baseUnitName: localStorage.getItem('baseUnitName') || 'قطعة',
   baseUnitId: parseInt(localStorage.getItem('baseUnitId')) || null
 };
+
+function getBaseUnitName() {
+  return SYSTEM_SETTINGS.baseUnitName;
+}
+
+function getBaseUnitId() {
+  // البحث في الكاش أولاً
+  const unit = unitsCache.find(u => u.name === getBaseUnitName());
+  if (unit) return unit.id;
+  if (SYSTEM_SETTINGS.baseUnitId) return SYSTEM_SETTINGS.baseUnitId;
+  return null;
+}
 
 function saveBaseUnitName(name) {
   SYSTEM_SETTINGS.baseUnitName = name;
   localStorage.setItem('baseUnitName', name);
 }
 
-function getBaseUnitName() {
-  return SYSTEM_SETTINGS.baseUnitName;
+async function ensureDefaultUnit() {
+  const defaultName = getBaseUnitName();
+  
+  // البحث في الكاش
+  let defaultUnit = unitsCache.find(u => u.name === defaultName);
+  
+  if (!defaultUnit) {
+    // إعادة تحميل الوحدات من السيرفر
+    try {
+      const allUnits = await apiCall('/definitions?type=unit', 'GET');
+      unitsCache = allUnits;
+      defaultUnit = unitsCache.find(u => u.name === defaultName);
+    } catch (e) {
+      console.error('فشل تحميل الوحدات:', e);
+    }
+  }
+  
+  // إنشاء الوحدة إذا لم تكن موجودة
+  if (!defaultUnit) {
+    try {
+      const res = await apiCall(`/definitions?type=unit`, 'POST', { type: 'unit', name: defaultName });
+      const newId = res?.id || res?.data?.id;
+      if (newId) {
+        defaultUnit = { id: newId, name: defaultName };
+        unitsCache.push(defaultUnit);
+      }
+    } catch (e) {
+      console.error('فشل إنشاء الوحدة الافتراضية:', e);
+    }
+  }
+  
+  if (defaultUnit) {
+    SYSTEM_SETTINGS.baseUnitId = defaultUnit.id;
+    localStorage.setItem('baseUnitId', defaultUnit.id);
+  }
+  
+  return defaultUnit;
+}
+
+// ========== تعديل اسم الوحدة الأساسية ==========
+async function editBaseUnitName(modalElement) {
+  const currentName = getBaseUnitName();
+  const currentId = getBaseUnitId();
+  
+  if (!currentId) {
+    showToast('لم يتم العثور على الوحدة الأساسية', 'error');
+    return;
+  }
+  
+  const newName = prompt(
+    `تعديل اسم الوحدة الأساسية\n\n` +
+    `الاسم الحالي: ${currentName}\n\n` +
+    `أدخل الاسم الجديد:`, 
+    currentName
+  );
+  
+  if (!newName || !newName.trim()) return;
+  const trimmedName = newName.trim();
+  if (trimmedName === currentName) return;
+  
+  // التحقق من عدم التكرار
+  const duplicate = unitsCache.find(u => 
+    u.name.toLowerCase() === trimmedName.toLowerCase() && u.id !== currentId
+  );
+  if (duplicate) {
+    showToast(`الاسم "${trimmedName}" مستخدم بوحدة أخرى`, 'error');
+    return;
+  }
+  
+  try {
+    // ===== التعديل في السيرفر =====
+    const res = await apiCall('/definitions', 'PUT', { 
+      type: 'unit', 
+      id: currentId, 
+      name: trimmedName 
+    });
+    
+    // التحقق من نجاح التعديل
+    if (res && (res.error || res.message?.includes('خطأ'))) {
+      throw new Error(res.error || res.message || 'فشل التعديل');
+    }
+    
+    // ===== تحديث الكاش =====
+    const unitInCache = unitsCache.find(u => u.id === currentId);
+    if (unitInCache) {
+      unitInCache.name = trimmedName;
+    }
+    
+    // ===== حفظ الإعدادات =====
+    saveBaseUnitName(trimmedName);
+    
+    // ===== تحديث الواجهة =====
+    const displayEl = modalElement.querySelector('#base-unit-display');
+    if (displayEl) displayEl.textContent = trimmedName;
+    
+    // تحديث جميع النصوص التي تحتوي على اسم الوحدة القديم
+    const oldName = currentName;
+    modalElement.querySelectorAll('.form-label span').forEach(span => {
+      if (span.textContent.includes(oldName)) {
+        span.textContent = span.textContent.replace(new RegExp(oldName, 'g'), trimmedName);
+      }
+    });
+    
+    showToast(`تم تغيير اسم الوحدة إلى "${trimmedName}"`, 'success');
+    
+    // إعادة تحميل قائمة المواد لتحديث العرض
+    setTimeout(() => loadItems(), 300);
+    
+  } catch (e) {
+    showToast(e.message || 'فشل تعديل اسم الوحدة', 'error');
+  }
 }
 
 // ========== إضافة مادة جديدة ==========
 function showAddItemModal() {
-  ensureDefaultUnit();
-
+  const baseUnit = getBaseUnitName();
+  const baseUnitId = getBaseUnitId();
+  
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const conversionUnitOpts = unitsCache
-    .filter(u => u.name !== getBaseUnitName())
+    .filter(u => u.id !== baseUnitId)
     .map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 
   const body = `
@@ -480,13 +601,13 @@ function showAddItemModal() {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
     
-    <!-- الوحدة الأساسية + زر التعديل -->
+    <!-- الوحدة الأساسية -->
     <div class="form-group">
       <label class="form-label">الوحدة الأساسية</label>
       <div style="display:flex;gap:8px;align-items:center;">
         <div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
           <span style="background:var(--success-light);color:var(--success);padding:2px 10px;border-radius:20px;font-size:12px;">افتراضية</span>
-          <span id="base-unit-display">${getBaseUnitName()}</span>
+          <span id="base-unit-display">${baseUnit}</span>
         </div>
         <button class="btn btn-ghost btn-sm" id="btn-edit-base-unit" type="button" style="padding:0 10px;height:42px;color:var(--primary);" title="تعديل اسم الوحدة">
           ${ICONS.edit}
@@ -495,13 +616,13 @@ function showAddItemModal() {
           ${ICONS.plus} <span style="margin-right:4px;">وحدات</span>
         </button>
       </div>
-      <input type="hidden" id="fm-base-unit" value="${getDefaultUnitId()}">
+      <input type="hidden" id="fm-base-unit" value="${baseUnitId || ''}">
     </div>
     
-    <!-- قسم وحدات التحويل (مخفي افتراضياً) -->
+    <!-- قسم وحدات التحويل -->
     <div id="conversions-section" style="display:none;">
       <div class="form-group" style="margin-top:8px;">
-        <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم ${getBaseUnitName()} في كل وحدة؟)</span></label>
+        <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم ${baseUnit} في كل وحدة؟)</span></label>
         <div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
         
         <div style="background:var(--bg);border-radius:12px;padding:12px;border:1px dashed var(--border);">
@@ -514,7 +635,7 @@ function showAddItemModal() {
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <div style="flex:1;">
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم ${getBaseUnitName()}؟</label>
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم ${baseUnit}؟</label>
               <input class="input" id="conv-factor" type="number" step="any" min="0.001" placeholder="مثال: 12" style="width:100%;">
             </div>
             <button class="btn btn-primary" id="btn-add-conv" type="button" style="width:auto;padding:0 16px;margin-top:18px;">${ICONS.plus} إضافة</button>
@@ -523,9 +644,9 @@ function showAddItemModal() {
       </div>
     </div>
     
-    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(ب${getBaseUnitName()})</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
-    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(لل${getBaseUnitName()} الواحدة)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
-    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(لل${getBaseUnitName()} الواحدة)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(ب${baseUnit})</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
+    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(لل${baseUnit} الواحدة)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(لل${baseUnit} الواحدة)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
   `;
 
   const modal = openModal({ 
@@ -538,54 +659,11 @@ function showAddItemModal() {
   const convSection = modal.element.querySelector('#conversions-section');
   const convList = modal.element.querySelector('#conversions-list');
   const toggleBtn = modal.element.querySelector('#btn-toggle-conversions');
-  const baseUnitDisplay = modal.element.querySelector('#base-unit-display');
   let isConversionsVisible = false;
 
   // تعديل اسم الوحدة الأساسية
-  modal.element.querySelector('#btn-edit-base-unit').addEventListener('click', async () => {
-    const currentName = getBaseUnitName();
-    const newName = prompt(`تعديل اسم الوحدة الأساسية:\nالاسم الحالي: ${currentName}\n\nأدخل الاسم الجديد:`, currentName);
-    
-    if (!newName || !newName.trim() || newName.trim() === currentName) return;
-    
-    const trimmedName = newName.trim();
-    
-    // التحقق من عدم وجود وحدة بنفس الاسم
-    if (unitsCache.some(u => u.name.toLowerCase() === trimmedName.toLowerCase() && u.id !== getDefaultUnitId())) {
-      return showToast('يوجد وحدة بنفس هذا الاسم', 'error');
-    }
-    
-    try {
-      // تحديث الوحدة في السيرفر
-      await apiCall(`/definitions?type=unit&id=${getDefaultUnitId()}`, 'PUT', { 
-        type: 'unit', 
-        id: getDefaultUnitId(), 
-        name: trimmedName 
-      });
-      
-      // تحديث الكاش
-      const unitInCache = unitsCache.find(u => u.id === getDefaultUnitId());
-      if (unitInCache) unitInCache.name = trimmedName;
-      
-      // حفظ في الإعدادات
-      saveBaseUnitName(trimmedName);
-      
-      // تحديث العرض
-      baseUnitDisplay.textContent = trimmedName;
-      modal.element.querySelectorAll(`span:contains("${currentName}")`).forEach(el => {
-        if (el.textContent.includes(currentName)) {
-          el.innerHTML = el.innerHTML.replace(new RegExp(currentName, 'g'), trimmedName);
-        }
-      });
-      
-      showToast(`تم تغيير اسم الوحدة الأساسية إلى "${trimmedName}"`, 'success');
-      
-      // إعادة تحميل الصفحة لتحديث كل التسميات
-      setTimeout(() => loadItems(), 500);
-      
-    } catch (e) {
-      showToast(e.message || 'فشل تعديل اسم الوحدة', 'error');
-    }
+  modal.element.querySelector('#btn-edit-base-unit').addEventListener('click', () => {
+    editBaseUnitName(modal.element);
   });
 
   // تبديل إظهار/إخفاء وحدات التحويل
@@ -621,7 +699,7 @@ function showAddItemModal() {
           <span style="font-weight:800;font-size:15px;">1 ${c.unit_name}</span>
           <span style="color:var(--text-muted);"> = </span>
           <span style="font-weight:800;color:var(--primary);">${c.conversion_factor}</span>
-          <span style="color:var(--text-muted);font-size:13px;"> ${getBaseUnitName()}</span>
+          <span style="color:var(--text-muted);font-size:13px;"> ${baseUnit}</span>
         </div>
         <button class="btn btn-ghost btn-sm" data-idx="${idx}" style="color:var(--danger);padding:4px 8px;" title="حذف">
           ${ICONS.trash}
@@ -654,20 +732,20 @@ function showAddItemModal() {
     unitSel.value = '';
     modal.element.querySelector('#conv-unit-name').textContent = 'الوحدة';
     refreshConversions();
-    showToast(`تمت إضافة: 1 ${unitName} = ${factor} ${getBaseUnitName()}`, 'success');
+    showToast(`تمت إضافة: 1 ${unitName} = ${factor} ${baseUnit}`, 'success');
   };
 
   // إضافة وحدة جديدة للنظام
   modal.element.querySelector('#btn-add-new-unit').onclick = async () => {
-    const name = prompt(`أدخل اسم الوحدة الجديدة:\nمثال: صندوق، كرتونة، طن، شوال، علبة\n\nملاحظة: "${getBaseUnitName()}" محجوزة للوحدة الأساسية`);
+    const name = prompt(`أدخل اسم الوحدة الجديدة:\nمثال: صندوق، كرتونة، طن، شوال، علبة\n\nملاحظة: "${baseUnit}" محجوزة للوحدة الأساسية`);
     if (!name || !name.trim()) return;
     
     const trimmedName = name.trim();
     if (unitsCache.some(u => u.name.toLowerCase() === trimmedName.toLowerCase())) {
       return showToast('هذه الوحدة موجودة مسبقاً', 'warning');
     }
-    if (trimmedName.toLowerCase() === getBaseUnitName().toLowerCase()) {
-      return showToast(`لا يمكن إضافة "${getBaseUnitName()}" - هي الوحدة الأساسية`, 'warning');
+    if (trimmedName.toLowerCase() === baseUnit.toLowerCase()) {
+      return showToast(`لا يمكن إضافة "${baseUnit}" - هي الوحدة الأساسية`, 'warning');
     }
     
     try {
@@ -720,6 +798,9 @@ function showAddItemModal() {
   
   // حفظ
   modal.element.querySelector('#fm-save').onclick = async () => {
+    const baseUnitValue = modal.element.querySelector('#fm-base-unit').value;
+    if (!baseUnitValue) return showToast('الوحدة الأساسية غير محددة', 'error');
+    
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
       category_id: modal.element.querySelector('#fm-category_id').value || null,
@@ -727,7 +808,7 @@ function showAddItemModal() {
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
       selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
       quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
-      base_unit_id: parseInt(modal.element.querySelector('#fm-base-unit').value),
+      base_unit_id: parseInt(baseUnitValue),
       item_units: conversions.map(c => ({ unit_id: c.unit_id, conversion_factor: c.conversion_factor }))
     };
     
@@ -756,11 +837,12 @@ function showEditItemModal(itemId) {
   const it = itemsCache.find(i => i.id === itemId);
   if (!it) return;
 
-  ensureDefaultUnit();
+  const baseUnit = getBaseUnitName();
+  const baseUnitId = getBaseUnitId() || it.base_unit_id;
 
   const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
   const conversionUnitOpts = unitsCache
-    .filter(u => u.name !== getBaseUnitName())
+    .filter(u => u.id !== baseUnitId)
     .map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 
   let conversions = (it.item_units || []).map(iu => ({
@@ -777,13 +859,13 @@ function showEditItemModal(itemId) {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
     
-    <!-- الوحدة الأساسية + زر التعديل -->
+    <!-- الوحدة الأساسية -->
     <div class="form-group">
       <label class="form-label">الوحدة الأساسية</label>
       <div style="display:flex;gap:8px;align-items:center;">
         <div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
           <span style="background:var(--success-light);color:var(--success);padding:2px 10px;border-radius:20px;font-size:12px;">افتراضية</span>
-          <span id="base-unit-display">${getBaseUnitName()}</span>
+          <span id="base-unit-display">${baseUnit}</span>
         </div>
         <button class="btn btn-ghost btn-sm" id="btn-edit-base-unit" type="button" style="padding:0 10px;height:42px;color:var(--primary);" title="تعديل اسم الوحدة">
           ${ICONS.edit}
@@ -792,13 +874,13 @@ function showEditItemModal(itemId) {
           ${hasConversions ? ICONS.x : ICONS.plus} <span style="margin-right:4px;">${hasConversions ? 'إخفاء' : 'وحدات'}</span>
         </button>
       </div>
-      <input type="hidden" id="fm-base-unit" value="${getDefaultUnitId()}">
+      <input type="hidden" id="fm-base-unit" value="${baseUnitId || ''}">
     </div>
     
     <!-- قسم وحدات التحويل -->
     <div id="conversions-section" style="display:${hasConversions ? 'block' : 'none'};">
       <div class="form-group" style="margin-top:8px;">
-        <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم ${getBaseUnitName()} في كل وحدة؟)</span></label>
+        <label class="form-label">وحدات التحويل <span style="color:var(--text-muted);font-size:12px;">(كم ${baseUnit} في كل وحدة؟)</span></label>
         <div id="conversions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
         
         <div style="background:var(--bg);border-radius:12px;padding:12px;border:1px dashed var(--border);">
@@ -811,7 +893,7 @@ function showEditItemModal(itemId) {
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <div style="flex:1;">
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم ${getBaseUnitName()}؟</label>
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 <span id="conv-unit-name">الوحدة</span> = كم ${baseUnit}؟</label>
               <input class="input" id="conv-factor" type="number" step="any" min="0.001" placeholder="مثال: 12" style="width:100%;">
             </div>
             <button class="btn btn-primary" id="btn-add-conv" type="button" style="width:auto;padding:0 16px;margin-top:18px;">${ICONS.plus} إضافة</button>
@@ -820,9 +902,9 @@ function showEditItemModal(itemId) {
       </div>
     </div>
     
-    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(ب${getBaseUnitName()})</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
-    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(لل${getBaseUnitName()} الواحدة)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
-    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(لل${getBaseUnitName()} الواحدة)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
+    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(ب${baseUnit})</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
+    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(لل${baseUnit} الواحدة)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
+    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(لل${baseUnit} الواحدة)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
   `;
 
   const modal = openModal({ 
@@ -834,41 +916,11 @@ function showEditItemModal(itemId) {
   const convSection = modal.element.querySelector('#conversions-section');
   const convList = modal.element.querySelector('#conversions-list');
   const toggleBtn = modal.element.querySelector('#btn-toggle-conversions');
-  const baseUnitDisplay = modal.element.querySelector('#base-unit-display');
   let isConversionsVisible = hasConversions;
 
   // تعديل اسم الوحدة الأساسية
-  modal.element.querySelector('#btn-edit-base-unit').addEventListener('click', async () => {
-    const currentName = getBaseUnitName();
-    const newName = prompt(`تعديل اسم الوحدة الأساسية:\nالاسم الحالي: ${currentName}\n\nأدخل الاسم الجديد:`, currentName);
-    
-    if (!newName || !newName.trim() || newName.trim() === currentName) return;
-    
-    const trimmedName = newName.trim();
-    
-    if (unitsCache.some(u => u.name.toLowerCase() === trimmedName.toLowerCase() && u.id !== getDefaultUnitId())) {
-      return showToast('يوجد وحدة بنفس هذا الاسم', 'error');
-    }
-    
-    try {
-      await apiCall(`/definitions?type=unit&id=${getDefaultUnitId()}`, 'PUT', { 
-        type: 'unit', 
-        id: getDefaultUnitId(), 
-        name: trimmedName 
-      });
-      
-      const unitInCache = unitsCache.find(u => u.id === getDefaultUnitId());
-      if (unitInCache) unitInCache.name = trimmedName;
-      
-      saveBaseUnitName(trimmedName);
-      baseUnitDisplay.textContent = trimmedName;
-      
-      showToast(`تم تغيير اسم الوحدة الأساسية إلى "${trimmedName}"`, 'success');
-      setTimeout(() => loadItems(), 500);
-      
-    } catch (e) {
-      showToast(e.message || 'فشل تعديل اسم الوحدة', 'error');
-    }
+  modal.element.querySelector('#btn-edit-base-unit').addEventListener('click', () => {
+    editBaseUnitName(modal.element);
   });
 
   // تبديل إظهار/إخفاء
@@ -904,7 +956,7 @@ function showEditItemModal(itemId) {
           <span style="font-weight:800;font-size:15px;">1 ${c.unit_name}</span>
           <span style="color:var(--text-muted);"> = </span>
           <span style="font-weight:800;color:var(--primary);">${c.conversion_factor}</span>
-          <span style="color:var(--text-muted);font-size:13px;"> ${getBaseUnitName()}</span>
+          <span style="color:var(--text-muted);font-size:13px;"> ${baseUnit}</span>
         </div>
         <button class="btn btn-ghost btn-sm" data-idx="${idx}" style="color:var(--danger);padding:4px 8px;" title="حذف">
           ${ICONS.trash}
@@ -937,20 +989,20 @@ function showEditItemModal(itemId) {
     unitSel.value = '';
     modal.element.querySelector('#conv-unit-name').textContent = 'الوحدة';
     refreshConversions();
-    showToast(`تمت إضافة: 1 ${unitName} = ${factor} ${getBaseUnitName()}`, 'success');
+    showToast(`تمت إضافة: 1 ${unitName} = ${factor} ${baseUnit}`, 'success');
   };
 
   // إضافة وحدة جديدة
   modal.element.querySelector('#btn-add-new-unit').onclick = async () => {
-    const name = prompt(`أدخل اسم الوحدة الجديدة:\nمثال: صندوق، كرتونة، طن، شوال، علبة\n\nملاحظة: "${getBaseUnitName()}" محجوزة للوحدة الأساسية`);
+    const name = prompt(`أدخل اسم الوحدة الجديدة:\nمثال: صندوق، كرتونة، طن، شوال، علبة\n\nملاحظة: "${baseUnit}" محجوزة للوحدة الأساسية`);
     if (!name || !name.trim()) return;
     
     const trimmedName = name.trim();
     if (unitsCache.some(u => u.name.toLowerCase() === trimmedName.toLowerCase())) {
       return showToast('هذه الوحدة موجودة مسبقاً', 'warning');
     }
-    if (trimmedName.toLowerCase() === getBaseUnitName().toLowerCase()) {
-      return showToast(`لا يمكن إضافة "${getBaseUnitName()}" - هي الوحدة الأساسية`, 'warning');
+    if (trimmedName.toLowerCase() === baseUnit.toLowerCase()) {
+      return showToast(`لا يمكن إضافة "${baseUnit}" - هي الوحدة الأساسية`, 'warning');
     }
     
     try {
@@ -1003,6 +1055,9 @@ function showEditItemModal(itemId) {
   
   // حفظ
   modal.element.querySelector('#fm-save').onclick = async () => {
+    const baseUnitValue = modal.element.querySelector('#fm-base-unit').value;
+    if (!baseUnitValue) return showToast('الوحدة الأساسية غير محددة', 'error');
+    
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
       category_id: modal.element.querySelector('#fm-category_id').value || null,
@@ -1010,7 +1065,7 @@ function showEditItemModal(itemId) {
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
       selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
       quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
-      base_unit_id: parseInt(modal.element.querySelector('#fm-base-unit').value),
+      base_unit_id: parseInt(baseUnitValue),
       item_units: conversions.map(c => ({ unit_id: c.unit_id, conversion_factor: c.conversion_factor }))
     };
     
@@ -1029,76 +1084,6 @@ function showEditItemModal(itemId) {
       btn.innerHTML = `${ICONS.check} حفظ`; 
     }
   };
-}
-
-// ========== دوال مساعدة محدثة ==========
-
-async function ensureDefaultUnit() {
-  const defaultName = getBaseUnitName();
-  let defaultUnit = unitsCache.find(u => u.name === defaultName);
-  
-  if (!defaultUnit) {
-    defaultUnit = unitsCache.find(u => u.id === SYSTEM_SETTINGS.baseUnitId);
-  }
-  
-  if (!defaultUnit) {
-    try {
-      const allUnits = await apiCall('/definitions?type=unit', 'GET');
-      unitsCache = allUnits;
-      defaultUnit = unitsCache.find(u => u.name === defaultName);
-      
-      if (!defaultUnit) {
-        const res = await apiCall(`/definitions?type=unit`, 'POST', { type: 'unit', name: defaultName });
-        const newId = res?.id || res?.data?.id;
-        if (newId) {
-          unitsCache.push({ id: newId, name: defaultName });
-          SYSTEM_SETTINGS.baseUnitId = newId;
-          localStorage.setItem('baseUnitId', newId);
-        }
-      } else {
-        SYSTEM_SETTINGS.baseUnitId = defaultUnit.id;
-        localStorage.setItem('baseUnitId', defaultUnit.id);
-      }
-    } catch (e) {
-      console.error('فشل إنشاء الوحدة الافتراضية:', e);
-    }
-  }
-}
-
-function getDefaultUnitId() {
-  const unit = unitsCache.find(u => u.name === getBaseUnitName());
-  return unit?.id || SYSTEM_SETTINGS.baseUnitId || 1;
-}
-
-// ========== دوال مساعدة ==========
-
-/**
- * التأكد من وجود وحدة "قطعة" في الكاش، وإنشاؤها إذا لم تكن موجودة
- */
-async function ensureDefaultUnit() {
-  const defaultUnit = unitsCache.find(u => u.name === 'قطعة');
-  if (defaultUnit) return;
-  
-  try {
-    // محاولة إنشاء وحدة "قطعة" في السيرفر
-    const res = await apiCall(`/definitions?type=unit`, 'POST', { type: 'unit', name: 'قطعة' });
-    const newId = res?.id || res?.data?.id;
-    if (newId) {
-      unitsCache.push({ id: newId, name: 'قطعة' });
-    }
-  } catch (e) {
-    // إذا كانت موجودة في السيرفر لكن غير محملة
-    const allUnits = await apiCall('/definitions?type=unit', 'GET');
-    unitsCache = allUnits;
-  }
-}
-
-/**
- * الحصول على معرف وحدة "قطعة"
- */
-function getDefaultUnitId() {
-  const unit = unitsCache.find(u => u.name === 'قطعة');
-  return unit?.id || 1;
 }
 
 
