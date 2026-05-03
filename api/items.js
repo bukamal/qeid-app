@@ -5,7 +5,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -35,13 +35,25 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
+      // Get items with their units linked to the units table
       const { data: items, error: itemsError } = await supabase
         .from('items')
-        .select('*, category:categories(name), item_units(*, unit:units(*))')
+        .select(`
+          *,
+          category:categories(name),
+          base_unit:units!items_base_unit_id_fkey(name, abbreviation),
+          item_units(
+            id,
+            unit_id,
+            conversion_factor,
+            unit:units(name, abbreviation)
+          )
+        `)
         .eq('user_id', userId)
         .order('name');
       if (itemsError) throw itemsError;
 
+      // Calculate quantities from invoices
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
         .select('item_id, quantity, invoice:invoices!inner(type)')
@@ -71,7 +83,13 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const { name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
-      
+
+      // Verify base_unit belongs to user
+      if (base_unit_id) {
+        const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
+        if (!unitCheck) return res.status(400).json({ error: 'الوحدة الأساسية غير موجودة' });
+      }
+
       const { data, error } = await supabase.from('items').insert({
         user_id: userId,
         name: name.trim(),
@@ -83,29 +101,84 @@ module.exports = async (req, res) => {
         base_unit_id: base_unit_id || null
       }).select().single();
       if (error) throw error;
-      
+
+      // Insert item_units with unit_id references
       if (item_units && Array.isArray(item_units) && data) {
-        await supabase.from('item_units').insert(
-          item_units.map(u => ({ item_id: data.id, unit_id: u.unit_id, conversion_factor: u.conversion_factor }))
-        );
+        const validUnits = [];
+        for (const u of item_units) {
+          if (u.unit_id) {
+            // Verify unit belongs to user
+            const { data: unitCheck } = await supabase.from('units').select('id').eq('id', u.unit_id).eq('user_id', userId).single();
+            if (unitCheck) {
+              validUnits.push({
+                item_id: data.id,
+                unit_id: u.unit_id,
+                conversion_factor: parseFloat(u.conversion_factor) || 1
+              });
+            }
+          }
+        }
+        if (validUnits.length > 0) {
+          await supabase.from('item_units').insert(validUnits);
+        }
       }
-      
+
+      // Return full item with unit data
       const { data: fullData } = await supabase
-        .from('items').select('*, category:categories(name), item_units(*, unit:units(*))').eq('id', data.id).single();
+        .from('items')
+        .select(`
+          *,
+          category:categories(name),
+          base_unit:units!items_base_unit_id_fkey(name, abbreviation),
+          item_units(
+            id,
+            unit_id,
+            conversion_factor,
+            unit:units(name, abbreviation)
+          )
+        `)
+        .eq('id', data.id)
+        .single();
       return res.json(fullData || data);
     }
 
     if (req.method === 'PUT') {
       const { id, name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
-      
-      await supabase.from('item_units').delete().eq('item_id', id);
-      if (item_units && Array.isArray(item_units)) {
-        await supabase.from('item_units').insert(
-          item_units.map(u => ({ item_id: id, unit_id: u.unit_id, conversion_factor: u.conversion_factor }))
-        );
+
+      // Verify item belongs to user
+      const { data: itemCheck } = await supabase.from('items').select('id').eq('id', id).eq('user_id', userId).single();
+      if (!itemCheck) return res.status(404).json({ error: 'المادة غير موجودة' });
+
+      // Verify base_unit belongs to user
+      if (base_unit_id) {
+        const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
+        if (!unitCheck) return res.status(400).json({ error: 'الوحدة الأساسية غير موجودة' });
       }
-      
+
+      // Delete existing item_units
+      await supabase.from('item_units').delete().eq('item_id', id);
+
+      // Insert new item_units with unit_id references
+      if (item_units && Array.isArray(item_units)) {
+        const validUnits = [];
+        for (const u of item_units) {
+          if (u.unit_id) {
+            const { data: unitCheck } = await supabase.from('units').select('id').eq('id', u.unit_id).eq('user_id', userId).single();
+            if (unitCheck) {
+              validUnits.push({
+                item_id: id,
+                unit_id: u.unit_id,
+                conversion_factor: parseFloat(u.conversion_factor) || 1
+              });
+            }
+          }
+        }
+        if (validUnits.length > 0) {
+          await supabase.from('item_units').insert(validUnits);
+        }
+      }
+
       const { data, error } = await supabase.from('items').update({
         name: name?.trim(),
         category_id: category_id || null,
@@ -116,9 +189,23 @@ module.exports = async (req, res) => {
         base_unit_id: base_unit_id || null
       }).eq('id', id).eq('user_id', userId).select().single();
       if (error) throw error;
-      
+
+      // Return full item with unit data
       const { data: fullData } = await supabase
-        .from('items').select('*, category:categories(name), item_units(*, unit:units(*))').eq('id', id).single();
+        .from('items')
+        .select(`
+          *,
+          category:categories(name),
+          base_unit:units!items_base_unit_id_fkey(name, abbreviation),
+          item_units(
+            id,
+            unit_id,
+            conversion_factor,
+            unit:units(name, abbreviation)
+          )
+        `)
+        .eq('id', id)
+        .single();
       return res.json(fullData || data);
     }
 
@@ -137,4 +224,3 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-

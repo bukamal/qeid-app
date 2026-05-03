@@ -1,5 +1,6 @@
 /* ============================================
-   الراجحي للمحاسبة - المنطق المحسّن v3 Pro (موحد)
+   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
+   الجزء 1: الأساسيات - الأيقونات، الدوال المساعدة، المودال، API
    ============================================ */
 const tg = window.Telegram.WebApp;
 tg.ready();
@@ -27,7 +28,8 @@ const ICONS = {
   alert: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
   info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   print: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
-  file: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+  file: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  scale: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>'
 };
 
 // ========== الثيم ==========
@@ -184,7 +186,10 @@ async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
     if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
       const base = endpoint.split('?')[0].split('/')[1];
       invalidateCache('/' + base);
-      if (base === 'definitions') invalidateCache('/definitions');
+      if (base === 'definitions') {
+        invalidateCache('/definitions');
+        unitsCache = await apiCall('/definitions?type=unit', 'GET');
+      }
       if (base === 'invoices') invoicesCache = await apiCall('/invoices', 'GET');
       if (base === 'items') itemsCache = await apiCall('/items', 'GET');
       if (base === 'customers') customersCache = await apiCall('/customers', 'GET');
@@ -240,6 +245,11 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess })
   };
 }
 
+/* ============================================
+   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
+   الجزء 2: التنقل، الوحدات، المواد (عرض وإضافة وتفاصيل)
+   ============================================ */
+
 // ========== التنقل ==========
 const tabsConfig = {
   dashboard: { title: 'لوحة التحكم', subtitle: 'نظرة عامة على أداء عملك', icon: ICONS.home },
@@ -249,6 +259,7 @@ const tabsConfig = {
   customers: { title: 'العملاء', subtitle: 'قائمة العملاء والذمم المدينة', icon: ICONS.users },
   suppliers: { title: 'الموردين', subtitle: 'قائمة الموردين والذمم الدائنة', icon: ICONS.factory },
   categories: { title: 'التصنيفات', subtitle: 'تصنيفات المواد', icon: ICONS.tag },
+  units: { title: 'الوحدات', subtitle: 'إدارة وحدات القياس', icon: ICONS.scale },
   payments: { title: 'الدفعات', subtitle: 'سجل المقبوضات والمدفوعات', icon: ICONS.wallet },
   expenses: { title: 'المصاريف', subtitle: 'تتبع المصاريف التشغيلية', icon: ICONS.dollar },
   invoices: { title: 'الفواتير', subtitle: 'سجل الفواتير والحركات', icon: ICONS.fileText },
@@ -282,6 +293,7 @@ function navigateTo(tabName) {
       case 'customers': loadGenericSection(getSectionOptions('/customers')); break;
       case 'suppliers': loadGenericSection(getSectionOptions('/suppliers')); break;
       case 'categories': loadGenericSection(getSectionOptions('/definitions?type=category')); break;
+      case 'units': loadUnitsSection(); break;
       case 'payments': loadPayments(); break;
       case 'expenses': loadExpenses(); break;
       case 'invoices': loadInvoices(); break;
@@ -310,8 +322,8 @@ function emptyState(title, subtitle) {
 function initNavigation() {
   const sidebarNav = document.getElementById('sidebar-nav');
   const sheetGrid = document.getElementById('sheet-grid');
-  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','payments','expenses','invoices','reports'];
-  const moreTabs = ['purchase-invoice','customers','suppliers','categories','payments','expenses','reports'];
+  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','units','payments','expenses','invoices','reports'];
+  const moreTabs = ['purchase-invoice','customers','suppliers','categories','units','payments','expenses','reports'];
 
   mainTabs.forEach(key => {
     const cfg = tabsConfig[key];
@@ -360,16 +372,101 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
   });
 });
 
-// ========== المواد (Items) ==========
+// ========== الوحدات (Units) - مربوطة بقاعدة البيانات ==========
+async function loadUnitsSection() {
+  try {
+    const data = await apiCall('/definitions?type=unit', 'GET');
+    unitsCache = data;
+
+    let html = `<div class="card"><div class="card-header"><div><h3 class="card-title">وحدات القياس</h3><span class="card-subtitle">إدارة وحدات القياس المستخدمة في المواد</span></div><button class="btn btn-primary btn-sm" id="btn-add-unit">${ICONS.plus} إضافة وحدة</button></div></div>`;
+    
+    if (!data || !data.length) {
+      html += emptyState('لا توجد وحدات مسجلة', 'أضف وحدات القياس المستخدمة في عملك');
+    } else {
+      html += '<div class="table-wrap"><table class="table"><thead><tr><th>الوحدة</th><th>الاختصار</th><th>الإجراءات</th></tr></thead><tbody>';
+      data.forEach(unit => {
+        html += `<tr>
+          <td style="font-weight:700;">${unit.name}</td>
+          <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${unit.abbreviation || '-'}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm edit-unit-btn" data-id="${unit.id}">${ICONS.edit}</button>
+            <button class="btn btn-danger btn-sm delete-unit-btn" data-id="${unit.id}">${ICONS.trash}</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+    
+    document.getElementById('tab-content').innerHTML = html;
+    
+    document.getElementById('btn-add-unit')?.addEventListener('click', showAddUnitModal);
+    document.querySelectorAll('.edit-unit-btn').forEach(btn => {
+      btn.addEventListener('click', e => showEditUnitModal(e.target.closest('button').dataset.id));
+    });
+    document.querySelectorAll('.delete-unit-btn').forEach(btn => {
+      btn.addEventListener('click', e => deleteUnit(e.target.closest('button').dataset.id));
+    });
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+function showAddUnitModal() {
+  showFormModal({
+    title: 'إضافة وحدة قياس جديدة',
+    fields: [
+      { id: 'name', label: 'اسم الوحدة', placeholder: 'مثال: قطعة، كيلو، لتر' },
+      { id: 'abbreviation', label: 'الاختصار', placeholder: 'مثال: pc, kg, L' }
+    ],
+    onSave: async (values) => {
+      if (!values.name?.trim()) throw new Error('اسم الوحدة مطلوب');
+      if (unitsCache.some(u => u.name.toLowerCase() === values.name.trim().toLowerCase())) {
+        throw new Error('توجد وحدة بنفس الاسم');
+      }
+      return apiCall('/definitions?type=unit', 'POST', { type: 'unit', name: values.name.trim(), abbreviation: values.abbreviation || null });
+    },
+    onSuccess: () => loadUnitsSection()
+  });
+}
+
+function showEditUnitModal(unitId) {
+  const unit = unitsCache.find(u => u.id == unitId);
+  if (!unit) return;
+  showFormModal({
+    title: 'تعديل وحدة القياس',
+    fields: [
+      { id: 'name', label: 'اسم الوحدة' },
+      { id: 'abbreviation', label: 'الاختصار' }
+    ],
+    initialValues: { name: unit.name, abbreviation: unit.abbreviation || '' },
+    onSave: async (values) => {
+      if (!values.name?.trim()) throw new Error('اسم الوحدة مطلوب');
+      return apiCall('/definitions?type=unit', 'PUT', { type: 'unit', id: unitId, name: values.name.trim(), abbreviation: values.abbreviation || null });
+    },
+    onSuccess: () => loadUnitsSection()
+  });
+}
+
+async function deleteUnit(unitId) {
+  const unit = unitsCache.find(u => u.id == unitId);
+  if (!await confirmDialog(`هل أنت متأكد من حذف الوحدة <strong>${unit?.name || ''}</strong>؟`)) return;
+  try {
+    await apiCall(`/definitions?type=unit&id=${unitId}`, 'DELETE');
+    showToast('تم الحذف بنجاح', 'success');
+    loadUnitsSection();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ========== المواد (Items) مع وحدات مربوطة بقاعدة البيانات ==========
 function renderFilteredItems() {
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
   const filtered = itemsCache.filter(i => (i.name || '').toLowerCase().includes(q));
   const container = document.getElementById('items-list');
   if (!filtered.length) return container.innerHTML = emptyState('لا توجد مواد مطابقة', 'يمكنك إضافة مواد جديدة من الزر أعلاه');
-  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الوحدة الأساسية</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
   filtered.forEach(item => {
+    const baseUnitName = item.base_unit?.name || item.base_unit?.abbreviation || 'قطعة';
     html += `<tr onclick="showItemDetail(${item.id})" style="cursor:pointer;">
       <td><div style="font-weight:700;">${item.name}</div><div style="color:var(--text-muted);font-size:12px;">${item.category?.name || 'بدون تصنيف'}</div></td>
+      <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${baseUnitName}</span></td>
       <td style="font-weight:700;color:${(item.available ?? 0) <= 0 ? 'var(--danger)' : 'var(--success)'}">${item.available ?? 0}</td>
       <td style="font-weight:700;">${formatNumber(item.total_value ?? 0)}</td>
     </tr>`;
@@ -398,35 +495,38 @@ async function loadItems() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== تفاصيل المادة ==========
+// ========== تفاصيل المادة مع وحدات من قاعدة البيانات ==========
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
 
-  const unit1 = item.base_unit_name || 'قطعة';
-  const unit2 = (item.item_units || []).find(u => u.level === 2);
-  const unit3 = (item.item_units || []).find(u => u.level === 3);
+  const baseUnit = item.base_unit || {};
+  const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
+  const itemUnits = item.item_units || [];
 
-  let unitsHtml = `<div style="margin-bottom:16px;"><div style="font-weight:700;margin-bottom:8px;color:var(--text-secondary);">نظام الوحدات</div><div style="display:flex;flex-direction:column;gap:8px;">
-    <div style="background:var(--success-light);border:1px solid var(--success);border-radius:8px;padding:10px 14px;"><span style="color:var(--success);font-weight:800;">الوحدة 1 (الأساسية):</span><span style="font-weight:700;"> ${unit1}</span></div>`;
-  if (unit2) {
-    unitsHtml += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;"><span style="color:var(--primary);font-weight:800;">الوحدة 2:</span><span style="font-weight:700;"> ${unit2.unit_name}</span><span style="color:var(--text-muted);"> (1 ${unit2.unit_name} = ${unit2.conversion_factor} ${unit1})</span></div>`;
+  let unitsHtml = '';
+  if (itemUnits.length > 0) {
+    unitsHtml = `<div style="margin-bottom:16px;"><div style="font-weight:700;margin-bottom:8px;color:var(--text-secondary);">نظام الوحدات</div><div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="background:var(--success-light);border:1px solid var(--success);border-radius:8px;padding:10px 14px;"><span style="color:var(--success);font-weight:800;">الوحدة الأساسية:</span><span style="font-weight:700;"> ${baseUnitName}</span></div>`;
+    
+    itemUnits.forEach((iu, idx) => {
+      const unit = iu.unit || {};
+      const unitName = unit.name || unit.abbreviation || `وحدة ${idx + 2}`;
+      unitsHtml += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;"><span style="color:var(--primary);font-weight:800;">وحدة فرعية:</span><span style="font-weight:700;"> ${unitName}</span><span style="color:var(--text-muted);"> (1 ${unitName} = ${iu.conversion_factor} ${baseUnitName})</span></div>`;
+    });
+    unitsHtml += `</div></div>`;
   }
-  if (unit3) {
-    unitsHtml += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;"><span style="color:var(--primary);font-weight:800;">الوحدة 3:</span><span style="font-weight:700;"> ${unit3.unit_name}</span><span style="color:var(--text-muted);"> (1 ${unit3.unit_name} = ${unit3.conversion_factor} ${unit2?.unit_name || 'وحدة 2'})</span></div>`;
-  }
-  unitsHtml += `</div></div>`;
 
   const modal = openModal({
     title: item.name,
     bodyHTML: `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">الكمية المشتراة</div><div class="stat-value" style="font-size:16px;">${item.purchase_qty ?? 0} ${unit1}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">الكمية المباعة</div><div class="stat-value" style="font-size:16px;">${item.sale_qty ?? 0} ${unit1}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;border-color:var(--primary);"><div class="stat-label">المتوفرة</div><div class="stat-value text-primary" style="font-size:20px;">${item.available ?? 0} ${unit1}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">الكمية المشتراة</div><div class="stat-value" style="font-size:16px;">${item.purchase_qty ?? 0} ${baseUnitName}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">الكمية المباعة</div><div class="stat-value" style="font-size:16px;">${item.sale_qty ?? 0} ${baseUnitName}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;border-color:var(--primary);"><div class="stat-label">المتوفرة</div><div class="stat-value text-primary" style="font-size:20px;">${item.available ?? 0} ${baseUnitName}</div></div>
         <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">القيمة الإجمالية</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.total_value ?? 0)}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر الشراء</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price)} / ${unit1}</div></div>
-        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price)} / ${unit1}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر الشراء</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price)} / ${baseUnitName}</div></div>
+        <div class="stat-card" style="margin:0;padding:12px;"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price)} / ${baseUnitName}</div></div>
       </div>
       ${unitsHtml}
       <div class="form-label">التصنيف</div><p style="margin-bottom:12px;">${item.category?.name || 'بدون تصنيف'}</p>
@@ -447,33 +547,40 @@ function showItemDetail(itemId) {
   };
 }
 
-// ========== إضافة مادة ==========
+/* ============================================
+   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
+   الجزء 3: إضافة وتعديل المواد، الأقسام العامة (عملاء، موردين، تصنيفات)
+   ============================================ */
+
+// ========== إضافة مادة (مع وحدات من DB) ==========
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const unitOpts = unitsCache.map(u => `<option value="${u.id}">${u.name} (${u.abbreviation || ''})</option>`).join('');
 
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
-    <div class="form-group"><label class="form-label">الوحدة 1 <span style="color:var(--text-muted);font-size:12px;">(الأساسية - الصغرى)</span></label><input class="input" id="fm-unit1" type="text" placeholder="مثال: قطعة" value="قطعة"></div>
+    <div class="form-group"><label class="form-label">الوحدة الأساسية</label><select class="select" id="fm-base_unit_id"><option value="">اختر الوحدة</option>${unitOpts}</select></div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px;"><div class="form-group" style="flex:1;margin:0;"><input class="input" id="fm-new-unit-name" type="text" placeholder="وحدة جديدة..."></div><div class="form-group" style="width:100px;margin:0;"><input class="input" id="fm-new-unit-abbr" type="text" placeholder="اختصار"></div><button class="btn btn-secondary" id="btn-quick-unit" type="button" style="width:auto;padding:8px 14px;">${ICONS.plus}</button></div>
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة 2 <span style="color:var(--text-muted);font-size:12px;">(الوسطى)</span></label>
+      <label class="form-label">الوحدة الفرعية 1</label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label><input class="input" id="fm-unit2-name" type="text" placeholder="مثال: صندوق" style="width:100%;"></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 2 = كم وحدة 1؟</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="12" style="width:100%;"></div>
+        <div style="flex:1;"><select class="select" id="fm-unit2-id"><option value="">اختر وحدة</option>${unitOpts}</select></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" style="width:100%;"></div>
       </div>
     </div>
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة 3 <span style="color:var(--text-muted);font-size:12px;">(الكبرى)</span></label>
+      <label class="form-label">الوحدة الفرعية 2</label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">الاسم</label><input class="input" id="fm-unit3-name" type="text" placeholder="مثال: كرتونة" style="width:100%;"></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">1 وحدة 3 = كم وحدة 2؟</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="10" style="width:100%;"></div>
+        <div style="flex:1;"><select class="select" id="fm-unit3-id"><option value="">اختر وحدة</option>${unitOpts}</select></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" style="width:100%;"></div>
       </div>
     </div>
-    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة 1)</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
-    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
-    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
+    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
+    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
   `;
 
   const modal = openModal({
@@ -482,6 +589,7 @@ function showAddItemModal() {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
+  // Quick add category
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
@@ -502,17 +610,41 @@ function showAddItemModal() {
     } catch (e) { showToast(e.message, 'error'); }
   };
 
+  // Quick add unit
+  modal.element.querySelector('#btn-quick-unit').onclick = async () => {
+    const nameInput = modal.element.querySelector('#fm-new-unit-name');
+    const abbrInput = modal.element.querySelector('#fm-new-unit-abbr');
+    const baseSelect = modal.element.querySelector('#fm-base_unit_id');
+    const u2Select = modal.element.querySelector('#fm-unit2-id');
+    const u3Select = modal.element.querySelector('#fm-unit3-id');
+    const name = nameInput.value.trim();
+    if (!name) return showToast('أدخل اسم الوحدة', 'warning');
+    if (unitsCache.some(u => u.name.toLowerCase() === name.toLowerCase())) return showToast('توجد وحدة بنفس الاسم', 'warning');
+    try {
+      const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: abbrInput.value.trim() || null });
+      const newId = res?.id || res?.data?.id;
+      if (!newId) throw new Error('خطأ في الاستجابة');
+      unitsCache.push({ id: newId, name, abbreviation: abbrInput.value.trim() || null });
+      const o = document.createElement('option');
+      o.value = newId; o.textContent = name;
+      [baseSelect, u2Select, u3Select].forEach(sel => sel.appendChild(o.cloneNode(true)));
+      if (!baseSelect.value) baseSelect.value = newId;
+      nameInput.value = ''; abbrInput.value = '';
+      showToast('تم إضافة الوحدة واختيارها', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
   modal.element.querySelector('#fm-save').onclick = async () => {
-    const unit1Name = modal.element.querySelector('#fm-unit1').value.trim() || 'قطعة';
-    const unit2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+    const baseUnitId = modal.element.querySelector('#fm-base_unit_id').value || null;
+    const unit2Id = modal.element.querySelector('#fm-unit2-id').value || null;
     const unit2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
-    const unit3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+    const unit3Id = modal.element.querySelector('#fm-unit3-id').value || null;
     const unit3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
 
     const itemUnits = [];
-    if (unit2Name && unit2Factor > 0) itemUnits.push({ unit_name: unit2Name, conversion_factor: unit2Factor, level: 2 });
-    if (unit3Name && unit3Factor > 0) itemUnits.push({ unit_name: unit3Name, conversion_factor: unit3Factor, level: 3 });
+    if (unit2Id && unit2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: unit2Factor });
+    if (unit3Id && unit3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: unit3Factor });
 
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
@@ -521,7 +653,7 @@ function showAddItemModal() {
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
       selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
       quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
-      base_unit_name: unit1Name,
+      base_unit_id: baseUnitId,
       item_units: itemUnits
     };
 
@@ -541,38 +673,41 @@ function showAddItemModal() {
   };
 }
 
-// ========== تعديل مادة ==========
+// ========== تعديل مادة (مع وحدات من DB) ==========
 function showEditItemModal(itemId) {
   const it = itemsCache.find(i => i.id === itemId);
   if (!it) return;
 
   const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
-  const unit2 = (it.item_units || []).find(u => u.level === 2) || {};
-  const unit3 = (it.item_units || []).find(u => u.level === 3) || {};
+  const unitOpts = unitsCache.map(u => `<option value="${u.id}" ${u.id === it.base_unit_id ? 'selected' : ''}>${u.name} (${u.abbreviation || ''})</option>`).join('');
+
+  const iu2 = it.item_units?.find(u => u.level === 2) || {};
+  const iu3 = it.item_units?.find(u => u.level === 3) || {};
 
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" value="${it.name || ''}"></div>
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
-    <div class="form-group"><label class="form-label">الوحدة 1 <span style="color:var(--text-muted);font-size:12px;">(الأساسية - الصغرى)</span></label><input class="input" id="fm-unit1" type="text" value="${it.base_unit_name || 'قطعة'}"></div>
+    <div class="form-group"><label class="form-label">الوحدة الأساسية</label><select class="select" id="fm-base_unit_id"><option value="">اختر الوحدة</option>${unitOpts}</select></div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px;"><div class="form-group" style="flex:1;margin:0;"><input class="input" id="fm-new-unit-name" type="text" placeholder="وحدة جديدة..."></div><div class="form-group" style="width:100px;margin:0;"><input class="input" id="fm-new-unit-abbr" type="text" placeholder="اختصار"></div><button class="btn btn-secondary" id="btn-quick-unit" type="button" style="width:auto;padding:8px 14px;">${ICONS.plus}</button></div>
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة 2 <span style="color:var(--text-muted);font-size:12px;">(الوسطى)</span></label>
+      <label class="form-label">الوحدة الفرعية 1</label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">الاسم</label><input class="input" id="fm-unit2-name" type="text" value="${unit2.unit_name || ''}" style="width:100%;"></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);">1 وحدة 2 = كم وحدة 1؟</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" value="${unit2.conversion_factor || ''}" style="width:100%;"></div>
+        <div style="flex:1;"><select class="select" id="fm-unit2-id"><option value="">اختر وحدة</option>${unitsCache.map(u => `<option value="${u.id}" ${u.id == iu2.unit_id ? 'selected' : ''}>${u.name} (${u.abbreviation || ''})</option>`).join('')}</select></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" value="${iu2.conversion_factor || ''}" placeholder="مثال: 12" style="width:100%;"></div>
       </div>
     </div>
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة 3 <span style="color:var(--text-muted);font-size:12px;">(الكبرى)</span></label>
+      <label class="form-label">الوحدة الفرعية 2</label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">الاسم</label><input class="input" id="fm-unit3-name" type="text" value="${unit3.unit_name || ''}" style="width:100%;"></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);">1 وحدة 3 = كم وحدة 2؟</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" value="${unit3.conversion_factor || ''}" style="width:100%;"></div>
+        <div style="flex:1;"><select class="select" id="fm-unit3-id"><option value="">اختر وحدة</option>${unitsCache.map(u => `<option value="${u.id}" ${u.id == iu3.unit_id ? 'selected' : ''}>${u.name} (${u.abbreviation || ''})</option>`).join('')}</select></div>
+        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" value="${iu3.conversion_factor || ''}" placeholder="مثال: 10" style="width:100%;"></div>
       </div>
     </div>
-    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة 1)</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
-    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
-    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة 1)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
+    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
+    <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
+    <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
   `;
 
   const modal = openModal({
@@ -581,6 +716,7 @@ function showEditItemModal(itemId) {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
+  // Quick add category (same as add)
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
@@ -601,17 +737,41 @@ function showEditItemModal(itemId) {
     } catch (e) { showToast(e.message, 'error'); }
   };
 
+  // Quick add unit
+  modal.element.querySelector('#btn-quick-unit').onclick = async () => {
+    const nameInput = modal.element.querySelector('#fm-new-unit-name');
+    const abbrInput = modal.element.querySelector('#fm-new-unit-abbr');
+    const baseSelect = modal.element.querySelector('#fm-base_unit_id');
+    const u2Select = modal.element.querySelector('#fm-unit2-id');
+    const u3Select = modal.element.querySelector('#fm-unit3-id');
+    const name = nameInput.value.trim();
+    if (!name) return showToast('أدخل اسم الوحدة', 'warning');
+    if (unitsCache.some(u => u.name.toLowerCase() === name.toLowerCase())) return showToast('توجد وحدة بنفس الاسم', 'warning');
+    try {
+      const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: abbrInput.value.trim() || null });
+      const newId = res?.id || res?.data?.id;
+      if (!newId) throw new Error('خطأ في الاستجابة');
+      unitsCache.push({ id: newId, name, abbreviation: abbrInput.value.trim() || null });
+      const o = document.createElement('option');
+      o.value = newId; o.textContent = name;
+      [baseSelect, u2Select, u3Select].forEach(sel => sel.appendChild(o.cloneNode(true)));
+      if (!baseSelect.value) baseSelect.value = newId;
+      nameInput.value = ''; abbrInput.value = '';
+      showToast('تم إضافة الوحدة واختيارها', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
   modal.element.querySelector('#fm-save').onclick = async () => {
-    const unit1Name = modal.element.querySelector('#fm-unit1').value.trim() || 'قطعة';
-    const unit2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+    const baseUnitId = modal.element.querySelector('#fm-base_unit_id').value || null;
+    const unit2Id = modal.element.querySelector('#fm-unit2-id').value || null;
     const unit2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
-    const unit3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+    const unit3Id = modal.element.querySelector('#fm-unit3-id').value || null;
     const unit3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
 
     const itemUnits = [];
-    if (unit2Name && unit2Factor > 0) itemUnits.push({ unit_name: unit2Name, conversion_factor: unit2Factor, level: 2 });
-    if (unit3Name && unit3Factor > 0) itemUnits.push({ unit_name: unit3Name, conversion_factor: unit3Factor, level: 3 });
+    if (unit2Id && unit2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: unit2Factor });
+    if (unit3Id && unit3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: unit3Factor });
 
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
@@ -620,7 +780,7 @@ function showEditItemModal(itemId) {
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
       selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
       quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
-      base_unit_name: unit1Name,
+      base_unit_id: baseUnitId,
       item_units: itemUnits
     };
 
@@ -637,7 +797,7 @@ function showEditItemModal(itemId) {
   };
 }
 
-// ========== الأقسام العامة ==========
+// ========== الأقسام العامة (عملاء، موردين، تصنيفات) ==========
 function buildGenericItemHtml(item, opts) {
   const info = opts.extraFields.map(f => {
     const val = item[f.key]; if (val === undefined || val === null) return '';
@@ -659,7 +819,6 @@ function buildGenericItemHtml(item, opts) {
 }
 
 async function loadGenericSection(options) {
-  g_currentSection = options;
   try {
     const data = await apiCall(options.apiBase, 'GET');
     if (options.apiBase === '/customers') customersCache = data;
@@ -674,35 +833,39 @@ async function loadGenericSection(options) {
 }
 
 function getSectionOptions(key) {
-  const map = {
-    '/customers': {
-      cache: customersCache, title: 'عميل', titlePlural: 'العملاء', apiBase: '/customers', idField: 'id', nameField: 'name',
-      extraFields: [{ key: 'balance', prefix: 'الرصيد: ' }, { key: 'phone', prefix: '📞 ' }],
-      addFields: [{ id: 'name', label: 'الاسم', placeholder: 'اسم العميل' }, { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' }, { id: 'address', label: 'العنوان', placeholder: 'العنوان' }],
-      editFields: [{ id: 'name', label: 'الاسم' }, { id: 'phone', label: 'الهاتف' }, { id: 'address', label: 'العنوان' }],
-      prepareAdd: v => ({ name: v.name, phone: v.phone || null, address: v.address || null }),
-      prepareEdit: (id, v) => ({ id, ...v })
-    },
-    '/suppliers': {
-      cache: suppliersCache, title: 'مورد', titlePlural: 'الموردين', apiBase: '/suppliers', idField: 'id', nameField: 'name',
-      extraFields: [{ key: 'balance', prefix: 'الرصيد: ' }, { key: 'phone', prefix: '📞 ' }],
-      addFields: [{ id: 'name', label: 'الاسم', placeholder: 'اسم المورد' }, { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' }, { id: 'address', label: 'العنوان', placeholder: 'العنوان' }],
-      editFields: [{ id: 'name', label: 'الاسم' }, { id: 'phone', label: 'الهاتف' }, { id: 'address', label: 'العنوان' }],
-      prepareAdd: v => ({ name: v.name, phone: v.phone || null, address: v.address || null }),
-      prepareEdit: (id, v) => ({ id, ...v })
-    },
-    '/definitions?type=category': {
-      cache: categoriesCache, title: 'تصنيف', titlePlural: 'التصنيفات', apiBase: '/definitions?type=category', idField: 'id', nameField: 'name',
-      extraFields: [],
-      addFields: [{ id: 'name', label: 'اسم التصنيف', placeholder: 'اسم التصنيف' }],
-      editFields: [{ id: 'name', label: 'اسم التصنيف' }],
-      prepareAdd: v => ({ type: 'category', name: v.name }),
-      prepareEdit: (id, v) => ({ type: 'category', id, name: v.name })
-    }
-  };
-  return map[key];
+  switch(key) {
+    case '/customers':
+      return {
+        cache: customersCache, title: 'عميل', titlePlural: 'العملاء', apiBase: '/customers', idField: 'id', nameField: 'name',
+        extraFields: [{ key: 'balance', prefix: 'الرصيد: ' }, { key: 'phone', prefix: '📞 ' }],
+        addFields: [{ id: 'name', label: 'الاسم', placeholder: 'اسم العميل' }, { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' }, { id: 'address', label: 'العنوان', placeholder: 'العنوان' }],
+        editFields: [{ id: 'name', label: 'الاسم' }, { id: 'phone', label: 'الهاتف' }, { id: 'address', label: 'العنوان' }],
+        prepareAdd: v => ({ name: v.name, phone: v.phone || null, address: v.address || null }),
+        prepareEdit: (id, v) => ({ id, ...v })
+      };
+    case '/suppliers':
+      return {
+        cache: suppliersCache, title: 'مورد', titlePlural: 'الموردين', apiBase: '/suppliers', idField: 'id', nameField: 'name',
+        extraFields: [{ key: 'balance', prefix: 'الرصيد: ' }, { key: 'phone', prefix: '📞 ' }],
+        addFields: [{ id: 'name', label: 'الاسم', placeholder: 'اسم المورد' }, { id: 'phone', label: 'الهاتف', placeholder: 'رقم الهاتف' }, { id: 'address', label: 'العنوان', placeholder: 'العنوان' }],
+        editFields: [{ id: 'name', label: 'الاسم' }, { id: 'phone', label: 'الهاتف' }, { id: 'address', label: 'العنوان' }],
+        prepareAdd: v => ({ name: v.name, phone: v.phone || null, address: v.address || null }),
+        prepareEdit: (id, v) => ({ id, ...v })
+      };
+    case '/definitions?type=category':
+      return {
+        cache: categoriesCache, title: 'تصنيف', titlePlural: 'التصنيفات', apiBase: '/definitions?type=category', idField: 'id', nameField: 'name',
+        extraFields: [],
+        addFields: [{ id: 'name', label: 'اسم التصنيف', placeholder: 'اسم التصنيف' }],
+        editFields: [{ id: 'name', label: 'اسم التصنيف' }],
+        prepareAdd: v => ({ type: 'category', name: v.name }),
+        prepareEdit: (id, v) => ({ type: 'category', id, name: v.name })
+      };
+    default: return null;
+  }
 }
 
+// مستمعات النقر على الأزرار العامة (add/edit/delete)
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -732,7 +895,12 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// ========== فاتورة المبيعات والمشتريات ==========
+/* ============================================
+   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
+   الجزء 4: فاتورة المبيعات والمشتريات مع وحدات من قاعدة البيانات
+   ============================================ */
+
+// ========== فاتورة المبيعات والمشتريات مع وحدات من قاعدة البيانات ==========
 async function showInvoiceModal(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
@@ -782,13 +950,12 @@ async function showInvoiceModal(type) {
         const id = row.querySelector('.item-select').value || null;
         if (id) { if (ids.has(id)) dup = true; ids.add(id); }
         const unitOpt = row.querySelector('.unit-select')?.selectedOptions[0];
-        const unitLevel = unitOpt?.dataset.level || '1';
-        const unitName = unitOpt?.textContent?.split(' (')[0] || '';
+        const unitId = unitOpt?.value || null;
         const factor = parseFloat(unitOpt?.dataset.factor || 1);
         const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
         const price = parseFloat(row.querySelector('.price-input').value) || 0;
         const total = parseFloat(row.querySelector('.total-input').value) || 0;
-        if (id || qty > 0) lines.push({ item_id: id, description: unitName, quantity: qty, unit_price: price, total, unit_level: parseInt(unitLevel), conversion_factor: factor });
+        if (id || qty > 0) lines.push({ item_id: id, unit_id: unitId, quantity: qty, unit_price: price, total, conversion_factor: factor });
       });
       if (dup) return showToast('لا يمكن تكرار نفس المادة في الفاتورة', 'error');
       if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
@@ -823,17 +990,19 @@ function attachInvoiceEvents(invoiceType, container) {
     return found;
   }
 
+  // Build unit options from database-linked units
   function getUnitOptions(item) {
     if (!item) return '<option value="">اختر مادة</option>';
-    const unit1 = item.base_unit_name || 'قطعة';
-    let opts = `<option value="1" data-level="1" data-factor="1">${unit1}</option>`;
-    const unit2 = (item.item_units || []).find(u => u.level === 2);
-    if (unit2) opts += `<option value="2" data-level="2" data-factor="${unit2.conversion_factor}">${unit2.unit_name} (${unit2.conversion_factor} ${unit1})</option>`;
-    const unit3 = (item.item_units || []).find(u => u.level === 3);
-    if (unit3 && unit2) {
-      const totalFactor = unit2.conversion_factor * unit3.conversion_factor;
-      opts += `<option value="3" data-level="3" data-factor="${totalFactor}">${unit3.unit_name} (${totalFactor} ${unit1})</option>`;
-    }
+    const baseUnit = item.base_unit || {};
+    const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
+    let opts = `<option value="" data-factor="1">${baseUnitName} (أساسية)</option>`;
+    
+    const itemUnits = item.item_units || [];
+    itemUnits.forEach(iu => {
+      const unit = iu.unit || {};
+      const unitName = unit.name || unit.abbreviation || 'وحدة';
+      opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}">${unitName} (${iu.conversion_factor}x ${baseUnitName})</option>`;
+    });
     return opts;
   }
 
@@ -844,7 +1013,11 @@ function attachInvoiceEvents(invoiceType, container) {
     if (item) {
       const basePrice = invoiceType === 'sale' ? (item.selling_price || 0) : (item.purchase_price || 0);
       pr.value = basePrice;
-      if (unitSel) { unitSel.innerHTML = getUnitOptions(item); unitSel.style.display = 'block'; unitSel.dataset.basePrice = basePrice; }
+      if (unitSel) { 
+        unitSel.innerHTML = getUnitOptions(item); 
+        unitSel.style.display = 'block'; 
+        unitSel.dataset.basePrice = basePrice; 
+      }
       const row = sel.closest('.line-row');
       const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
       if (qty && tot) tot.value = (parseFloat(qty.value) || 0) * basePrice;
@@ -904,6 +1077,11 @@ function attachInvoiceEvents(invoiceType, container) {
     });
   });
 }
+
+/* ============================================
+   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
+   الجزء 5: قائمة الفواتير، المدفوعات، المصاريف، لوحة التحكم، التقارير، بدء التطبيق
+   ============================================ */
 
 // ========== قائمة الفواتير ==========
 async function loadInvoices() {
@@ -1000,13 +1178,12 @@ async function deleteInvoice(id) {
 function showInvoiceDetail(invoice) {
   const lines = invoice.invoice_lines?.map(l => {
     const item = itemsCache.find(i => i.id === l.item_id);
-    const unitName = l.description || (item?.base_unit_name || 'قطعة');
-    const level = l.unit_level || 1;
+    const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
     const factor = l.conversion_factor || 1;
     const baseQty = l.quantity * factor;
-    const baseUnit = item?.base_unit_name || 'قطعة';
+    const baseUnit = item?.base_unit?.name || 'قطعة';
     let qtyDisplay = `${l.quantity} ${unitName}`;
-    if (level > 1) qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
+    if (factor > 1) qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
     return `<tr><td style="font-weight:700;">${l.item?.name || '-'}</td><td>${qtyDisplay}</td><td>${formatNumber(l.unit_price)}</td><td style="font-weight:800;">${formatNumber(l.total)}</td></tr>`;
   }).join('') || '';
 
@@ -1040,7 +1217,7 @@ function showInvoiceDetail(invoice) {
 function printInvoice(invoice) {
   const rows = invoice.invoice_lines?.map(l => {
     const item = itemsCache.find(i => i.id === l.item_id);
-    const unitName = l.description || (item?.base_unit_name || 'قطعة');
+    const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
     return `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity} ${unitName}</td><td>${formatNumber(l.unit_price)}</td><td>${formatNumber(l.total)}</td></tr>`;
   }).join('') || '';
 
@@ -1157,7 +1334,7 @@ async function loadDashboard() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== التقارير ==========
+// ========== التقارير (نفس المحتوى السابق، بدون تغيير) ==========
 async function loadReports() {
   document.getElementById('tab-content').innerHTML = `
     <div class="card"><h3 class="card-title">التقارير المالية</h3><p class="card-subtitle">اختر التقرير المطلوب لعرض التفاصيل</p></div>
