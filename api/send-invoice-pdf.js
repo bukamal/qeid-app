@@ -27,100 +27,6 @@ async function getUserId(initData) {
   return JSON.parse(new URLSearchParams(initData).get('user')).id;
 }
 
-// إنشاء نص ESC/POS للطابعات الحرارية
-function generateThermalReceipt(invoice, paid, balance) {
-  const ESC = '\x1B';
-  const GS = '\x1D';
-  
-  let r = '';
-  r += ESC + '@';                    // Reset printer
-  r += ESC + 'a' + '\x01';           // Center align
-  r += ESC + '!' + '\x30';           // Double height + width + bold
-  r += 'الراجحي للمحاسبة\n';
-  r += ESC + '!' + '\x10';           // Double width
-  r += (invoice.type === 'sale' ? 'فاتورة بيع' : 'فاتورة شراء') + '\n';
-  r += ESC + '!' + '\x00';           // Normal
-  r += ESC + 'a' + '\x00';           // Left align
-  
-  r += '------------------------\n';
-  r += `التاريخ: ${invoice.date}\n`;
-  r += `المرجع: ${invoice.reference || '-'}\n`;
-  if (invoice.customer?.name) r += `العميل: ${invoice.customer.name}\n`;
-  if (invoice.supplier?.name) r += `المورد: ${invoice.supplier.name}\n`;
-  r += '------------------------\n';
-  
-  // Items header
-  r += ESC + '!' + '\x08';           // Bold
-  r += 'الصنف        العدد  السعر  المجموع\n';
-  r += ESC + '!' + '\x00';           // Normal
-  
-  for (const l of (invoice.invoice_lines || [])) {
-    const name = (l.item?.name || '-').substring(0, 12).padEnd(12);
-    const qty = String(l.quantity).padStart(3);
-    const price = String(parseFloat(l.unit_price).toFixed(2)).padStart(6);
-    const total = String(parseFloat(l.total).toFixed(2)).padStart(7);
-    r += `${name} ${qty} ${price} ${total}\n`;
-  }
-  
-  r += '------------------------\n';
-  
-  // Totals with emphasis
-  r += ESC + '!' + '\x20';           // Double height
-  r += `الإجمالي: ${parseFloat(invoice.total).toFixed(2)}\n`;
-  r += ESC + '!' + '\x00';           // Normal
-  r += `المدفوع:  ${paid.toFixed(2)}\n`;
-  r += ESC + '!' + '\x08';           // Bold
-  r += `الباقي:   ${balance.toFixed(2)}\n`;
-  r += ESC + '!' + '\x00';           // Normal
-  
-  r += '------------------------\n';
-  r += ESC + 'a' + '\x01';           // Center
-  r += 'شكراً لتعاملكم\n';
-  r += 'للدعم: @bukamal1991\n';
-  r += '\n\n\n';                      // Feed 3 lines
-  r += GS + 'V' + '\x41' + '\x03';   // Partial cut + 3mm feed
-  
-  return r;
-}
-
-// إنشاء HTML بسيط للعرض (بدون Puppeteer)
-function generateSimpleHtml(invoice, paid, balance) {
-  const items = invoice.invoice_lines || [];
-  return `<!DOCTYPE html>
-<html dir="rtl">
-<head><meta charset="UTF-8"><title>فاتورة</title>
-<style>
-body { width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; padding: 4mm; }
-.center { text-align: center; }
-.bold { font-weight: bold; }
-.line { border-top: 1px dashed #000; margin: 2mm 0; }
-table { width: 100%; }
-td { padding: 1px 0; }
-.right { text-align: left; }
-</style>
-</head>
-<body>
-  <div class="center bold" style="font-size:16px">الراجحي للمحاسبة</div>
-  <div class="center">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
-  <div class="line"></div>
-  <div>التاريخ: ${invoice.date}</div>
-  <div>المرجع: ${invoice.reference || '-'}</div>
-  ${invoice.customer?.name ? `<div>العميل: ${invoice.customer.name}</div>` : ''}
-  <div class="line"></div>
-  <table>
-    <tr class="bold"><td>الصنف</td><td class="right">الكمية</td><td class="right">السعر</td><td class="right">المجموع</td></tr>
-    ${items.map(l => `<tr><td>${(l.item?.name || '-').substring(0, 10)}</td><td class="right">${l.quantity}</td><td class="right">${parseFloat(l.unit_price).toFixed(2)}</td><td class="right">${parseFloat(l.total).toFixed(2)}</td></tr>`).join('')}
-  </table>
-  <div class="line"></div>
-  <div class="bold">الإجمالي: ${parseFloat(invoice.total).toFixed(2)}</div>
-  <div>المدفوع: ${paid.toFixed(2)}</div>
-  <div class="bold">الباقي: ${balance.toFixed(2)}</div>
-  <div class="line"></div>
-  <div class="center">شكراً لتعاملكم</div>
-</body>
-</html>`;
-}
-
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -143,27 +49,63 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
+    // HTML نظيف للطباعة — يُرسل كملف مرفق
+    const htmlContent = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=80mm, initial-scale=1">
+<title>فاتورة ${invoice.reference || invoice.id}</title>
+<style>
+@page { size: 80mm auto; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { width: 80mm; font-family: system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.4; padding: 4mm; }
+.center { text-align: center; }
+.bold { font-weight: 900; }
+.line { border-top: 1px dashed #000; margin: 3mm 0; }
+table { width: 100%; border-collapse: collapse; }
+td, th { padding: 2px 0; text-align: right; }
+th { font-size: 10px; color: #555; border-bottom: 1px solid #999; }
+.num { font-family: 'Courier New', monospace; text-align: left; }
+.total { font-size: 14px; font-weight: 900; color: #2563eb; }
+</style>
+</head>
+<body>
+<div class="center bold" style="font-size:18px">الراجحي للمحاسبة</div>
+<div class="center">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
+<div class="line"></div>
+<div>التاريخ: ${invoice.date}</div>
+<div>المرجع: ${invoice.reference || '-'}</div>
+${invoice.customer?.name ? `<div>العميل: ${invoice.customer.name}</div>` : ''}
+<div class="line"></div>
+<table>
+<tr><th style="width:40%">الصنف</th><th style="width:15%">الكمية</th><th style="width:22%">السعر</th><th style="width:23%">المجموع</th></tr>
+${invoice.invoice_lines?.map(l => `
+<tr>
+<td class="bold">${(l.item?.name || '-').substring(0, 12)}</td>
+<td>${l.quantity} <span style="font-size:9px">${l.unit?.name || ''}</span></td>
+<td class="num">${parseFloat(l.unit_price).toFixed(2)}</td>
+<td class="num">${parseFloat(l.total).toFixed(2)}</td>
+</tr>
+`).join('') || ''}
+</table>
+<div class="line"></div>
+<div class="total">الإجمالي: ${parseFloat(invoice.total).toFixed(2)} ر.س</div>
+<div>المدفوع: ${paid.toFixed(2)} ر.س</div>
+<div class="bold">الباقي: ${balance.toFixed(2)} ر.س</div>
+<div class="line"></div>
+<div class="center" style="font-size:10px;color:#555">شكراً لتعاملكم<br>للدعم: @bukamal1991</div>
+</body>
+</html>`;
+
     const FormData = require('form-data');
     const form = new FormData();
-
-    // الخيار 1: إرسال نص ESC/POS للطابعات الحرارية
-    const receipt = generateThermalReceipt(invoice, paid, balance);
     form.append('chat_id', String(userId));
-    form.append('document', Buffer.from(receipt, 'utf-8'), {
-      filename: `فاتورة-${invoice.reference || invoice.id}.txt`,
-      contentType: 'text/plain'
-    });
-
-    // الخيار 2: إرسال HTML بسيط (مُعلق - يمكن تفعيله بدلاً من النص)
-    /*
-    const html = generateSimpleHtml(invoice, paid, balance);
-    form.append('document', Buffer.from(html, 'utf-8'), {
+    form.append('document', Buffer.from(htmlContent, 'utf-8'), {
       filename: `فاتورة-${invoice.reference || invoice.id}.html`,
-      contentType: 'text/html'
+      contentType: 'text/html; charset=utf-8'
     });
-    */
-
-    form.append('caption', `🧾 فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}\n💰 الإجمالي: ${parseFloat(invoice.total).toFixed(2)} ر.س\n📅 ${invoice.date}`);
+    form.append('caption', `🧾 فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}\n💰 الإجمالي: ${parseFloat(invoice.total).toFixed(2)} ر.س`);
 
     const options = {
       hostname: 'api.telegram.org',
@@ -179,10 +121,10 @@ module.exports = async (req, res) => {
         try {
           const json = JSON.parse(data);
           if (!json.ok) {
-            console.error('Telegram API error:', json);
-            return res.status(500).json({ error: json.description || 'فشل إرسال Telegram' });
+            console.error('Telegram error:', json);
+            return res.status(500).json({ error: json.description });
           }
-          res.json({ success: true, message: 'تم إرسال الفاتورة' });
+          res.json({ success: true });
         } catch (e) {
           res.status(500).json({ error: 'رد غير صالح من Telegram' });
         }
@@ -190,7 +132,7 @@ module.exports = async (req, res) => {
     });
 
     tgReq.on('error', (e) => {
-      console.error('Request error:', e);
+      console.error('Network error:', e);
       res.status(500).json({ error: e.message });
     });
 
