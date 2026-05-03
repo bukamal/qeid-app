@@ -373,10 +373,15 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
 });
 
 // ========== الوحدات (Units) - مربوطة بقاعدة البيانات ==========
+
 async function loadUnitsSection() {
   try {
-    const data = await apiCall('/definitions?type=unit', 'GET');
+    const [data, items] = await Promise.all([
+      apiCall('/definitions?type=unit', 'GET'),
+      itemsCache.length ? Promise.resolve(itemsCache) : apiCall('/items', 'GET')
+    ]);
     unitsCache = data;
+    if (!itemsCache.length) itemsCache = items;
 
     let html = `<div class="card"><div class="card-header"><div><h3 class="card-title">وحدات القياس</h3><span class="card-subtitle">إدارة وحدات القياس المستخدمة في المواد</span></div><button class="btn btn-primary btn-sm" id="btn-add-unit">${ICONS.plus} إضافة وحدة</button></div></div>`;
     
@@ -447,14 +452,39 @@ function showEditUnitModal(unitId) {
 
 async function deleteUnit(unitId) {
   const unit = unitsCache.find(u => u.id == unitId);
-  if (!await confirmDialog(`هل أنت متأكد من حذف الوحدة <strong>${unit?.name || ''}</strong>؟`)) return;
+  if (!unit) return;
+  
+  // تأكد من تحميل المواد للتحقق من الاستخدام
+  if (!itemsCache || itemsCache.length === 0) {
+    try { itemsCache = await apiCall('/items', 'GET'); } catch(e) {}
+  }
+  
+  // التحقق: هل الوحدة مستخدمة كوحدة أساسية أو فرعية في أي مادة؟
+  const usedInItems = [];
+  (itemsCache || []).forEach(item => {
+    if (item.base_unit_id == unitId) {
+      usedInItems.push(item.name);
+    } else if (item.item_units && Array.isArray(item.item_units)) {
+      item.item_units.forEach(iu => {
+        if (iu.unit_id == unitId) usedInItems.push(item.name);
+      });
+    }
+  });
+  
+  if (usedInItems.length > 0) {
+    const uniqueItems = [...new Set(usedInItems)].slice(0, 3);
+    const more = usedInItems.length > 3 ? ` و${usedInItems.length - 3} أخرى` : '';
+    showToast(`لا يمكن حذف "${unit.name}" لأنها مستخدمة في: ${uniqueItems.join('، ')}${more}`, 'error');
+    return;
+  }
+  
+  if (!await confirmDialog(`هل أنت متأكد من حذف الوحدة <strong>${unit.name}</strong>؟`)) return;
   try {
     await apiCall(`/definitions?type=unit&id=${unitId}`, 'DELETE');
     showToast('تم الحذف بنجاح', 'success');
     loadUnitsSection();
   } catch (e) { showToast(e.message, 'error'); }
 }
-
 // ========== المواد (Items) مع وحدات مربوطة بقاعدة البيانات ==========
 function renderFilteredItems() {
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
