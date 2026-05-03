@@ -1,7 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const https = require('https');
-const nodeHtmlToImage = require('node-html-to-image');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -28,6 +27,100 @@ async function getUserId(initData) {
   return JSON.parse(new URLSearchParams(initData).get('user')).id;
 }
 
+// إنشاء نص ESC/POS للطابعات الحرارية
+function generateThermalReceipt(invoice, paid, balance) {
+  const ESC = '\x1B';
+  const GS = '\x1D';
+  
+  let r = '';
+  r += ESC + '@';                    // Reset printer
+  r += ESC + 'a' + '\x01';           // Center align
+  r += ESC + '!' + '\x30';           // Double height + width + bold
+  r += 'الراجحي للمحاسبة\n';
+  r += ESC + '!' + '\x10';           // Double width
+  r += (invoice.type === 'sale' ? 'فاتورة بيع' : 'فاتورة شراء') + '\n';
+  r += ESC + '!' + '\x00';           // Normal
+  r += ESC + 'a' + '\x00';           // Left align
+  
+  r += '------------------------\n';
+  r += `التاريخ: ${invoice.date}\n`;
+  r += `المرجع: ${invoice.reference || '-'}\n`;
+  if (invoice.customer?.name) r += `العميل: ${invoice.customer.name}\n`;
+  if (invoice.supplier?.name) r += `المورد: ${invoice.supplier.name}\n`;
+  r += '------------------------\n';
+  
+  // Items header
+  r += ESC + '!' + '\x08';           // Bold
+  r += 'الصنف        العدد  السعر  المجموع\n';
+  r += ESC + '!' + '\x00';           // Normal
+  
+  for (const l of (invoice.invoice_lines || [])) {
+    const name = (l.item?.name || '-').substring(0, 12).padEnd(12);
+    const qty = String(l.quantity).padStart(3);
+    const price = String(parseFloat(l.unit_price).toFixed(2)).padStart(6);
+    const total = String(parseFloat(l.total).toFixed(2)).padStart(7);
+    r += `${name} ${qty} ${price} ${total}\n`;
+  }
+  
+  r += '------------------------\n';
+  
+  // Totals with emphasis
+  r += ESC + '!' + '\x20';           // Double height
+  r += `الإجمالي: ${parseFloat(invoice.total).toFixed(2)}\n`;
+  r += ESC + '!' + '\x00';           // Normal
+  r += `المدفوع:  ${paid.toFixed(2)}\n`;
+  r += ESC + '!' + '\x08';           // Bold
+  r += `الباقي:   ${balance.toFixed(2)}\n`;
+  r += ESC + '!' + '\x00';           // Normal
+  
+  r += '------------------------\n';
+  r += ESC + 'a' + '\x01';           // Center
+  r += 'شكراً لتعاملكم\n';
+  r += 'للدعم: @bukamal1991\n';
+  r += '\n\n\n';                      // Feed 3 lines
+  r += GS + 'V' + '\x41' + '\x03';   // Partial cut + 3mm feed
+  
+  return r;
+}
+
+// إنشاء HTML بسيط للعرض (بدون Puppeteer)
+function generateSimpleHtml(invoice, paid, balance) {
+  const items = invoice.invoice_lines || [];
+  return `<!DOCTYPE html>
+<html dir="rtl">
+<head><meta charset="UTF-8"><title>فاتورة</title>
+<style>
+body { width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; padding: 4mm; }
+.center { text-align: center; }
+.bold { font-weight: bold; }
+.line { border-top: 1px dashed #000; margin: 2mm 0; }
+table { width: 100%; }
+td { padding: 1px 0; }
+.right { text-align: left; }
+</style>
+</head>
+<body>
+  <div class="center bold" style="font-size:16px">الراجحي للمحاسبة</div>
+  <div class="center">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
+  <div class="line"></div>
+  <div>التاريخ: ${invoice.date}</div>
+  <div>المرجع: ${invoice.reference || '-'}</div>
+  ${invoice.customer?.name ? `<div>العميل: ${invoice.customer.name}</div>` : ''}
+  <div class="line"></div>
+  <table>
+    <tr class="bold"><td>الصنف</td><td class="right">الكمية</td><td class="right">السعر</td><td class="right">المجموع</td></tr>
+    ${items.map(l => `<tr><td>${(l.item?.name || '-').substring(0, 10)}</td><td class="right">${l.quantity}</td><td class="right">${parseFloat(l.unit_price).toFixed(2)}</td><td class="right">${parseFloat(l.total).toFixed(2)}</td></tr>`).join('')}
+  </table>
+  <div class="line"></div>
+  <div class="bold">الإجمالي: ${parseFloat(invoice.total).toFixed(2)}</div>
+  <div>المدفوع: ${paid.toFixed(2)}</div>
+  <div class="bold">الباقي: ${balance.toFixed(2)}</div>
+  <div class="line"></div>
+  <div class="center">شكراً لتعاملكم</div>
+</body>
+</html>`;
+}
+
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -50,115 +143,31 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // HTML مُحسَّن للطابعات الحرارية (عرض 80mm = 302px بـ 96 DPI)
-    const html = `
-<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    width: 302px;
-    font-family: 'Tajawal', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.4;
-    padding: 8px;
-    background: white;
-    color: #1a1a1a;
-  }
-  .header { text-align: center; margin-bottom: 8px; }
-  .shop-name { font-size: 20px; font-weight: 900; color: #2563eb; margin-bottom: 2px; }
-  .invoice-type { font-size: 14px; font-weight: 700; }
-  .divider { border-top: 2px dashed #333; margin: 6px 0; }
-  .info-row { display: flex; justify-content: space-between; margin: 2px 0; }
-  .info-label { color: #666; }
-  .info-value { font-weight: 700; }
-  .items-table { width: 100%; margin: 4px 0; }
-  .items-table th { text-align: right; font-size: 11px; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 2px; }
-  .items-table td { padding: 3px 0; vertical-align: top; }
-  .item-name { font-weight: 700; max-width: 120px; word-wrap: break-word; }
-  .item-qty { text-align: center; }
-  .item-price { text-align: left; }
-  .item-total { text-align: left; font-weight: 700; }
-  .totals { margin-top: 6px; }
-  .total-row { display: flex; justify-content: space-between; margin: 3px 0; }
-  .grand-total { font-size: 16px; font-weight: 900; color: #2563eb; }
-  .balance-due { font-size: 14px; font-weight: 700; color: #dc2626; }
-  .footer { text-align: center; margin-top: 10px; font-size: 11px; color: #666; }
-  .qr-placeholder { width: 80px; height: 80px; background: #f0f0f0; margin: 8px auto; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #999; }
-</style>
-</head>
-<body>
-  <div class="header">
-    <div class="shop-name">الراجحي للمحاسبة</div>
-    <div class="invoice-type">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
-  </div>
-  
-  <div class="divider"></div>
-  
-  <div class="info-row"><span class="info-label">التاريخ:</span><span class="info-value">${invoice.date}</span></div>
-  <div class="info-row"><span class="info-label">المرجع:</span><span class="info-value">${invoice.reference || '-'}</span></div>
-  ${invoice.customer?.name ? `<div class="info-row"><span class="info-label">العميل:</span><span class="info-value">${invoice.customer.name}</span></div>` : ''}
-  ${invoice.supplier?.name ? `<div class="info-row"><span class="info-label">المورد:</span><span class="info-value">${invoice.supplier.name}</span></div>` : ''}
-  
-  <div class="divider"></div>
-  
-  <table class="items-table">
-    <tr><th style="width:40%">الصنف</th><th style="width:15%">الكمية</th><th style="width:20%">السعر</th><th style="width:25%">المجموع</th></tr>
-    ${invoice.invoice_lines?.map(l => {
-      const unitName = l.unit?.name || l.unit?.abbreviation || '';
-      return `<tr>
-        <td class="item-name">${l.item?.name || '-'}</td>
-        <td class="item-qty">${l.quantity} <span style="font-size:9px;color:#666">${unitName}</span></td>
-        <td class="item-price">${parseFloat(l.unit_price).toFixed(2)}</td>
-        <td class="item-total">${parseFloat(l.total).toFixed(2)}</td>
-      </tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:#999">لا توجد بنود</td></tr>'}
-  </table>
-  
-  <div class="divider"></div>
-  
-  <div class="totals">
-    <div class="total-row"><span>الإجمالي الكلي:</span><span class="grand-total">${parseFloat(invoice.total).toFixed(2)} ر.س</span></div>
-    <div class="total-row"><span>المدفوع:</span><span>${paid.toFixed(2)} ر.س</span></div>
-    <div class="total-row"><span>المتبقي:</span><span class="balance-due">${balance.toFixed(2)} ر.س</span></div>
-  </div>
-  
-  <div class="divider"></div>
-  
-  <div class="footer">
-    <div>شكراً لتعاملكم</div>
-    <div style="margin-top:4px;">للدعم: @bukamal1991</div>
-  </div>
-</body>
-</html>`;
-
-    // تحويل HTML إلى صورة PNG
-    const image = await nodeHtmlToImage({
-      html: html,
-      type: 'png',
-      quality: 100,
-      puppeteerArgs: {
-        defaultViewport: { width: 302, height: 1 }, // height auto
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      }
-    });
-
-    // إرسال الصورة عبر Telegram Bot API
     const FormData = require('form-data');
     const form = new FormData();
+
+    // الخيار 1: إرسال نص ESC/POS للطابعات الحرارية
+    const receipt = generateThermalReceipt(invoice, paid, balance);
     form.append('chat_id', String(userId));
-    form.append('photo', image, {
-      filename: `فاتورة-${invoice.reference || invoice.id}.png`,
-      contentType: 'image/png'
+    form.append('document', Buffer.from(receipt, 'utf-8'), {
+      filename: `فاتورة-${invoice.reference || invoice.id}.txt`,
+      contentType: 'text/plain'
     });
+
+    // الخيار 2: إرسال HTML بسيط (مُعلق - يمكن تفعيله بدلاً من النص)
+    /*
+    const html = generateSimpleHtml(invoice, paid, balance);
+    form.append('document', Buffer.from(html, 'utf-8'), {
+      filename: `فاتورة-${invoice.reference || invoice.id}.html`,
+      contentType: 'text/html'
+    });
+    */
+
     form.append('caption', `🧾 فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} ${invoice.reference || ''}\n💰 الإجمالي: ${parseFloat(invoice.total).toFixed(2)} ر.س\n📅 ${invoice.date}`);
 
     const options = {
       hostname: 'api.telegram.org',
-      path: `/bot${BOT_TOKEN}/sendPhoto`,
+      path: `/bot${BOT_TOKEN}/sendDocument`,
       method: 'POST',
       headers: form.getHeaders()
     };
@@ -167,16 +176,28 @@ module.exports = async (req, res) => {
       let data = '';
       tgRes.on('data', chunk => data += chunk);
       tgRes.on('end', () => {
-        const json = JSON.parse(data);
-        if (!json.ok) return res.status(500).json({ error: json.description });
-        res.json({ success: true, message: 'تم إرسال الفاتورة كصورة' });
+        try {
+          const json = JSON.parse(data);
+          if (!json.ok) {
+            console.error('Telegram API error:', json);
+            return res.status(500).json({ error: json.description || 'فشل إرسال Telegram' });
+          }
+          res.json({ success: true, message: 'تم إرسال الفاتورة' });
+        } catch (e) {
+          res.status(500).json({ error: 'رد غير صالح من Telegram' });
+        }
       });
     });
-    tgReq.on('error', (e) => res.status(500).json({ error: e.message }));
+
+    tgReq.on('error', (e) => {
+      console.error('Request error:', e);
+      res.status(500).json({ error: e.message });
+    });
+
     form.pipe(tgReq);
 
   } catch (err) {
-    console.error(err);
+    console.error('Server error:', err);
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
     res.status(500).json({ error: err.message });
   }
