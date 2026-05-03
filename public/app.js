@@ -1338,13 +1338,21 @@ function renderFilteredInvoices() {
       </div>`;
   });
   container.innerHTML = html;
-
-  container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
+      container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
-    if (inv) showInvoiceDetail(inv);
+    if (inv) {
+      if (typeof window.printInvoice === 'function') {
+        window.printInvoice(inv);
+      } else {
+        showToast('دالة الطباعة غير متاحة', 'error');
+        console.error('window.printInvoice is not defined');
+      }
+    } else {
+      showToast('الفاتورة غير موجودة في الذاكرة المؤقتة', 'error');
+    }
   }));
-  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
+
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
     if (inv) printInvoice(inv);
@@ -1403,18 +1411,31 @@ function showInvoiceDetail(invoice) {
     footerHTML: `<button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button><button class="btn btn-primary" id="print-detail-btn">${ICONS.print} طباعة</button>`
   });
 
-  const printBtn = document.querySelector('#print-detail-btn');
-  if (printBtn) printBtn.onclick = () => printInvoice(invoice);
-}
+  const printBtn = modal.element.querySelector('#print-detail-btn');
+  if (printBtn) {
+    printBtn.onclick = () => {
+      if (typeof window.printInvoice === 'function') {
+        window.printInvoice(invoice);
+      } else {
+        showToast('دالة الطباعة غير متاحة', 'error');
+        console.error('window.printInvoice is not defined');
+      }
+    };
+  }
 
-function printInvoice(invoice) {
+
+// ========== طباعة الفاتورة (متاحة عالمياً) ==========
+window.printInvoice = function(invoice) {
+  if (!invoice) {
+    showToast('لا توجد بيانات للطباعة', 'error');
+    return;
+  }
+
   const items = invoice.invoice_lines || [];
   const paid = invoice.paid || 0;
-  const balance = invoice.balance || 0;
+  const balance = (invoice.total || 0) - paid;
 
-  // HTML مُحسَّن للطابعات الحرارية — يعتمد على خطوط نظام الجوال
-  const html = `
-<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
@@ -1425,79 +1446,99 @@ function printInvoice(invoice) {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { 
     width: 80mm; 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Tahoma', sans-serif;
+    font-family: system-ui, -apple-system, sans-serif;
     font-size: 12px; 
     line-height: 1.4; 
-    padding: 3mm;
+    padding: 4mm;
     color: #000;
   }
-  .header { text-align: center; margin-bottom: 4px; }
-  .shop { font-size: 16px; font-weight: 900; }
-  .type { font-size: 13px; }
-  .line { border-top: 1px dashed #000; margin: 3px 0; }
-  .row { display: flex; justify-content: space-between; }
-  .label { color: #333; }
+  .center { text-align: center; }
+  .bold { font-weight: 900; }
+  .shop { font-size: 18px; margin-bottom: 2px; }
+  .type { font-size: 14px; color: #555; }
+  .line { border-top: 2px dashed #000; margin: 4px 0; }
+  .row { display: flex; justify-content: space-between; margin: 2px 0; }
+  .label { color: #555; }
   .value { font-weight: 700; }
   table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-  th { text-align: right; font-size: 10px; color: #555; border-bottom: 1px solid #999; }
-  td { padding: 2px 0; vertical-align: top; }
-  .name { font-weight: 700; max-width: 90px; word-wrap: break-word; }
-  .num { text-align: left; font-family: 'Courier New', monospace; }
-  .total { font-size: 14px; font-weight: 900; margin-top: 4px; }
-  .footer { text-align: center; font-size: 10px; color: #555; margin-top: 6px; }
-  .qr { width: 60px; height: 60px; margin: 4px auto; background: #f0f0f0; }
+  th { text-align: right; font-size: 10px; color: #666; border-bottom: 1px solid #999; padding: 2px 0; }
+  td { padding: 3px 0; vertical-align: top; }
+  .name { font-weight: 700; max-width: 100px; word-wrap: break-word; }
+  .num { text-align: left; font-family: 'Courier New', monospace; font-size: 11px; }
+  .total-row { font-size: 14px; font-weight: 900; margin: 4px 0; }
+  .grand-total { color: #2563eb; font-size: 16px; }
+  .footer { text-align: center; font-size: 10px; color: #666; margin-top: 8px; }
+  .cut-here { border-top: 3px dotted #000; margin: 6px 0; }
 </style>
 </head>
-<body onload="setTimeout(()=>window.print(), 300)">
-  <div class="header">
-    <div class="shop">الراجحي للمحاسبة</div>
+<body>
+  <div class="center">
+    <div class="shop bold">الراجحي للمحاسبة</div>
     <div class="type">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
   </div>
   
   <div class="line"></div>
   
-  <div class="row"><span class="label">التاريخ:</span><span class="value">${invoice.date}</span></div>
+  <div class="row"><span class="label">التاريخ:</span><span class="value">${invoice.date || '-'}</span></div>
   <div class="row"><span class="label">المرجع:</span><span class="value">${invoice.reference || '-'}</span></div>
   ${invoice.customer?.name ? `<div class="row"><span class="label">العميل:</span><span class="value">${invoice.customer.name}</span></div>` : ''}
+  ${invoice.supplier?.name ? `<div class="row"><span class="label">المورد:</span><span class="value">${invoice.supplier.name}</span></div>` : ''}
   
   <div class="line"></div>
   
   <table>
-    <tr><th style="width:45%">الصنف</th><th style="width:15%">الكمية</th><th style="width:20%">السعر</th><th style="width:20%">المجموع</th></tr>
+    <tr><th style="width:40%">الصنف</th><th style="width:15%">الكمية</th><th style="width:22%">السعر</th><th style="width:23%">المجموع</th></tr>
     ${items.map(l => `
       <tr>
-        <td class="name">${(l.item?.name || '-').substring(0, 12)}</td>
-        <td class="num">${l.quantity}</td>
-        <td class="num">${parseFloat(l.unit_price).toFixed(2)}</td>
-        <td class="num">${parseFloat(l.total).toFixed(2)}</td>
+        <td class="name">${(l.item?.name || l.item?.name || '-').substring(0, 12)}</td>
+        <td class="num">${l.quantity} <span style="font-size:8px;color:#666">${l.unit?.name || ''}</span></td>
+        <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
+        <td class="num bold">${parseFloat(l.total || 0).toFixed(2)}</td>
       </tr>
     `).join('')}
   </table>
   
   <div class="line"></div>
   
-  <div class="row total"><span>الإجمالي:</span><span>${parseFloat(invoice.total).toFixed(2)} ر.س</span></div>
+  <div class="row total-row"><span>الإجمالي:</span><span class="grand-total">${parseFloat(invoice.total || 0).toFixed(2)} ر.س</span></div>
   <div class="row"><span>المدفوع:</span><span>${paid.toFixed(2)} ر.س</span></div>
-  <div class="row" style="font-weight:900"><span>الباقي:</span><span>${balance.toFixed(2)} ر.س</span></div>
+  <div class="row bold" style="font-size:13px"><span>الباقي:</span><span>${balance.toFixed(2)} ر.س</span></div>
   
-  <div class="line"></div>
+  <div class="cut-here"></div>
   
   <div class="footer">
     <div>شكراً لتعاملكم</div>
-    <div>للدعم: @bukamal1991</div>
+    <div style="margin-top:3px">للدعم: @bukamal1991</div>
   </div>
+  
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+        setTimeout(function() { window.close(); }, 1000);
+      }, 300);
+    };
+  </script>
 </body>
 </html>`;
 
-  // فتح نافذة صغيرة وطباعة تلقائية
-  const w = window.open('', '_blank', 'width=400,height=700,scrollbars=yes');
-  if (w) {
-    w.document.write(html);
-    w.document.close();
+  // فتح نافذة صغيرة للطباعة
+  const printWindow = window.open('', '_blank', 'width=400,height=700,scrollbars=yes,resizable=yes');
+  if (printWindow) {
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    showToast('جاري فتح نافذة الطباعة', 'info');
   } else {
-    showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+    showToast('الرجاء السماح بالنوافذ المنبثقة للطباعة', 'warning');
+    // بديل: فتح في نفس النافذة
+    const newTab = window.open('about:blank');
+    if (newTab) {
+      newTab.document.write(html);
+      newTab.document.close();
+    }
   }
-}
+};
 
 
 
