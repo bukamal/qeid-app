@@ -1421,8 +1421,6 @@ function showInvoiceDetail(invoice) {
         console.error('window.printInvoice is not defined');
       }
     };
-  }
-}
 
 // ========== طباعة الفاتورة (متاحة عالمياً) ==========
 window.printInvoice = function(invoice) {
