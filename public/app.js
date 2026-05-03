@@ -1111,13 +1111,17 @@ document.addEventListener('click', async (e) => {
 });
 
 
-// ========== فاتورة المبيعات والمشتريات (تحديث) ==========
+// ========== فاتورة المبيعات والمشتريات (مصحح) ==========
 async function showInvoiceModal(type) {
   try {
     const [customers, suppliers, items] = await Promise.all([
-      apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')
+      apiCall('/customers', 'GET'), 
+      apiCall('/suppliers', 'GET'), 
+      apiCall('/items', 'GET')
     ]);
-    itemsCache = items; customersCache = customers; suppliersCache = suppliers;
+    itemsCache = items; 
+    customersCache = customers; 
+    suppliersCache = suppliers;
 
     const entOpts = type === 'sale'
       ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}`
@@ -1168,33 +1172,48 @@ async function showInvoiceModal(type) {
       if (itype === 'sale') cust = entity === 'cash' ? null : entity;
       else supp = entity === 'cash' ? null : entity;
 
-      const lines = []; const ids = new Set(); let dup = false;
+      const lines = []; 
+      const ids = new Set(); 
+      let dup = false;
+      
       modal.element.querySelectorAll('.line-row').forEach(row => {
         const id = row.querySelector('.item-select').value || null;
-        if (id) { if (ids.has(id)) dup = true; ids.add(id); }
+        if (id) { 
+          if (ids.has(id)) dup = true; 
+          ids.add(id); 
+        }
+        
         const unitOpt = row.querySelector('.unit-select')?.selectedOptions[0];
         const unitLevel = unitOpt?.dataset.level || '1';
-        const unitName = unitOpt?.textContent || '';
+        const unitName = unitOpt?.textContent?.split(' (')[0] || '';
+        const factor = parseFloat(unitOpt?.dataset.factor || 1);
+        
         const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
         const price = parseFloat(row.querySelector('.price-input').value) || 0;
         const total = parseFloat(row.querySelector('.total-input').value) || 0;
+        
         if (id || qty > 0) lines.push({ 
           item_id: id, 
           description: unitName,
           quantity: qty, 
           unit_price: price, 
           total,
-          unit_level: parseInt(unitLevel)
+          unit_level: parseInt(unitLevel),
+          conversion_factor: factor
         });
       });
+      
       if (dup) return showToast('لا يمكن تكرار نفس المادة في الفاتورة', 'error');
       if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
 
       try {
         const btn = modal.element.querySelector('#inv-save');
-        btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+        btn.disabled = true; 
+        btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
         await apiCall('/invoices', 'POST', {
-          type: itype, customer_id: cust, supplier_id: supp,
+          type: itype, 
+          customer_id: cust, 
+          supplier_id: supp,
           date: modal.element.querySelector('#inv-date').value,
           reference: modal.element.querySelector('#inv-ref').value.trim(),
           notes: modal.element.querySelector('#inv-notes').value.trim(),
@@ -1204,10 +1223,203 @@ async function showInvoiceModal(type) {
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
         loadInvoices();
-      } catch (e) { showToast(e.message, 'error'); }
+      } catch (e) { 
+        showToast(e.message, 'error'); 
+      }
     };
-  } catch (err) { showToast(err.message, 'error'); }
+  } catch (err) { 
+    showToast(err.message, 'error'); 
+  }
 }
+
+function attachInvoiceEvents(invoiceType, container) {
+  const linesContainer = container.querySelector('#inv-lines');
+  if (!linesContainer) return;
+
+  function updateGrandTotal() {
+    let total = 0;
+    container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
+    const el = container.querySelector('#inv-grand-total');
+    if (el) el.textContent = formatNumber(total);
+  }
+
+  function isDup(id, cur) {
+    if (!id) return false;
+    let found = false;
+    container.querySelectorAll('.line-row').forEach(r => {
+      if (r !== cur && r.querySelector('.item-select')?.value === id) found = true;
+    });
+    return found;
+  }
+
+  // ========== دالة بناء خيارات الوحدات - مصححة ==========
+  function getUnitOptions(item) {
+    if (!item) return '<option value="">اختر مادة أولاً</option>';
+    
+    const unit1 = item.base_unit_name || 'قطعة';
+    let opts = `<option value="1" data-level="1" data-factor="1">${unit1}</option>`;
+    
+    // الوحدة 2
+    const unit2 = (item.item_units || []).find(u => u.level === 2);
+    if (unit2 && unit2.unit_name && unit2.conversion_factor) {
+      opts += `<option value="2" data-level="2" data-factor="${unit2.conversion_factor}">${unit2.unit_name} (${unit2.conversion_factor} ${unit1})</option>`;
+    }
+    
+    // الوحدة 3
+    const unit3 = (item.item_units || []).find(u => u.level === 3);
+    if (unit3 && unit3.unit_name && unit3.conversion_factor && unit2) {
+      const totalFactor = unit2.conversion_factor * unit3.conversion_factor;
+      opts += `<option value="3" data-level="3" data-factor="${totalFactor}">${unit3.unit_name} (${totalFactor} ${unit1})</option>`;
+    }
+    
+    return opts;
+  }
+
+  function autoFill(sel, pr, unitSel) {
+    const id = sel.value;
+    if (!id) { 
+      pr.value = ''; 
+      if (unitSel) { 
+        unitSel.innerHTML = '<option value="">اختر مادة أولاً</option>'; 
+        unitSel.style.display = 'none'; 
+      } 
+      return; 
+    }
+    
+    const item = itemsCache.find(i => i.id == id);
+    if (!item) {
+      showToast('لم يتم العثور على المادة', 'error');
+      return;
+    }
+    
+    const basePrice = invoiceType === 'sale' ? (item.selling_price || 0) : (item.purchase_price || 0);
+    pr.value = basePrice.toFixed(2);
+    
+    if (unitSel) { 
+      unitSel.innerHTML = getUnitOptions(item); 
+      unitSel.style.display = 'block'; 
+      unitSel.dataset.basePrice = basePrice; 
+    }
+    
+    const row = sel.closest('.line-row');
+    const qty = row.querySelector('.qty-input');
+    const tot = row.querySelector('.total-input');
+    if (qty && tot) {
+      tot.value = (parseFloat(qty.value) || 0) * basePrice;
+      updateGrandTotal();
+    }
+  }
+
+  function calc(row) {
+    const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
+    const pr = parseFloat(row.querySelector('.price-input')?.value) || 0;
+    const tot = row.querySelector('.total-input');
+    if (tot) { 
+      tot.value = (qty * pr).toFixed(2); 
+      updateGrandTotal(); 
+    }
+  }
+
+  function handleUnitChange(row) {
+    const sel = row.querySelector('.item-select');
+    const unitSel = row.querySelector('.unit-select');
+    const pr = row.querySelector('.price-input');
+    
+    const item = itemsCache.find(i => i.id == sel.value);
+    if (!item || !unitSel) return;
+    
+    const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
+    const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
+    const newPrice = basePrice * factor;
+    
+    pr.value = newPrice.toFixed(2);
+    calc(row);
+  }
+
+  // ربط الأحداث للصف الأول
+  container.querySelectorAll('.line-row').forEach(row => {
+    const sel = row.querySelector('.item-select');
+    const pr = row.querySelector('.price-input');
+    const unitSel = row.querySelector('.unit-select');
+    
+    if (sel && pr) autoFill(sel, pr, unitSel);
+    
+    sel?.addEventListener('change', function() {
+      if (isDup(this.value, this.closest('.line-row'))) { 
+        showToast('المادة مضافة مسبقاً', 'warning'); 
+        this.value = ''; 
+        pr.value = ''; 
+        if (unitSel) {
+          unitSel.innerHTML = '<option value="">اختر مادة أولاً</option>';
+          unitSel.style.display = 'none'; 
+        }
+        return; 
+      }
+      autoFill(this, pr, unitSel);
+    });
+    
+    row.querySelector('.qty-input')?.addEventListener('input', () => calc(row));
+    row.querySelector('.price-input')?.addEventListener('input', () => calc(row));
+    unitSel?.addEventListener('change', () => handleUnitChange(row));
+  });
+
+  // إضافة بند جديد
+  container.querySelector('#btn-add-line')?.addEventListener('click', () => {
+    const nl = document.createElement('div'); 
+    nl.className = 'line-row';
+    nl.innerHTML = `
+      <div class="form-group" style="grid-column:1/-1">
+        <select class="select item-select">
+          <option value="">اختر مادة</option>
+          ${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <select class="select unit-select" style="display:none;">
+          <option value="">اختر مادة أولاً</option>
+        </select>
+      </div>
+      <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية" value="1"></div>
+      <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
+      <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
+      <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
+    `;
+    
+    linesContainer.appendChild(nl);
+    
+    const sel = nl.querySelector('.item-select');
+    const pr = nl.querySelector('.price-input');
+    const unitSel = nl.querySelector('.unit-select');
+    
+    sel.addEventListener('change', function() {
+      if (isDup(this.value, this.closest('.line-row'))) { 
+        showToast('المادة مضافة مسبقاً', 'warning'); 
+        this.value = ''; 
+        pr.value = ''; 
+        if (unitSel) {
+          unitSel.innerHTML = '<option value="">اختر مادة أولاً</option>';
+          unitSel.style.display = 'none'; 
+        }
+        return; 
+      }
+      autoFill(this, pr, unitSel);
+    });
+    
+    nl.querySelector('.qty-input').addEventListener('input', () => calc(nl));
+    nl.querySelector('.price-input').addEventListener('input', () => calc(nl));
+    unitSel?.addEventListener('change', () => handleUnitChange(nl));
+    
+    nl.querySelector('.line-remove').addEventListener('click', () => { 
+      if (linesContainer.querySelectorAll('.line-row').length > 1) { 
+        nl.remove(); 
+        updateGrandTotal(); 
+      } else {
+        showToast('لا يمكن حذف البند الوحيد', 'warning');
+      }
+    });
+  });
+}
+
 
 function attachInvoiceEvents(invoiceType, container) {
   const linesContainer = container.querySelector('#inv-lines');
