@@ -555,7 +555,13 @@ function showAddItemModal() {
   const unitOpts = unitsCache.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 
   const body = `
-    <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
+    <div class="form-group">
+  <label class="form-label">الوحدة الأساسية <span style="color:var(--text-muted);font-size:12px;">(وحدة المخزون)</span></label>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <select class="select" id="fm-base-unit" style="flex:1;">${unitOpts}</select>
+    <button class="btn btn-ghost btn-sm" id="btn-delete-base-unit" type="button" style="color:var(--danger);padding:6px;" title="حذف الوحدة">${ICONS.trash}</button>
+  </div>
+</div>
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
