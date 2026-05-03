@@ -552,10 +552,9 @@ function showItemDetail(itemId) {
    الجزء 3: إضافة وتعديل المواد، الأقسام العامة (عملاء، موردين، تصنيفات)
    ============================================ */
 
-// ========== إضافة مادة (وحدة أساسية نصية + وحدات فرعية من DB) ==========
+// ========== إضافة مادة (وحدة أساسية نصية + وحدات فرعية نصية) ==========
 function showAddItemModal() {
   const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  const unitOpts = unitsCache.map(u => `<option value="${u.id}">${u.name} (${u.abbreviation || ''})</option>`).join('');
 
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
@@ -563,30 +562,46 @@ function showAddItemModal() {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
 
-    <!-- الوحدة الأساسية: حقل نصي -->
-    <div class="form-group"><label class="form-label">الوحدة الأساسية</label><input class="input" id="fm-base_unit_name" type="text" placeholder="مثال: قطعة" value="قطعة"></div>
-
-    <!-- الوحدة الفرعية 1 -->
-    <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><select class="select" id="fm-unit2-id"><option value="">اختر وحدة</option>${unitOpts}</select></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" style="width:100%;"></div>
+    <!-- الوحدة الأساسية -->
+    <div class="form-group">
+      <label class="form-label">الوحدة الأساسية</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="input" id="fm-base_unit_name" type="text" placeholder="مثال: قطعة" value="قطعة" style="flex:1;">
+        <button class="btn btn-secondary" id="btn-toggle-units" type="button" style="width:auto;padding:8px 14px;" title="إضافة وحدات فرعية">${ICONS.plus}</button>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 وحدة فرعية = <strong id="u2-factor-display">؟</strong> من الوحدة الأساسية</div>
     </div>
 
-    <!-- الوحدة الفرعية 2 -->
-    <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة الفرعية 2 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><select class="select" id="fm-unit3-id"><option value="">اختر وحدة</option>${unitOpts}</select></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" style="width:100%;"></div>
+    <!-- الوحدات الفرعية (مخفية حتى الضغط على +) -->
+    <div id="extra-units" style="display:none;">
+      <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);margin-bottom:12px;">
+        <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;"><input class="input" id="fm-unit2-name" type="text" placeholder="اسم الوحدة مثال: كرتونة"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" style="width:100%;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">وحدة فرعية 1</span> = <strong class="factor-display">؟</strong> <span class="base-unit-name">قطعة</span></div>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 وحدة فرعية = <strong id="u3-factor-display">؟</strong> من الوحدة الأساسية</div>
+
+      <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
+        <label class="form-label">الوحدة الفرعية 2 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;"><input class="input" id="fm-unit3-name" type="text" placeholder="اسم الوحدة مثال: طرد"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" style="width:100%;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">وحدة فرعية 2</span> = <strong class="factor-display">؟</strong> <span class="base-unit-name">قطعة</span></div>
+      </div>
     </div>
 
-    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
+    <!-- الكمية الافتتاحية باختيار الوحدة -->
+    <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
+      <label class="form-label">الكمية الافتتاحية</label>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;"><input class="input" id="fm-quantity" type="number" step="any" placeholder="0"></div>
+        <div style="width:150px;"><select class="select" id="fm-qty-unit"><option value="base">الوحدة الأساسية</option><option value="u2">الوحدة الفرعية 1</option><option value="u3">الوحدة الفرعية 2</option></select></div>
+      </div>
+      <div id="qty-converted" style="font-size:12px;color:var(--text-muted);margin-top:6px;display:none;">= <strong id="qty-base-val">0</strong> <span class="base-unit-name">قطعة</span></div>
+    </div>
+
     <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-purchase_price" type="number" placeholder="0.00"></div>
     <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-selling_price" type="number" placeholder="0.00"></div>
   `;
@@ -597,21 +612,71 @@ function showAddItemModal() {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
-  // تحديث عرض عامل التحويل
-  const u2Factor = modal.element.querySelector('#fm-unit2-factor');
-  const u3Factor = modal.element.querySelector('#fm-unit3-factor');
-  const baseName = modal.element.querySelector('#fm-base_unit_name');
-  const updateLabels = () => {
-    const b = baseName.value.trim() || 'الوحدة الأساسية';
-    modal.element.querySelector('#u2-factor-display').textContent = (u2Factor.value || '؟') + ' ' + b;
-    modal.element.querySelector('#u3-factor-display').textContent = (u3Factor.value || '؟') + ' ' + b;
-  };
-  u2Factor.addEventListener('input', updateLabels);
-  u3Factor.addEventListener('input', updateLabels);
-  baseName.addEventListener('input', updateLabels);
-  updateLabels();
+  const baseNameInput = modal.element.querySelector('#fm-base_unit_name');
+  const extraUnitsDiv = modal.element.querySelector('#extra-units');
+  const toggleBtn = modal.element.querySelector('#btn-toggle-units');
 
-  // Quick add category
+  // إظهار/إخفاء الوحدات الفرعية
+  toggleBtn.onclick = () => {
+    const isHidden = extraUnitsDiv.style.display === 'none';
+    extraUnitsDiv.style.display = isHidden ? 'block' : 'none';
+    toggleBtn.innerHTML = isHidden ? ICONS.x : ICONS.plus;
+    toggleBtn.title = isHidden ? 'إخفاء الوحدات الفرعية' : 'إضافة وحدات فرعية';
+  };
+
+  // تحديث أسماء الوحدات في الوصف التوضيحي
+  const updateUnitLabels = () => {
+    const baseName = baseNameInput.value.trim() || 'الوحدة الأساسية';
+    modal.element.querySelectorAll('.base-unit-name').forEach(el => el.textContent = baseName);
+    
+    const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+    const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+    const subs = modal.element.querySelectorAll('.sub-unit-name');
+    const facts = modal.element.querySelectorAll('.factor-display');
+    
+    if (subs[0]) subs[0].textContent = u2Name || 'وحدة فرعية 1';
+    if (subs[1]) subs[1].textContent = u3Name || 'وحدة فرعية 2';
+    
+    const f2 = modal.element.querySelector('#fm-unit2-factor').value;
+    const f3 = modal.element.querySelector('#fm-unit3-factor').value;
+    if (facts[0]) facts[0].textContent = f2 || '؟';
+    if (facts[1]) facts[1].textContent = f3 || '؟';
+  };
+
+  baseNameInput.addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit2-name').addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit3-name').addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateUnitLabels);
+
+  // تحويل الكمية الافتتاحية تلقائياً
+  const qtyInput = modal.element.querySelector('#fm-quantity');
+  const qtyUnitSel = modal.element.querySelector('#fm-qty-unit');
+  const qtyConvertedDiv = modal.element.querySelector('#qty-converted');
+  const qtyBaseVal = modal.element.querySelector('#qty-base-val');
+
+  const updateQty = () => {
+    const qty = parseFloat(qtyInput.value) || 0;
+    const unit = qtyUnitSel.value;
+    const f2 = parseFloat(modal.element.querySelector('#fm-unit2-factor').value) || 1;
+    const f3 = parseFloat(modal.element.querySelector('#fm-unit3-factor').value) || 1;
+    let baseQty = qty;
+    if (unit === 'u2') baseQty = qty * f2;
+    else if (unit === 'u3') baseQty = qty * f3;
+    
+    if (qty > 0 && unit !== 'base') {
+      qtyConvertedDiv.style.display = 'block';
+      qtyBaseVal.textContent = baseQty;
+    } else {
+      qtyConvertedDiv.style.display = 'none';
+    }
+  };
+  qtyInput.addEventListener('input', updateQty);
+  qtyUnitSel.addEventListener('change', updateQty);
+  modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateQty);
+  modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateQty);
+
+  // إضافة تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
@@ -634,31 +699,50 @@ function showAddItemModal() {
 
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
 
+  // دالة مساعدة: الحصول على معرف وحدة أو إنشاؤها
+  async function getOrCreateUnit(name) {
+    if (!name) return null;
+    const existing = unitsCache.find(u => u.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.id;
+    const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: name });
+    const newId = res?.id || res?.data?.id;
+    if (newId) unitsCache.push({ id: newId, name, abbreviation: name });
+    return newId;
+  }
+
   modal.element.querySelector('#fm-save').onclick = async () => {
-    const baseUnitName = modal.element.querySelector('#fm-base_unit_name').value.trim();
+    const baseUnitName = baseNameInput.value.trim();
     if (!baseUnitName) return showToast('اسم الوحدة الأساسية مطلوب', 'error');
 
-    // التأكد من وجود الوحدة الأساسية في قاعدة البيانات (إضافتها إذا لم تكن موجودة)
-    let baseUnitId = null;
-    const existing = unitsCache.find(u => u.name.toLowerCase() === baseUnitName.toLowerCase());
-    if (existing) {
-      baseUnitId = existing.id;
-    } else {
-      try {
-        const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name: baseUnitName, abbreviation: baseUnitName });
-        baseUnitId = res?.id || res?.data?.id;
-        if (baseUnitId) unitsCache.push({ id: baseUnitId, name: baseUnitName, abbreviation: baseUnitName });
-      } catch (e) { return showToast('فشل إضافة الوحدة الأساسية: ' + e.message, 'error'); }
+    // إنشاء/الحصول على الوحدات
+    const baseUnitId = await getOrCreateUnit(baseUnitName);
+    if (!baseUnitId) return showToast('فشل إنشاء الوحدة الأساسية', 'error');
+
+    const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+    const u2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
+    const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+    const u3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
+
+    let unit2Id = null, unit3Id = null;
+    if (u2Name) {
+      unit2Id = await getOrCreateUnit(u2Name);
+      if (!unit2Id) return showToast('فشل إنشاء الوحدة الفرعية 1', 'error');
+    }
+    if (u3Name) {
+      unit3Id = await getOrCreateUnit(u3Name);
+      if (!unit3Id) return showToast('فشل إنشاء الوحدة الفرعية 2', 'error');
     }
 
-    const unit2Id = modal.element.querySelector('#fm-unit2-id').value || null;
-    const unit2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
-    const unit3Id = modal.element.querySelector('#fm-unit3-id').value || null;
-    const unit3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
-
     const itemUnits = [];
-    if (unit2Id && unit2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: unit2Factor });
-    if (unit3Id && unit3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: unit3Factor });
+    if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
+    if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
+
+    // حساب الكمية بالوحدة الأساسية حسب اختيار المستخدم
+    const qtyEntered = parseFloat(qtyInput.value) || 0;
+    const qtyUnit = qtyUnitSel.value;
+    let quantity = qtyEntered;
+    if (qtyUnit === 'u2' && u2Factor > 0) quantity = qtyEntered * u2Factor;
+    else if (qtyUnit === 'u3' && u3Factor > 0) quantity = qtyEntered * u3Factor;
 
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
@@ -666,7 +750,7 @@ function showAddItemModal() {
       item_type: modal.element.querySelector('#fm-item_type').value,
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
       selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
-      quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
+      quantity: quantity,
       base_unit_id: baseUnitId,
       item_units: itemUnits
     };
@@ -687,18 +771,21 @@ function showAddItemModal() {
   };
 }
 
-// ========== تعديل مادة (وحدة أساسية نصية + وحدات فرعية من DB) ==========
+// ========== تعديل مادة (وحدة أساسية نصية + وحدات فرعية نصية) ==========
 function showEditItemModal(itemId) {
   const it = itemsCache.find(i => i.id === itemId);
   if (!it) return;
 
   const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
-  const unitOpts = unitsCache.map(u => `<option value="${u.id}">${u.name} (${u.abbreviation || ''})</option>`).join('');
-
   const baseUnitName = it.base_unit?.name || it.base_unit?.abbreviation || 'قطعة';
   const iu = it.item_units || [];
   const iu1 = iu[0] || {};
   const iu2 = iu[1] || {};
+  const u1Name = iu1.unit?.name || '';
+  const u1Factor = iu1.conversion_factor || '';
+  const u2Name = iu2.unit?.name || '';
+  const u2Factor = iu2.conversion_factor || '';
+  const hasExtraUnits = !!(u1Name || u2Name);
 
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" value="${it.name || ''}"></div>
@@ -706,30 +793,43 @@ function showEditItemModal(itemId) {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
 
-    <!-- الوحدة الأساسية: حقل نصي -->
-    <div class="form-group"><label class="form-label">الوحدة الأساسية</label><input class="input" id="fm-base_unit_name" type="text" value="${baseUnitName}"></div>
-
-    <!-- الوحدة الفرعية 1 -->
-    <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><select class="select" id="fm-unit2-id"><option value="">اختر وحدة</option>${unitsCache.map(u => `<option value="${u.id}" ${u.id == iu1.unit_id ? 'selected' : ''}>${u.name} (${u.abbreviation || ''})</option>`).join('')}</select></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" value="${iu1.conversion_factor || ''}" placeholder="مثال: 12" style="width:100%;"></div>
+    <div class="form-group">
+      <label class="form-label">الوحدة الأساسية</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="input" id="fm-base_unit_name" type="text" value="${baseUnitName}" style="flex:1;">
+        <button class="btn btn-secondary" id="btn-toggle-units" type="button" style="width:auto;padding:8px 14px;" title="إضافة وحدات فرعية">${hasExtraUnits ? ICONS.x : ICONS.plus}</button>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 وحدة فرعية = <strong id="u2-factor-display">؟</strong> من الوحدة الأساسية</div>
     </div>
 
-    <!-- الوحدة الفرعية 2 -->
-    <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الوحدة الفرعية 2 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;"><select class="select" id="fm-unit3-id"><option value="">اختر وحدة</option>${unitsCache.map(u => `<option value="${u.id}" ${u.id == iu2.unit_id ? 'selected' : ''}>${u.name} (${u.abbreviation || ''})</option>`).join('')}</select></div>
-        <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" value="${iu2.conversion_factor || ''}" placeholder="مثال: 10" style="width:100%;"></div>
+    <div id="extra-units" style="display:${hasExtraUnits ? 'block' : 'none'};">
+      <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);margin-bottom:12px;">
+        <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;"><input class="input" id="fm-unit2-name" type="text" placeholder="اسم الوحدة مثال: كرتونة" value="${u1Name}"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" value="${u1Factor}" style="width:100%;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">${u1Name || 'وحدة فرعية 1'}</span> = <strong class="factor-display">${u1Factor || '؟'}</strong> <span class="base-unit-name">${baseUnitName}</span></div>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 وحدة فرعية = <strong id="u3-factor-display">؟</strong> من الوحدة الأساسية</div>
+
+      <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
+        <label class="form-label">الوحدة الفرعية 2 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;"><input class="input" id="fm-unit3-name" type="text" placeholder="اسم الوحدة مثال: طرد" value="${u2Name}"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" value="${u2Factor}" style="width:100%;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">${u2Name || 'وحدة فرعية 2'}</span> = <strong class="factor-display">${u2Factor || '؟'}</strong> <span class="base-unit-name">${baseUnitName}</span></div>
+      </div>
     </div>
 
-    <div class="form-group"><label class="form-label">الكمية الافتتاحية <span style="color:var(--text-muted);font-size:12px;">(بالوحدة الأساسية)</span></label><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
+    <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
+      <label class="form-label">الكمية الافتتاحية</label>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;"><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
+        <div style="width:150px;"><select class="select" id="fm-qty-unit"><option value="base">الوحدة الأساسية</option><option value="u2">الوحدة الفرعية 1</option><option value="u3">الوحدة الفرعية 2</option></select></div>
+      </div>
+      <div id="qty-converted" style="font-size:12px;color:var(--text-muted);margin-top:6px;display:none;">= <strong id="qty-base-val">0</strong> <span class="base-unit-name">${baseUnitName}</span></div>
+    </div>
+
     <div class="form-group"><label class="form-label">سعر الشراء <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-purchase_price" type="number" value="${it.purchase_price || 0}"></div>
     <div class="form-group"><label class="form-label">سعر البيع <span style="color:var(--text-muted);font-size:12px;">(للوحدة الأساسية)</span></label><input class="input" id="fm-selling_price" type="number" value="${it.selling_price || 0}"></div>
   `;
@@ -740,21 +840,67 @@ function showEditItemModal(itemId) {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
-  // تحديث عرض عامل التحويل
-  const u2Factor = modal.element.querySelector('#fm-unit2-factor');
-  const u3Factor = modal.element.querySelector('#fm-unit3-factor');
-  const baseName = modal.element.querySelector('#fm-base_unit_name');
-  const updateLabels = () => {
-    const b = baseName.value.trim() || 'الوحدة الأساسية';
-    modal.element.querySelector('#u2-factor-display').textContent = (u2Factor.value || '؟') + ' ' + b;
-    modal.element.querySelector('#u3-factor-display').textContent = (u3Factor.value || '؟') + ' ' + b;
-  };
-  u2Factor.addEventListener('input', updateLabels);
-  u3Factor.addEventListener('input', updateLabels);
-  baseName.addEventListener('input', updateLabels);
-  updateLabels();
+  const baseNameInput = modal.element.querySelector('#fm-base_unit_name');
+  const extraUnitsDiv = modal.element.querySelector('#extra-units');
+  const toggleBtn = modal.element.querySelector('#btn-toggle-units');
 
-  // Quick add category
+  toggleBtn.onclick = () => {
+    const isHidden = extraUnitsDiv.style.display === 'none';
+    extraUnitsDiv.style.display = isHidden ? 'block' : 'none';
+    toggleBtn.innerHTML = isHidden ? ICONS.x : ICONS.plus;
+    toggleBtn.title = isHidden ? 'إخفاء الوحدات الفرعية' : 'إضافة وحدات فرعية';
+  };
+
+  const updateUnitLabels = () => {
+    const baseName = baseNameInput.value.trim() || 'الوحدة الأساسية';
+    modal.element.querySelectorAll('.base-unit-name').forEach(el => el.textContent = baseName);
+    
+    const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+    const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+    const subs = modal.element.querySelectorAll('.sub-unit-name');
+    const facts = modal.element.querySelectorAll('.factor-display');
+    
+    if (subs[0]) subs[0].textContent = u2Name || 'وحدة فرعية 1';
+    if (subs[1]) subs[1].textContent = u3Name || 'وحدة فرعية 2';
+    
+    const f2 = modal.element.querySelector('#fm-unit2-factor').value;
+    const f3 = modal.element.querySelector('#fm-unit3-factor').value;
+    if (facts[0]) facts[0].textContent = f2 || '؟';
+    if (facts[1]) facts[1].textContent = f3 || '؟';
+  };
+
+  baseNameInput.addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit2-name').addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit3-name').addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateUnitLabels);
+  modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateUnitLabels);
+
+  const qtyInput = modal.element.querySelector('#fm-quantity');
+  const qtyUnitSel = modal.element.querySelector('#fm-qty-unit');
+  const qtyConvertedDiv = modal.element.querySelector('#qty-converted');
+  const qtyBaseVal = modal.element.querySelector('#qty-base-val');
+
+  const updateQty = () => {
+    const qty = parseFloat(qtyInput.value) || 0;
+    const unit = qtyUnitSel.value;
+    const f2 = parseFloat(modal.element.querySelector('#fm-unit2-factor').value) || 1;
+    const f3 = parseFloat(modal.element.querySelector('#fm-unit3-factor').value) || 1;
+    let baseQty = qty;
+    if (unit === 'u2') baseQty = qty * f2;
+    else if (unit === 'u3') baseQty = qty * f3;
+    
+    if (qty > 0 && unit !== 'base') {
+      qtyConvertedDiv.style.display = 'block';
+      qtyBaseVal.textContent = baseQty;
+    } else {
+      qtyConvertedDiv.style.display = 'none';
+    }
+  };
+  qtyInput.addEventListener('input', updateQty);
+  qtyUnitSel.addEventListener('change', updateQty);
+  modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateQty);
+  modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateQty);
+
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
@@ -777,31 +923,47 @@ function showEditItemModal(itemId) {
 
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
 
+  async function getOrCreateUnit(name) {
+    if (!name) return null;
+    const existing = unitsCache.find(u => u.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.id;
+    const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: name });
+    const newId = res?.id || res?.data?.id;
+    if (newId) unitsCache.push({ id: newId, name, abbreviation: name });
+    return newId;
+  }
+
   modal.element.querySelector('#fm-save').onclick = async () => {
-    const baseUnitName = modal.element.querySelector('#fm-base_unit_name').value.trim();
+    const baseUnitName = baseNameInput.value.trim();
     if (!baseUnitName) return showToast('اسم الوحدة الأساسية مطلوب', 'error');
 
-    // التأكد من وجود الوحدة الأساسية في قاعدة البيانات
-    let baseUnitId = null;
-    const existing = unitsCache.find(u => u.name.toLowerCase() === baseUnitName.toLowerCase());
-    if (existing) {
-      baseUnitId = existing.id;
-    } else {
-      try {
-        const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name: baseUnitName, abbreviation: baseUnitName });
-        baseUnitId = res?.id || res?.data?.id;
-        if (baseUnitId) unitsCache.push({ id: baseUnitId, name: baseUnitName, abbreviation: baseUnitName });
-      } catch (e) { return showToast('فشل إضافة الوحدة الأساسية: ' + e.message, 'error'); }
+    const baseUnitId = await getOrCreateUnit(baseUnitName);
+    if (!baseUnitId) return showToast('فشل إنشاء الوحدة الأساسية', 'error');
+
+    const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+    const u2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
+    const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+    const u3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
+
+    let unit2Id = null, unit3Id = null;
+    if (u2Name) {
+      unit2Id = await getOrCreateUnit(u2Name);
+      if (!unit2Id) return showToast('فشل إنشاء الوحدة الفرعية 1', 'error');
+    }
+    if (u3Name) {
+      unit3Id = await getOrCreateUnit(u3Name);
+      if (!unit3Id) return showToast('فشل إنشاء الوحدة الفرعية 2', 'error');
     }
 
-    const unit2Id = modal.element.querySelector('#fm-unit2-id').value || null;
-    const unit2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
-    const unit3Id = modal.element.querySelector('#fm-unit3-id').value || null;
-    const unit3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
-
     const itemUnits = [];
-    if (unit2Id && unit2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: unit2Factor });
-    if (unit3Id && unit3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: unit3Factor });
+    if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
+    if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
+
+    const qtyEntered = parseFloat(qtyInput.value) || 0;
+    const qtyUnit = qtyUnitSel.value;
+    let quantity = qtyEntered;
+    if (qtyUnit === 'u2' && u2Factor > 0) quantity = qtyEntered * u2Factor;
+    else if (qtyUnit === 'u3' && u3Factor > 0) quantity = qtyEntered * u3Factor;
 
     const values = {
       name: modal.element.querySelector('#fm-name').value.trim(),
@@ -809,7 +971,7 @@ function showEditItemModal(itemId) {
       item_type: modal.element.querySelector('#fm-item_type').value,
       purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
       selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
-      quantity: parseFloat(modal.element.querySelector('#fm-quantity').value) || 0,
+      quantity: quantity,
       base_unit_id: baseUnitId,
       item_units: itemUnits
     };
@@ -826,6 +988,7 @@ function showEditItemModal(itemId) {
     }
   };
 }
+
 
 // ========== الأقسام العامة (عملاء، موردين، تصنيفات) ==========
 function buildGenericItemHtml(item, opts) {
