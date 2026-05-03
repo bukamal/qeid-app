@@ -1414,13 +1414,195 @@ function printInvoice(invoice) {
     return `<tr><td>${l.item?.name || '-'}</td><td>${l.quantity} ${unitName}</td><td>${formatNumber(l.unit_price)}</td><td>${formatNumber(l.total)}</td></tr>`;
   }).join('') || '';
 
-  const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title>
-    <style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap'); body{font-family:'Tajawal',sans-serif;padding:24px;max-width:700px;margin:0 auto} table{width:100%;border-collapse:collapse;margin:16px 0} th,td{border:1px solid #ddd;padding:10px;text-align:right} th{background:#f8fafc} .total{font-size:20px;font-weight:800;margin-top:16px} button{padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit}</style></head><body>
-    <h2>فاتورة ${invoice.type==='sale'?'بيع':'شراء'}</h2><p>التاريخ: ${invoice.date} | المرجع: ${invoice.reference||'-'}</p>
-    <p>${invoice.customer?.name?'العميل: '+invoice.customer.name:''}${invoice.supplier?.name?'المورد: '+invoice.supplier.name:''}</p>
-    <table><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="total">الإجمالي: ${formatNumber(invoice.total)}</div><p>مدفوع: ${formatNumber(invoice.paid||0)} | باقي: ${formatNumber(invoice.balance||0)}</p>
-    <button onclick="window.print();setTimeout(()=>window.close(),500)">طباعة</button></body></html>`;
+      // تصميم جدول عمودي مكبّر للطباعة
+    const html = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>فاتورة ${invoice.reference || invoice.id}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Tajawal', sans-serif;
+    background: #f0f4f8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    direction: rtl;
+    padding: 20px;
+  }
+  .invoice-box {
+    max-width: 700px;
+    width: 100%;
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .header {
+    text-align: center;
+    border-bottom: 3px solid #2563eb;
+    padding-bottom: 20px;
+  }
+  h2 { color: #2563eb; font-size: 36px; margin: 0; font-weight: 800; }
+  h3 { font-size: 22px; margin: 10px 0 0; color: #333; font-weight: 700; }
+  .info {
+    font-size: 18px;
+    line-height: 2;
+    background: #f9fafb;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .info p { margin: 4px 0; }
+
+  /* ===== الجدول العمودي المكبّر ===== */
+  .vertical-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 16px;
+  }
+  .vertical-table th,
+  .vertical-table td {
+    border: 2px solid #1e293b;
+    padding: 14px 12px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .vertical-table th {
+    background: #2563eb;
+    color: white;
+    font-weight: 800;
+    font-size: 18px;
+    white-space: nowrap;
+  }
+  .vertical-table td {
+    background: #f8fafc;
+    font-weight: 700;
+    color: #1e293b;
+    min-width: 100px;
+  }
+  .vertical-table td.item-name {
+    background: #eff6ff;
+    color: #1e40af;
+    font-weight: 800;
+    font-size: 17px;
+  }
+  .vertical-table td.qty-cell {
+    font-size: 18px;
+    color: #0369a1;
+  }
+  .vertical-table td.price-cell {
+    font-size: 16px;
+    color: #047857;
+  }
+  .vertical-table td.total-cell {
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .vertical-table td.unit-cell {
+    font-size: 15px;
+    color: #6b7280;
+  }
+  .vertical-table tr:first-child th:first-child { border-top-right-radius: 10px; }
+  .vertical-table tr:first-child th:last-child { border-top-left-radius: 10px; }
+  .vertical-table tr:last-child td:first-child { border-bottom-right-radius: 10px; }
+  .vertical-table tr:last-child td:last-child { border-bottom-left-radius: 10px; }
+
+  .summary {
+    border-top: 3px solid #2563eb;
+    padding-top: 20px;
+    font-size: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .summary p { margin: 0; }
+  .balance { color: #ef4444; font-weight: bold; font-size: 24px; }
+  .notes {
+    background: #fff7ed;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 18px;
+    color: #9a3412;
+  }
+  @media print {
+    body { background: white; padding: 0; }
+    .invoice-box { box-shadow: none; border-radius: 0; max-width: 100%; }
+  }
+</style></head>
+<body>
+  <div class="invoice-box">
+    <div class="header">
+      <h2>الراجحي للمحاسبة</h2>
+      <h3>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</h3>
+    </div>
+    <div class="info">
+      <p>📅 التاريخ: ${invoice.date}</p>
+      <p>🔖 المرجع: ${invoice.reference || '-'}</p>
+      ${invoice.customer?.name ? `<p>👤 العميل: ${invoice.customer.name}</p>` : ''}
+      ${invoice.supplier?.name ? `<p>🏭 المورد: ${invoice.supplier.name}</p>` : ''}
+    </div>
+
+    <!-- الجدول العمودي -->
+    <table class="vertical-table">
+      <thead>
+        <tr>
+          <th>اسم المادة</th>
+          ${invoice.invoice_lines?.map(l => `<td class="item-name">${l.item?.name || '-'}</td>`).join('') || '<td colspan="4" style="text-align:center;">لا توجد بنود</td>'}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>الكمية</th>
+          ${invoice.invoice_lines?.map(l => {
+            const item = itemsCache.find(i => i.id === l.item_id);
+            const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
+            return `<td class="qty-cell">${l.quantity} <span style="font-size:13px;color:#6b7280;">${unitName}</span></td>`;
+          }).join('') || ''}
+        </tr>
+        <tr>
+          <th>السعر</th>
+          ${invoice.invoice_lines?.map(l => `<td class="price-cell">${parseFloat(l.unit_price).toFixed(2)}</td>`).join('') || ''}
+        </tr>
+        <tr>
+          <th>الإجمالي</th>
+          ${invoice.invoice_lines?.map(l => `<td class="total-cell">${parseFloat(l.total).toFixed(2)}</td>`).join('') || ''}
+        </tr>
+        <tr>
+          <th>الوحدة</th>
+          ${invoice.invoice_lines?.map(l => {
+            const item = itemsCache.find(i => i.id === l.item_id);
+            const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
+            const factor = l.conversion_factor || 1;
+            let unitDisplay = unitName;
+            if (factor > 1) {
+              const baseUnit = item?.base_unit?.name || 'قطعة';
+              unitDisplay += `<br><span style="font-size:12px;color:#6b7280;">(= ${(l.quantity * factor).toFixed(2)} ${baseUnit})</span>`;
+            }
+            return `<td class="unit-cell">${unitDisplay}</td>`;
+          }).join('') || ''}
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="summary">
+      <p><strong>الإجمالي الكلي:</strong> ${parseFloat(invoice.total).toFixed(2)}</p>
+      <p><strong>المدفوع:</strong> ${parseFloat(paid).toFixed(2)}</p>
+      <p class="balance"><strong>الباقي:</strong> ${parseFloat(balance).toFixed(2)}</p>
+    </div>
+    ${invoice.notes ? `<div class="notes">📝 ملاحظات: ${invoice.notes}</div>` : ''}
+  </div>
+</body></html>`;
+
   const w = window.open('', '_blank', 'width=800,height=600');
   if (w) { w.document.write(html); w.document.close(); } else showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
 }
