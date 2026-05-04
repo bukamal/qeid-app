@@ -1393,7 +1393,7 @@ function renderFilteredInvoices() {
     if (inv) showInvoiceDetail(inv);
   }));
 
-  // ========== زر الطباعة (مُحدّث مع اختيار التنسيق والمعاينة) ==========
+  // ========== زر الطباعة (مُصلح - تصميم واضح) ==========
   container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
@@ -1402,59 +1402,96 @@ function renderFilteredInvoices() {
       return;
     }
 
-    // فتح مودال اختيار التنسيق
     const formatModal = openModal({
       title: 'اختيار تنسيق الطباعة',
       bodyHTML: `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 0;">
-          <div class="format-option" data-format="thermal" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
-            <div style="font-size: 40px; margin-bottom: 12px;">🧾</div>
-            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">حرارية 80mm</div>
-            <div style="font-size: 13px; color: #64748b;">للطابعة الحرارية الصغيرة</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 0;">
+          <!-- A4 Option -->
+          <div class="format-option" data-format="a4" style="
+            border: 2px solid #e2e8f0; 
+            border-radius: 12px; 
+            padding: 20px 12px; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            background: #ffffff;
+          ">
+            <div style="font-size: 40px; margin-bottom: 8px;">📄</div>
+            <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">A4 رسمية</div>
+            <div style="font-size: 12px; color: #64748b; line-height: 1.4;">فاتورة كاملة<br>للطباعة على A4</div>
           </div>
-          <div class="format-option" data-format="a4" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
-            <div style="font-size: 40px; margin-bottom: 12px;">📄</div>
-            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">A4 رسمية</div>
-            <div style="font-size: 13px; color: #64748b;">فاتورة رسمية كاملة</div>
+          
+          <!-- Thermal Option -->
+          <div class="format-option" data-format="thermal" style="
+            border: 2px solid #e2e8f0; 
+            border-radius: 12px; 
+            padding: 20px 12px; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            background: #ffffff;
+          ">
+            <div style="font-size: 40px; margin-bottom: 8px;">🧾</div>
+            <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">حرارية 80mm</div>
+            <div style="font-size: 12px; color: #64748b; line-height: 1.4;">للطابعة الحرارية<br>الصغيرة</div>
           </div>
         </div>
-        <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px;">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-            <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px;">
-            <span style="font-size: 14px;">عرض معاينة قبل الطباعة</span>
+        
+        <!-- Preview Checkbox -->
+        <div style="margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px; accent-color: #4f46e5;">
+            <span style="font-size: 14px; color: #1e293b; font-weight: 600;">عرض معاينة قبل الطباعة</span>
           </label>
         </div>
       `,
       footerHTML: `
-        <button class="btn btn-secondary" id="format-cancel">إلغاء</button>
-        <button class="btn btn-primary" id="format-confirm">🖨️ متابعة</button>
+        <button class="btn btn-secondary" id="format-cancel" style="flex: 1; padding: 12px;">إلغاء</button>
+        <button class="btn btn-primary" id="format-confirm" style="flex: 1; padding: 12px; font-weight: 700;">
+          🖨️ متابعة
+        </button>
       `
     });
 
-    // تظليل الخيار المختار
+    // Selection logic - DARK background when selected
     const selectOption = (selected) => {
       formatModal.element.querySelectorAll('.format-option').forEach(o => {
         o.style.borderColor = '#e2e8f0';
-        o.style.background = 'white';
+        o.style.background = '#ffffff';
+        o.style.boxShadow = 'none';
+        // Reset text to dark
+        const title = o.querySelector('div:nth-child(2)');
+        const desc = o.querySelector('div:nth-child(3)');
+        if (title) title.style.color = '#1e293b';
+        if (desc) desc.style.color = '#64748b';
       });
+      
+      // Selected state - DARK BLUE background with WHITE text
       selected.style.borderColor = '#4f46e5';
-      selected.style.background = '#eef2ff';
+      selected.style.background = '#4f46e5';
+      selected.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.3)';
+      
+      // Change text to WHITE for contrast
+      const selectedTitle = selected.querySelector('div:nth-child(2)');
+      const selectedDesc = selected.querySelector('div:nth-child(3)');
+      if (selectedTitle) selectedTitle.style.color = '#ffffff';
+      if (selectedDesc) selectedDesc.style.color = 'rgba(255,255,255,0.85)';
     };
 
     formatModal.element.querySelectorAll('.format-option').forEach(opt => {
       opt.addEventListener('click', () => selectOption(opt));
     });
 
-    // اختيار افتراضي
+    // Default: select thermal
     const defaultOption = formatModal.element.querySelector('[data-format="thermal"]');
     if (defaultOption) selectOption(defaultOption);
 
-    // إلغاء
+    // Cancel
     formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
 
-    // تأكيد
+    // Confirm
     formatModal.element.querySelector('#format-confirm').onclick = () => {
-      const selected = formatModal.element.querySelector('.format-option[style*="border-color: rgb(79, 70, 229)"]') 
+      const selected = formatModal.element.querySelector('.format-option[style*="background: rgb(79, 70, 229)"]') 
                     || formatModal.element.querySelector('[data-format="thermal"]');
       const selectedFormat = selected?.dataset.format || 'thermal';
       const withPreview = formatModal.element.querySelector('#preview-check').checked;
@@ -1465,6 +1502,19 @@ function renderFilteredInvoices() {
       }, 300);
     };
   }));
+
+  // ========== زر إرسال عبر Telegram ==========
+  container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    sendInvoiceViaTelegram(id);
+  }));
+
+  // ========== زر حذف الفاتورة ==========
+  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    deleteInvoice(id);
+  }));
+}
 
   // ========== زر إرسال عبر Telegram ==========
   container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
