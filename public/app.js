@@ -223,26 +223,27 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess })
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
-  modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
   modal.element.querySelector('#fm-save').onclick = async () => {
-    const values = {};
-    fields.forEach(f => {
-      const el = modal.element.querySelector(`#fm-${f.id}`);
-      if (el) values[f.id] = el.value.trim();
-    });
+    const btn = modal.element.querySelector('#fm-save');
+    if (btn.disabled) return; // منع النقرات المتعددة
+    btn.disabled = true;
+    btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+
     try {
-      const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
-      const result = await onSave(values);
-      if (result && result.error) throw new Error(result.error.message || result.error);
-      modal.close();
-      showToast('تم الحفظ بنجاح', 'success');
-      if (onSuccess) onSuccess();
+        const baseUnitName = baseNameInput.value.trim();
+        if (!baseUnitName) throw new Error('اسم الوحدة الأساسية مطلوب');
+        // ... باقي الكود داخل try ...
+
+        await apiCall('/items', 'POST', values);
+        modal.close(); 
+        showToast('تم الحفظ بنجاح', 'success'); 
+        loadItems();
     } catch (e) {
-      showToast(e.message, 'error');
-      const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`;
+        showToast(e.message, 'error');
+        btn.disabled = false; 
+        btn.innerHTML = `${ICONS.check} حفظ`;
     }
+
   };
 }
 
