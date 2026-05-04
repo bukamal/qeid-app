@@ -1386,32 +1386,93 @@ function renderFilteredInvoices() {
   });
   container.innerHTML = html;
 
+  // ========== زر عرض التفاصيل ==========
   container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
     if (inv) showInvoiceDetail(inv);
   }));
 
+  // ========== زر الطباعة (مُحدّث مع اختيار التنسيق والمعاينة) ==========
   container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
-    if (inv) {
-      if (typeof window.printInvoice === 'function') {
-        window.printInvoice(inv);
-      } else {
-        showToast('دالة الطباعة غير متاحة', 'error');
-        console.error('window.printInvoice is not defined');
-      }
-    } else {
-      showToast('الفاتورة غير موجودة في الذاكرة المؤقتة', 'error');
+    if (!inv) {
+      showToast('الفاتورة غير موجودة', 'error');
+      return;
     }
+
+    // فتح مودال اختيار التنسيق
+    const formatModal = openModal({
+      title: 'اختيار تنسيق الطباعة',
+      bodyHTML: `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 0;">
+          <div class="format-option" data-format="thermal" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🧾</div>
+            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">حرارية 80mm</div>
+            <div style="font-size: 13px; color: #64748b;">للطابعة الحرارية الصغيرة</div>
+          </div>
+          <div class="format-option" data-format="a4" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
+            <div style="font-size: 40px; margin-bottom: 12px;">📄</div>
+            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">A4 رسمية</div>
+            <div style="font-size: 13px; color: #64748b;">فاتورة رسمية كاملة</div>
+          </div>
+        </div>
+        <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px;">
+            <span style="font-size: 14px;">عرض معاينة قبل الطباعة</span>
+          </label>
+        </div>
+      `,
+      footerHTML: `
+        <button class="btn btn-secondary" id="format-cancel">إلغاء</button>
+        <button class="btn btn-primary" id="format-confirm">🖨️ متابعة</button>
+      `
+    });
+
+    // تظليل الخيار المختار
+    const selectOption = (selected) => {
+      formatModal.element.querySelectorAll('.format-option').forEach(o => {
+        o.style.borderColor = '#e2e8f0';
+        o.style.background = 'white';
+      });
+      selected.style.borderColor = '#4f46e5';
+      selected.style.background = '#eef2ff';
+    };
+
+    formatModal.element.querySelectorAll('.format-option').forEach(opt => {
+      opt.addEventListener('click', () => selectOption(opt));
+    });
+
+    // اختيار افتراضي
+    const defaultOption = formatModal.element.querySelector('[data-format="thermal"]');
+    if (defaultOption) selectOption(defaultOption);
+
+    // إلغاء
+    formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
+
+    // تأكيد
+    formatModal.element.querySelector('#format-confirm').onclick = () => {
+      const selected = formatModal.element.querySelector('.format-option[style*="border-color: rgb(79, 70, 229)"]') 
+                    || formatModal.element.querySelector('[data-format="thermal"]');
+      const selectedFormat = selected?.dataset.format || 'thermal';
+      const withPreview = formatModal.element.querySelector('#preview-check').checked;
+      
+      formatModal.close();
+      setTimeout(() => {
+        window.printInvoice(inv, { preview: withPreview, format: selectedFormat });
+      }, 300);
+    };
   }));
 
+  // ========== زر إرسال عبر Telegram ==========
   container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     sendInvoiceViaTelegram(id);
   }));
 
+  // ========== زر حذف الفاتورة ==========
   container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     deleteInvoice(id);
@@ -1501,52 +1562,104 @@ function showInvoiceDetail(invoice) {
         </div>
         ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
       </div>`,
-    footerHTML: `<button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button><button class="btn btn-success" id="send-detail-btn">${ICONS.file} إرسال</button><button class="btn btn-primary" id="print-detail-btn">${ICONS.print} طباعة</button>`
+    footerHTML: `
+      <button class="btn btn-secondary" id="detail-close">إغلاق</button>
+      <button class="btn btn-success" id="detail-send">${ICONS.file} إرسال</button>
+      <button class="btn btn-primary" id="detail-print">${ICONS.print} طباعة</button>
+    `
   });
 
-  const printBtn = modal.element.querySelector('#print-detail-btn');
-  if (printBtn) {
-    printBtn.onclick = () => {
-      if (typeof window.printInvoice === 'function') {
-        window.printInvoice(invoice);
-      } else {
-        showToast('دالة الطباعة غير متاحة', 'error');
-        console.error('window.printInvoice is not defined');
-      }
-    };
-  }
+  // زر الإغلاق
+  modal.element.querySelector('#detail-close').onclick = () => modal.close();
 
-  // === التعديل الرئيسي هنا ===
-  const sendBtn = modal.element.querySelector('#send-detail-btn');
-  if (sendBtn) {
-    sendBtn.onclick = () => {
-      // إغلاق المودال أولاً ثم الإرسال بعد تأخير بسيط
-      modal.close();
-      setTimeout(() => {
-        sendInvoiceViaTelegram(invoice.id);
-      }, 300);
-    };
-  }
+  // زر الطباعة (مُحدّث)
+  modal.element.querySelector('#detail-print').onclick = () => {
+    modal.close();
+    setTimeout(() => {
+      // فتح نفس مودال اختيار التنسيق
+      const formatModal = openModal({
+        title: 'اختيار تنسيق الطباعة',
+        bodyHTML: `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 0;">
+            <div class="format-option" data-format="thermal" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
+              <div style="font-size: 40px; margin-bottom: 12px;">🧾</div>
+              <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">حرارية 80mm</div>
+              <div style="font-size: 13px; color: #64748b;">للطابعة الحرارية الصغيرة</div>
+            </div>
+            <div class="format-option" data-format="a4" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
+              <div style="font-size: 40px; margin-bottom: 12px;">📄</div>
+              <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">A4 رسمية</div>
+              <div style="font-size: 13px; color: #64748b;">فاتورة رسمية كاملة</div>
+            </div>
+          </div>
+          <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px;">
+              <span style="font-size: 14px;">عرض معاينة قبل الطباعة</span>
+            </label>
+          </div>
+        `,
+        footerHTML: `
+          <button class="btn btn-secondary" id="format-cancel">إلغاء</button>
+          <button class="btn btn-primary" id="format-confirm">🖨️ متابعة</button>
+        `
+      });
+
+      const selectOption = (selected) => {
+        formatModal.element.querySelectorAll('.format-option').forEach(o => {
+          o.style.borderColor = '#e2e8f0';
+          o.style.background = 'white';
+        });
+        selected.style.borderColor = '#4f46e5';
+        selected.style.background = '#eef2ff';
+      };
+
+      formatModal.element.querySelectorAll('.format-option').forEach(opt => {
+        opt.addEventListener('click', () => selectOption(opt));
+      });
+
+      const defaultOption = formatModal.element.querySelector('[data-format="thermal"]');
+      if (defaultOption) selectOption(defaultOption);
+
+      formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
+
+      formatModal.element.querySelector('#format-confirm').onclick = () => {
+        const selected = formatModal.element.querySelector('.format-option[style*="border-color: rgb(79, 70, 229)"]') 
+                      || formatModal.element.querySelector('[data-format="thermal"]');
+        const selectedFormat = selected?.dataset.format || 'thermal';
+        const withPreview = formatModal.element.querySelector('#preview-check').checked;
+        
+        formatModal.close();
+        setTimeout(() => {
+          window.printInvoice(invoice, { preview: withPreview, format: selectedFormat });
+        }, 300);
+      };
+    }, 300);
+  };
+
+  // زر الإرسال
+  modal.element.querySelector('#detail-send').onclick = () => {
+    modal.close();
+    setTimeout(() => {
+      sendInvoiceViaTelegram(invoice.id);
+    }, 300);
+  };
 }
 
 
 // ========== طباعة الفاتورة (متاحة عالمياً) ==========
 
-// ========== طباعة الفاتورة (متاحة عالمياً) ==========
-
-window.printInvoice = function(invoice) {
+window.printInvoice = function(invoice, options = {}) {
   if (!invoice) {
     showToast('لا توجد بيانات للطباعة', 'error');
     return;
   }
 
-  // ========== إعدادات العملة ==========
-  const CURRENCY = {
-    symbol: 'ل.س',      // ليرة سورية
-    name: 'ليرة سورية',
-    decimals: 2
-  };
+  const { preview = false, format = 'thermal' } = options; // format: 'thermal' | 'a4'
 
+  // إعدادات العملة والتنسيق
+  const CURRENCY = { symbol: 'ل.س', decimals: 2 };
+  
   function formatCurrency(amount) {
     return Number(amount || 0).toLocaleString('en-US', { 
       minimumFractionDigits: CURRENCY.decimals, 
@@ -1559,116 +1672,279 @@ window.printInvoice = function(invoice) {
     const d = new Date(dateStr);
     const day = String(d.getDate()).padStart(2, '0');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day} ${month} ${year}`;
+    return `${day} ${months[d.getMonth()]} ${d.getFullYear()}`;
   }
 
-  function formatTimeEn(date) {
-    const d = date || new Date();
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
+  function formatTimeEn() {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
   const items = invoice.invoice_lines || [];
   const paid = invoice.paid || 0;
   const balance = (invoice.total || 0) - paid;
   const now = new Date();
-  const timeStr = formatTimeEn(now);
+  const timeStr = formatTimeEn();
   const dateStr = formatDateEn(invoice.date);
+  const entity = invoice.customer || invoice.supplier;
+  const entityLabel = invoice.type === 'sale' ? 'العميل' : 'المورد';
 
-  const htmlContent = `<!DOCTYPE html>
+  // ========== تنسيق حراري 80mm ==========
+  const thermalHTML = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=80mm, initial-scale=1">
-<title>فاتورة حرارية</title>
+<title>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} - ${invoice.reference || ''}</title>
 <style>
   @page { size: 80mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { 
-    width: 80mm; 
-    font-family: system-ui, -apple-system, sans-serif;
-    font-size: 12px; 
-    line-height: 1.4; 
-    padding: 4mm;
-    color: #000;
-  }
+  body { width: 80mm; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px; line-height: 1.4; padding: 4mm; color: #000; background: #fff; }
   .center { text-align: center; }
   .bold { font-weight: 900; }
-  .shop { font-size: 18px; margin-bottom: 2px; }
-  .type { font-size: 14px; color: #555; }
-  .line { border-top: 2px dashed #000; margin: 4px 0; }
-  .row { display: flex; justify-content: space-between; margin: 2px 0; }
-  .label { color: #555; }
-  .value { font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-  th { text-align: right; font-size: 10px; color: #666; border-bottom: 1px solid #999; padding: 2px 0; }
-  td { padding: 3px 0; vertical-align: top; }
-  .name { font-weight: 700; max-width: 100px; word-wrap: break-word; }
+  .shop { font-size: 20px; margin-bottom: 2px; color: #2563eb; }
+  .type { font-size: 14px; color: #555; margin-bottom: 4px; }
+  .line { border-top: 2px dashed #000; margin: 6px 0; }
+  .row { display: flex; justify-content: space-between; margin: 3px 0; }
+  .label { color: #555; font-size: 11px; }
+  .value { font-weight: 700; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  th { text-align: right; font-size: 10px; color: #666; border-bottom: 1px solid #999; padding: 3px 0; }
+  td { padding: 4px 0; vertical-align: top; }
+  .name { font-weight: 700; max-width: 100px; word-wrap: break-word; font-size: 11px; }
   .num { text-align: left; font-family: 'Courier New', monospace; font-size: 11px; }
-  .total-row { font-size: 14px; font-weight: 900; margin: 4px 0; }
-  .grand-total { color: #2563eb; font-size: 16px; }
-  .footer { text-align: center; font-size: 10px; color: #666; margin-top: 8px; }
-  .cut-here { border-top: 3px dotted #000; margin: 6px 0; }
+  .total-row { font-size: 15px; font-weight: 900; margin: 6px 0; padding: 4px 0; border-top: 2px solid #000; }
+  .grand-total { color: #2563eb; font-size: 18px; }
+  .footer { text-align: center; font-size: 10px; color: #666; margin-top: 12px; padding-top: 8px; border-top: 1px dashed #999; }
+  .cut-here { border-top: 3px dotted #000; margin: 8px 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+  .paid { background: #dcfce7; color: #166534; }
+  .unpaid { background: #fef3c7; color: #92400e; }
+  @media print { body { width: 80mm; padding: 2mm; } .no-print { display: none; } }
 </style>
 </head>
 <body>
   <div class="center">
     <div class="shop bold">الراجحي للمحاسبة</div>
+    <div style="font-size: 9px; color: #888; margin-bottom: 4px;">ALRAJEHI ACCOUNTING</div>
     <div class="type">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
+    <span class="badge ${balance <= 0 ? 'paid' : 'unpaid'}">${balance <= 0 ? '✓ مدفوعة' : '⏳ غير مدفوعة'}</span>
   </div>
-  
   <div class="line"></div>
-  
-  <div class="row"><span class="label">التاريخ:</span><span class="value">${dateStr} ${timeStr}</span></div>
-  <div class="row"><span class="label">المرجع:</span><span class="value">${invoice.reference || '-'}</span></div>
-  ${invoice.customer?.name ? `<div class="row"><span class="label">العميل:</span><span class="value">${invoice.customer.name}</span></div>` : ''}
-  ${invoice.supplier?.name ? `<div class="row"><span class="label">المورد:</span><span class="value">${invoice.supplier.name}</span></div>` : ''}
-  
+  <div class="row"><span class="label">التاريخ / Date:</span><span class="value">${dateStr} ${timeStr}</span></div>
+  <div class="row"><span class="label">المرجع / Ref:</span><span class="value">${invoice.reference || '-'}</span></div>
+  ${entity ? `<div class="row"><span class="label">${entityLabel}:</span><span class="value">${entity.name}</span></div>` : ''}
   <div class="line"></div>
-  
   <table>
-    <tr><th style="width:40%">الصنف</th><th style="width:15%">الكمية</th><th style="width:22%">السعر</th><th style="width:23%">المجموع</th></tr>
+    <tr><th style="width:40%">الصنف</th><th style="width:15%">Qty</th><th style="width:22%">Price</th><th style="width:23%">Total</th></tr>
     ${items.map(l => `
       <tr>
-        <td class="name">${(l.item?.name || '-').substring(0, 12)}</td>
-        <td class="num">${l.quantity} <span style="font-size:8px;color:#666">${l.unit?.name || ''}</span></td>
+        <td class="name">${(l.item?.name || '-').substring(0, 15)}</td>
+        <td class="num">${l.quantity} <span style="font-size:8px;color:#666">${l.unit?.abbreviation || l.unit?.name || ''}</span></td>
         <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
         <td class="num bold">${parseFloat(l.total || 0).toFixed(2)}</td>
       </tr>
     `).join('')}
   </table>
-  
   <div class="line"></div>
-  
-  <div class="row total-row"><span>الإجمالي:</span><span class="grand-total">${formatCurrency(invoice.total || 0)}</span></div>
-  <div class="row"><span>المدفوع:</span><span>${formatCurrency(paid)}</span></div>
-  <div class="row bold" style="font-size:13px"><span>الباقي:</span><span>${formatCurrency(balance)}</span></div>
-  
+  <div class="row total-row"><span>الإجمالي Total:</span><span class="grand-total">${formatCurrency(invoice.total || 0)}</span></div>
+  <div class="row"><span>المدفوع Paid:</span><span>${formatCurrency(paid)}</span></div>
+  <div class="row bold" style="font-size:14px; color: ${balance > 0 ? '#dc2626' : '#059669'}"><span>الباقي Balance:</span><span>${formatCurrency(balance)}</span></div>
   <div class="cut-here"></div>
-  
   <div class="footer">
-    <div>شكراً لتعاملكم</div>
-    <div style="margin-top:3px">للدعم: @bukamal1991</div>
+    <div>شكراً لتعاملكم / Thank you</div>
+    <div style="margin-top:4px; font-size: 9px;">للدعم: @bukamal1991</div>
   </div>
-  
+  <div class="no-print" style="margin-top: 20px; text-align: center;">
+    <button onclick="window.print()" style="padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">🖨️ طباعة / Print</button>
+  </div>
+  <script>window.onload = function() { setTimeout(function() { window.print(); }, 500); };<\/script>
+</body>
+</html>`;
+
+  // ========== تنسيق A4 رسمي ==========
+  const a4HTML = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'} - ${invoice.reference || ''}</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a2e; background: #fff; padding: 20px; }
+  .a4-container { max-width: 210mm; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+  .a4-header { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; padding: 30px; display: flex; justify-content: space-between; align-items: center; }
+  .a4-logo { font-size: 28px; font-weight: 900; }
+  .a4-logo-sub { font-size: 12px; opacity: 0.8; letter-spacing: 2px; }
+  .a4-type { background: rgba(255,255,255,0.2); padding: 8px 20px; border-radius: 20px; font-size: 16px; font-weight: 800; }
+  .a4-body { padding: 30px; }
+  .a4-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+  .a4-info-box { background: #f8fafc; border-radius: 10px; padding: 16px; border: 1px solid #e2e8f0; }
+  .a4-info-title { font-size: 12px; color: #64748b; font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+  .a4-info-value { font-size: 16px; font-weight: 700; color: #1e293b; }
+  .a4-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 20px 0; }
+  .a4-table th { background: #4f46e5; color: white; padding: 12px; text-align: right; font-weight: 700; font-size: 13px; }
+  .a4-table th:first-child { border-radius: 0 8px 0 0; }
+  .a4-table th:last-child { border-radius: 8px 0 0 0; text-align: left; }
+  .a4-table td { padding: 14px 12px; border-bottom: 1px solid #e2e8f0; }
+  .a4-table tr:nth-child(even) { background: #f8fafc; }
+  .a4-table .num { text-align: left; font-family: 'Courier New', monospace; font-weight: 700; }
+  .a4-totals { background: #f1f5f9; border-radius: 12px; padding: 24px; margin-top: 24px; }
+  .a4-total-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px dashed #cbd5e1; }
+  .a4-total-row:last-child { border-bottom: none; }
+  .a4-grand-total { font-size: 24px; color: #4f46e5; font-weight: 900; }
+  .a4-footer { padding: 20px 30px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; color: #64748b; font-size: 12px; }
+  .a4-stamp { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; border: 3px solid #4f46e5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4f46e5; font-weight: 900; font-size: 14px; transform: rotate(-15deg); opacity: 0.3; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  .paid { background: #dcfce7; color: #166534; }
+  .unpaid { background: #fef3c7; color: #92400e; }
+  @media print { body { padding: 0; } .no-print { display: none; } .a4-container { border: none; } }
+</style>
+</head>
+<body>
+  <div class="a4-container" style="position: relative;">
+    <div class="a4-header">
+      <div>
+        <div class="a4-logo">الراجحي للمحاسبة</div>
+        <div class="a4-logo-sub">ALRAJEHI ACCOUNTING SYSTEM</div>
+      </div>
+      <div style="text-align: center;">
+        <div class="a4-type">${invoice.type === 'sale' ? 'فاتورة بيع' : 'فاتورة شراء'}</div>
+        <div style="margin-top: 8px; font-size: 14px;">#${invoice.reference || invoice.id}</div>
+      </div>
+    </div>
+    
+    <div class="a4-body">
+      <div class="a4-info-grid">
+        <div class="a4-info-box">
+          <div class="a4-info-title">تاريخ الفاتورة</div>
+          <div class="a4-info-value">${dateStr}</div>
+          <div style="font-size: 13px; color: #64748b; margin-top: 4px;">${timeStr}</div>
+        </div>
+        <div class="a4-info-box">
+          <div class="a4-info-title">الحالة</div>
+          <div><span class="badge ${balance <= 0 ? 'paid' : 'unpaid'}">${balance <= 0 ? '✓ مدفوعة بالكامل' : '⏳ غير مدفوعة'}</span></div>
+        </div>
+        ${entity ? `
+        <div class="a4-info-box" style="background: #e0e7ff; border-color: #c7d2fe;">
+          <div class="a4-info-title" style="color: #4f46e5;">${entityLabel}</div>
+          <div class="a4-info-value" style="color: #4f46e5;">${entity.name}</div>
+          ${entity.phone ? `<div style="font-size: 13px; color: #64748b; margin-top: 4px;">📞 ${entity.phone}</div>` : ''}
+        </div>
+        ` : ''}
+        <div class="a4-info-box">
+          <div class="a4-info-title">الرصيد الحالي</div>
+          <div class="a4-info-value" style="color: ${balance > 0 ? '#dc2626' : '#059669'};">${formatCurrency(balance)}</div>
+        </div>
+      </div>
+
+      <table class="a4-table">
+        <thead>
+          <tr>
+            <th style="width: 5%;">#</th>
+            <th style="width: 35%;">الصنف / Description</th>
+            <th style="width: 15%;">الوحدة</th>
+            <th style="width: 15%;">الكمية</th>
+            <th style="width: 15%;">السعر</th>
+            <th style="width: 15%;">المجموع</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((l, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>
+              <div style="font-weight: 700;">${l.item?.name || '-'}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">${l.description || ''}</div>
+            </td>
+            <td>${l.unit?.name || l.unit?.abbreviation || 'قطعة'}</td>
+            <td class="num">${l.quantity}</td>
+            <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
+            <td class="num" style="font-weight: 900; color: #4f46e5;">${parseFloat(l.total || 0).toFixed(2)}</td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div class="a4-totals">
+        <div class="a4-total-row"><span style="font-size: 16px; color: #475569;">إجمالي البنود / Subtotal</span><span style="font-size: 18px; font-weight: 700;">${formatCurrency(invoice.total || 0)}</span></div>
+        ${paid > 0 ? `<div class="a4-total-row"><span style="color: #059669;">المدفوع / Paid</span><span style="font-weight: 700; color: #059669;">${formatCurrency(paid)}</span></div>` : ''}
+        ${balance > 0 ? `<div class="a4-total-row"><span style="color: #dc2626;">المتبقي / Balance Due</span><span style="font-weight: 800; color: #dc2626; font-size: 18px;">${formatCurrency(balance)}</span></div>` : ''}
+        <div class="a4-total-row" style="margin-top: 12px; padding-top: 16px; border-top: 2px solid #4f46e5;">
+          <span style="font-size: 18px; font-weight: 800;">الإجمالي النهائي / Grand Total</span>
+          <span class="a4-grand-total">${formatCurrency(invoice.total || 0)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="a4-footer">
+      <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">شكراً لتعاملكم معنا / Thank you for your business</div>
+      <div>الراجحي للمحاسبة · للدعم: @bukamal1991</div>
+      <div style="margin-top: 8px; font-size: 11px;">هذه الفاتورة صادرة إلكترونياً ولا تحتاج توقيع</div>
+    </div>
+
+    <div class="a4-stamp">PAID</div>
+  </div>
+
+  <div class="no-print" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 1000;">
+    <button onclick="window.print()" style="padding: 14px 28px; background: #4f46e5; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">
+      🖨️ طباعة / Print
+    </button>
+    <button onclick="window.close()" style="padding: 14px 28px; background: #ef4444; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700;">
+      ✕ إغلاق / Close
+    </button>
+  </div>
+
   <script>
     window.onload = function() {
       setTimeout(function() {
-        window.print();
-        setTimeout(function() { window.close(); }, 1000);
-      }, 300);
+        // لا طباعة تلقائية في A4، ننتظر المستخدم
+      }, 100);
     };
   <\/script>
 </body>
 </html>`;
 
-  // محاولة 1: فتح نافذة جديدة (تعمل على الكمبيوتر)
+  const htmlContent = format === 'a4' ? a4HTML : thermalHTML;
+
+  // ========== وضع المعاينة ==========
+  if (preview) {
+    const previewModal = openModal({
+      title: `معاينة الفاتورة - ${format === 'a4' ? 'A4' : 'حرارية 80mm'}`,
+      bodyHTML: `<div style="background: #f1f5f9; padding: 20px; border-radius: 12px; overflow: auto; max-height: 70vh;">
+        <iframe srcdoc="${htmlContent.replace(/"/g, '&quot;')}" style="width: 100%; height: 500px; border: none; border-radius: 8px; background: white;"></iframe>
+      </div>`,
+      footerHTML: `
+        <button class="btn btn-secondary" id="preview-close">إغلاق</button>
+        <button class="btn btn-primary" id="preview-print">🖨️ طباعة</button>
+        <button class="btn btn-success" id="preview-send">📤 إرسال للبوت</button>
+      `
+    });
+
+    previewModal.element.querySelector('#preview-close').onclick = () => previewModal.close();
+    
+    previewModal.element.querySelector('#preview-print').onclick = () => {
+      previewModal.close();
+      setTimeout(() => executePrint(htmlContent), 300);
+    };
+    
+    previewModal.element.querySelector('#preview-send').onclick = () => {
+      previewModal.close();
+      sendInvoiceViaTelegram(invoice.id);
+    };
+    
+    return;
+  }
+
+  // ========== تنفيذ الطباعة مباشرة ==========
+  executePrint(htmlContent);
+};
+
+// ========== دالة مساعدة لتنفيذ الطباعة ==========
+function executePrint(htmlContent) {
   let printWindow = null;
   try {
-    printWindow = window.open('about:blank', '_blank', 'width=400,height=700,scrollbars=yes,resizable=yes');
+    printWindow = window.open('', '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes,top=20,left=20');
   } catch (e) {
     console.error('فشل فتح النافذة:', e);
   }
@@ -1677,20 +1953,21 @@ window.printInvoice = function(invoice) {
     printWindow.document.open();
     printWindow.document.write(htmlContent);
     printWindow.document.close();
-    showToast('جاري فتح نافذة الطباعة', 'info');
+    printWindow.focus();
+    showToast('✅ تم فتح نافذة الطباعة', 'success');
     return;
   }
 
-  // محاولة 2: iframe مخفي (للجوال / Telegram WebView)
-  showToast('جاري تحضير الطباعة...', 'info');
+  // fallback للجوال
+  showToast('📄 جاري تحضير الطباعة...', 'info');
   let iframe = document.getElementById('print-iframe');
   if (!iframe) {
     iframe = document.createElement('iframe');
     iframe.id = 'print-iframe';
     iframe.style.position = 'fixed';
     iframe.style.bottom = '-10000px';
-    iframe.style.width = '80mm';
-    iframe.style.height = '0';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
     iframe.style.border = 'none';
     document.body.appendChild(iframe);
   }
@@ -1705,10 +1982,11 @@ window.printInvoice = function(invoice) {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } catch (e) {
-      showToast('تعذر الطباعة. تأكد من السماح بالنوافذ المنبثقة.', 'error');
+      showToast('⚠️ الطباعة غير متاحة. جاري إرسال الملف...', 'warning');
+      sendInvoiceViaTelegram(invoice.id);
     }
-  }, 600);
-};
+  }, 800);
+}
 
 
 // ========== المدفوعات ==========
