@@ -742,7 +742,9 @@ function showAddItemModal() {
     return newId;
   }
 
-  modal.element.querySelector('#fm-save').onclick = async () => {
+    const saveBtn = modal.element.querySelector('#fm-save');
+    saveBtn.onclick = async () => {
+
     const baseUnitName = baseNameInput.value.trim();
     if (!baseUnitName) return showToast('اسم الوحدة الأساسية مطلوب', 'error');
 
@@ -798,6 +800,9 @@ function showAddItemModal() {
     } catch (e) {
       showToast(e.message, 'error');
       const btn = modal.element.querySelector('#fm-save');
+      // في نهاية الدالة، تأكد من عدم تسرب المتغيرات
+      modal.element.querySelector('#fm-save').onclick = null;
+
       btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`;
     }
   };
