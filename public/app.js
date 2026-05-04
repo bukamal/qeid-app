@@ -1516,19 +1516,6 @@ function renderFilteredInvoices() {
   }));
 }
 
-  // ========== زر إرسال عبر Telegram ==========
-  container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    sendInvoiceViaTelegram(id);
-  }));
-
-  // ========== زر حذف الفاتورة ==========
-  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    deleteInvoice(id);
-  }));
-}
-
 
 async function deleteInvoice(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟ سيتم التراجع عن جميع التأثيرات المالية.')) return;
