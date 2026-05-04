@@ -1425,17 +1425,17 @@ async function deleteInvoice(id) {
   catch (e) { showToast(e.message, 'error'); }
 }
 
+
+// ========== إرسال الفاتورة عبر Telegram ==========
 async function sendInvoiceViaTelegram(invoiceId) {
-  // التحقق من صحة المعرف
   const id = parseInt(invoiceId);
   if (!id || isNaN(id)) {
     showToast('معرف الفاتورة غير صالح', 'error');
     return;
   }
 
-  // البحث عن الزر بشكل آمن
   const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) || 
-              document.querySelector(`button.send-invoice-btn[data-id="${id}"]`);
+              document.querySelector(`.send-invoice-btn[data-id="${id}"]`);
   const originalHTML = btn ? btn.innerHTML : null;
   
   if (btn) {
@@ -1444,13 +1444,54 @@ async function sendInvoiceViaTelegram(invoiceId) {
   }
   
   try {
-    // استخدام apiCall الموحد بدلاً من fetch مباشر
-    const res = await apiCall('/invoices/send', 'POST', { 
-      invoice_id: id 
-    });
-    
-    showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
-    return res;
+    // جلب بيانات الفاتورة أولاً
+    const invoice = invoicesCache.find(i => i.id === id);
+    if (!invoice) throw new Error('الفاتورة غير موجودة');
+
+    // بناء نص الفاتورة
+    const lines = invoice.invoice_lines?.map(l => {
+      const itemName = l.item?.name || '-';
+      const unitName = l.unit?.name || l.unit?.abbreviation || '';
+      return `• ${itemName}: ${l.quantity} ${unitName} × ${formatNumber(l.unit_price)} = ${formatNumber(l.total)}`;
+    }).join('\n') || '';
+
+    const typeLabel = invoice.type === 'sale' ? 'فاتورة بيع' : 'فاتورة شراء';
+    const entity = invoice.customer?.name || invoice.supplier?.name || 'نقدي';
+    const paid = invoice.paid || 0;
+    const balance = invoice.balance || 0;
+
+    const messageText = `
+📄 *${typeLabel}*
+🏪 الراجحي للمحاسبة
+
+🆔 المرجع: ${invoice.reference || '-'}
+👤 ${invoice.type === 'sale' ? 'العميل' : 'المورد'}: ${entity}
+📅 التاريخ: ${invoice.date || '-'}
+
+${lines ? '*الأصناف:*\n' + lines + '\n\n' : ''}
+💰 *الإجمالي:* ${formatNumber(invoice.total)} ر.س
+💳 *المدفوع:* ${formatNumber(paid)} ر.س
+${balance > 0 ? `⚠️ *المتبقي:* ${formatNumber(balance)} ر.س` : '✅ *مدفوعة بالكامل*'}
+
+${invoice.notes ? '📝 ملاحظات: ' + invoice.notes : ''}
+    `.trim();
+
+    // استخدام Telegram WebApp sendData أو Bot API
+    if (tg?.MainButton) {
+      // طريقة 1: إرسال بيانات إلى البوت (يتطلب معالجة في البوت)
+      tg.sendData(JSON.stringify({
+        action: 'send_invoice',
+        invoice_id: id,
+        message: messageText
+      }));
+      showToast('تم إرسال الفاتورة إلى البوت', 'success');
+    } else {
+      // طريقة 2: فتح Telegram share
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(messageText)}`;
+      tg.openLink(shareUrl);
+      showToast('تم فتح مشاركة Telegram', 'success');
+    }
+
   } catch (err) {
     showToast(err.message || 'فشل في إرسال الفاتورة', 'error');
     console.error('Send invoice error:', err);
