@@ -49,7 +49,6 @@ module.exports = async (req, res) => {
     const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
     const balance = invoice.total - paid;
 
-    // HTML نظيف للطباعة — يُرسل كملف مرفق
     const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -77,6 +76,7 @@ th { font-size: 10px; color: #555; border-bottom: 1px solid #999; }
 <div>التاريخ: ${invoice.date}</div>
 <div>المرجع: ${invoice.reference || '-'}</div>
 ${invoice.customer?.name ? `<div>العميل: ${invoice.customer.name}</div>` : ''}
+${invoice.supplier?.name ? `<div>المورد: ${invoice.supplier.name}</div>` : ''}
 <div class="line"></div>
 <table>
 <tr><th style="width:40%">الصنف</th><th style="width:15%">الكمية</th><th style="width:22%">السعر</th><th style="width:23%">المجموع</th></tr>
