@@ -30,6 +30,7 @@ const ICONS = {
   print: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
   file: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
   scale: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>'
+  send: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>'
 };
 
 // ========== الثيم ==========
@@ -1362,6 +1363,7 @@ function renderFilteredInvoices() {
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
           <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
+          <button class="btn btn-success btn-sm send-invoice-btn" data-id="${inv.id}">${ICONS.file} إرسال</button>
           <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
         </div>
       </div>`;
@@ -1389,6 +1391,11 @@ function renderFilteredInvoices() {
     }
   }));
 
+  container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    sendInvoiceViaTelegram(id);
+  }));
+
   container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     deleteInvoice(id);
@@ -1401,6 +1408,38 @@ async function deleteInvoice(id) {
   try { await apiCall(`/invoices?id=${id}`, 'DELETE'); showToast('تم الحذف بنجاح', 'success'); loadInvoices(); }
   catch (e) { showToast(e.message, 'error'); }
 }
+
+async function sendInvoiceViaTelegram(invoiceId) {
+  const btn = document.querySelector(`[data-id="${invoiceId}"].send-invoice-btn`) || document.querySelector(`[data-id="${invoiceId}"]`);
+  const originalHTML = btn ? btn.innerHTML : null;
+  
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="loader-inline"></span> جاري الإرسال...`;
+  }
+  
+  try {
+    const res = await fetch(apiBase + '/send-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoiceId: parseInt(invoiceId), initData })
+    });
+    
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || 'فشل الإرسال');
+    
+    showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+    console.error('Send invoice error:', err);
+  } finally {
+    if (btn && originalHTML) {
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
+  }
+}
+
 
 function showInvoiceDetail(invoice) {
   const lines = invoice.invoice_lines?.map(l => {
@@ -1434,7 +1473,7 @@ function showInvoiceDetail(invoice) {
         </div>
         ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
       </div>`,
-    footerHTML: `<button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button><button class="btn btn-primary" id="print-detail-btn">${ICONS.print} طباعة</button>`
+    footerHTML: `<button class="btn btn-secondary" onclick="this.closest('.modal-overlay').querySelector('.modal-close').click()">إغلاق</button><button class="btn btn-success" id="send-detail-btn">${ICONS.file} إرسال</button><button class="btn btn-primary" id="print-detail-btn">${ICONS.print} طباعة</button>`
   });
 
   const printBtn = modal.element.querySelector('#print-detail-btn');
@@ -1446,6 +1485,14 @@ function showInvoiceDetail(invoice) {
         showToast('دالة الطباعة غير متاحة', 'error');
         console.error('window.printInvoice is not defined');
       }
+    };
+  }
+
+  const sendBtn = modal.element.querySelector('#send-detail-btn');
+  if (sendBtn) {
+    sendBtn.onclick = () => {
+      modal.close();
+      setTimeout(() => sendInvoiceViaTelegram(invoice.id), 220);
     };
   }
 }
