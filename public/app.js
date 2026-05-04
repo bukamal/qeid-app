@@ -1450,7 +1450,7 @@ async function sendInvoiceViaTelegram(invoiceId) {
   
   try {
     // استخدام apiCall الموحد مع المسار الصحيح
-    const res = await apiCall('/invoices/send', 'POST', { invoiceId: id });
+    const res = await apiCall('/invoices-send', 'POST', { invoiceId: id });
     
     if (res && res.success) {
       showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
