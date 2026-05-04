@@ -1504,7 +1504,6 @@ ${invoice.notes ? '📝 ملاحظات: ' + invoice.notes : ''}
 }
 
 
-
 function showInvoiceDetail(invoice) {
   const lines = invoice.invoice_lines?.map(l => {
     const item = itemsCache.find(i => i.id === l.item_id);
@@ -1555,8 +1554,7 @@ function showInvoiceDetail(invoice) {
   const sendBtn = modal.element.querySelector('#send-detail-btn');
   if (sendBtn) {
     sendBtn.onclick = () => {
-      modal.close();
-      setTimeout(() => sendInvoiceViaTelegram(invoice.id), 220);
+      sendInvoiceViaTelegram(invoice.id);
     };
   }
 }
