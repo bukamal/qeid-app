@@ -1434,7 +1434,7 @@ async function sendInvoiceViaTelegram(invoiceId) {
     return;
   }
 
-  // إغلاق أي مودال مفتوح أولاً لتجنب التعارض
+  // إغلاق أي مودال مفتوح أولاً
   if (activeModal) {
     activeModal.querySelector('.modal-close')?.click();
   }
@@ -1449,16 +1449,14 @@ async function sendInvoiceViaTelegram(invoiceId) {
   }
   
   try {
-    // استخدام apiCall الموحد مع المسار الصحيح
     const res = await apiCall('/invoices-send', 'POST', { invoiceId: id });
     
     if (res && res.success) {
       showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
+      return res;
     } else {
       throw new Error(res?.error || 'فشل في الإرسال');
     }
-    
-    return res;
   } catch (err) {
     showToast(err.message || 'فشل في إرسال الفاتورة', 'error');
     console.error('Send invoice error:', err);
