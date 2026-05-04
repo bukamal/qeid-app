@@ -6,6 +6,34 @@ const FormData = require('form-data');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
+// ========== إعدادات العملة ==========
+const CURRENCY = {
+  symbol: 'ل.س',      // ليرة سورية
+  name: 'ليرة سورية',
+  decimals: 2
+};
+
+function formatCurrency(amount) {
+  return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: CURRENCY.decimals, maximumFractionDigits: CURRENCY.decimals }) + ' ' + CURRENCY.symbol;
+}
+
+function formatDateEn(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  const day = String(d.getDate()).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+function formatTimeEn(date) {
+  const d = date || new Date();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -48,7 +76,7 @@ module.exports = async (req, res) => {
         supplier:suppliers(name, phone, address),
         invoice_lines(
           *,
-          item:items(name, code),
+          item:items(name),
           unit:units(name, abbreviation)
         )
       `)
@@ -73,7 +101,8 @@ module.exports = async (req, res) => {
     const entity = invoice.customer || invoice.supplier;
     const entityLabel = invoice.type === 'sale' ? 'العميل' : 'المورد';
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = formatTimeEn(now);
+    const dateStr = formatDateEn(invoice.date);
 
     // إنشاء HTML للفاتورة
     const htmlContent = `<!DOCTYPE html>
@@ -146,7 +175,7 @@ body {
 </div>
 <div class="info-box">
   <div class="info-row"><span class="info-label">رقم الفاتورة:</span><span class="info-value">#${invoice.reference || invoice.id}</span></div>
-  <div class="info-row"><span class="info-label">التاريخ:</span><span class="info-value">${invoice.date} ${timeStr}</span></div>
+  <div class="info-row"><span class="info-label">التاريخ:</span><span class="info-value">${dateStr} ${timeStr}</span></div>
   <div class="info-row"><span class="info-label">الحالة:</span><span class="info-value">${balance <= 0 ? '<span class="paid-badge">✓ مدفوعة</span>' : '<span class="unpaid-badge">⏳ غير مدفوعة</span>'}</span></div>
 </div>
 ${entity ? `
@@ -164,7 +193,6 @@ ${entity ? `
     <tr>
       <td>
         <div style="font-weight: 800;">${(l.item?.name || '-').substring(0, 15)}</div>
-        ${l.item?.code ? `<div style="font-size: 8px; color: #94a3b8;">كود: ${l.item.code}</div>` : ''}
       </td>
       <td class="num">${l.quantity} <span style="font-size: 8px; color: #64748b;">${l.unit?.abbreviation || l.unit?.name || ''}</span></td>
       <td class="num">${parseFloat(l.unit_price).toFixed(2)}</td>
@@ -175,17 +203,17 @@ ${entity ? `
 </table>
 <hr class="divider-thick">
 <div class="totals-box">
-  <div class="total-row"><span class="total-label">إجمالي البنود:</span><span class="total-value">${parseFloat(invoice.total).toFixed(2)} ر.س</span></div>
-  ${paid > 0 ? `<div class="total-row"><span class="total-label">المدفوع:</span><span class="total-value" style="color: #059669;">${paid.toFixed(2)} ر.س</span></div>` : ''}
-  ${balance > 0 ? `<div class="total-row"><span class="total-label">المتبقي:</span><span class="total-value balance-due">${balance.toFixed(2)} ر.س</span></div>` : ''}
+  <div class="total-row"><span class="total-label">إجمالي البنود:</span><span class="total-value">${formatCurrency(invoice.total)}</span></div>
+  ${paid > 0 ? `<div class="total-row"><span class="total-label">المدفوع:</span><span class="total-value" style="color: #059669;">${formatCurrency(paid)}</span></div>` : ''}
+  ${balance > 0 ? `<div class="total-row"><span class="total-label">المتبقي:</span><span class="total-value balance-due">${formatCurrency(balance)}</span></div>` : ''}
   <hr class="divider" style="margin: 8px 0;">
-  <div class="total-row"><span class="total-label" style="font-size: 13px;">الإجمالي النهائي:</span><span class="total-value grand-total">${parseFloat(invoice.total).toFixed(2)} ر.س</span></div>
+  <div class="total-row"><span class="total-label" style="font-size: 13px;">الإجمالي النهائي:</span><span class="total-value grand-total">${formatCurrency(invoice.total)}</span></div>
 </div>
 ${payments && payments.length > 0 ? `
 <div class="payments-section">
   <div class="payments-title">سجل الدفعات</div>
   ${payments.map(p => `
-  <div class="payment-row"><span>${p.payment_date}</span><span style="font-weight: 800;">${parseFloat(p.amount).toFixed(2)} ر.س</span></div>
+  <div class="payment-row"><span>${formatDateEn(p.payment_date)}</span><span style="font-weight: 800;">${formatCurrency(p.amount)}</span></div>
   `).join('')}
 </div>
 ` : ''}
@@ -208,7 +236,7 @@ ${payments && payments.length > 0 ? `
       filename: `فاتورة-${invoice.reference || invoice.id}.html`,
       contentType: 'text/html; charset=utf-8'
     });
-    form.append('caption', `🧾 ${typeLabel} ${invoice.reference || ''}\n💰 الإجمالي: ${parseFloat(invoice.total).toFixed(2)} ر.س${balance > 0 ? `\n⚠️ متبقي: ${balance.toFixed(2)} ر.س` : '\n✅ مدفوعة بالكامل'}`);
+    form.append('caption', `🧾 ${typeLabel} ${invoice.reference || ''}\n💰 الإجمالي: ${formatCurrency(invoice.total)}${balance > 0 ? `\n⚠️ متبقي: ${formatCurrency(balance)}` : '\n✅ مدفوعة بالكامل'}`);
 
     const options = {
       hostname: 'api.telegram.org',

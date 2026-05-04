@@ -1532,15 +1532,51 @@ function showInvoiceDetail(invoice) {
 
 // ========== طباعة الفاتورة (متاحة عالمياً) ==========
 
+// ========== طباعة الفاتورة (متاحة عالمياً) ==========
+
 window.printInvoice = function(invoice) {
   if (!invoice) {
     showToast('لا توجد بيانات للطباعة', 'error');
     return;
   }
 
+  // ========== إعدادات العملة ==========
+  const CURRENCY = {
+    symbol: 'ل.س',      // ليرة سورية
+    name: 'ليرة سورية',
+    decimals: 2
+  };
+
+  function formatCurrency(amount) {
+    return Number(amount || 0).toLocaleString('en-US', { 
+      minimumFractionDigits: CURRENCY.decimals, 
+      maximumFractionDigits: CURRENCY.decimals 
+    }) + ' ' + CURRENCY.symbol;
+  }
+
+  function formatDateEn(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  }
+
+  function formatTimeEn(date) {
+    const d = date || new Date();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
   const items = invoice.invoice_lines || [];
   const paid = invoice.paid || 0;
   const balance = (invoice.total || 0) - paid;
+  const now = new Date();
+  const timeStr = formatTimeEn(now);
+  const dateStr = formatDateEn(invoice.date);
 
   const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -1586,7 +1622,7 @@ window.printInvoice = function(invoice) {
   
   <div class="line"></div>
   
-  <div class="row"><span class="label">التاريخ:</span><span class="value">${invoice.date || '-'}</span></div>
+  <div class="row"><span class="label">التاريخ:</span><span class="value">${dateStr} ${timeStr}</span></div>
   <div class="row"><span class="label">المرجع:</span><span class="value">${invoice.reference || '-'}</span></div>
   ${invoice.customer?.name ? `<div class="row"><span class="label">العميل:</span><span class="value">${invoice.customer.name}</span></div>` : ''}
   ${invoice.supplier?.name ? `<div class="row"><span class="label">المورد:</span><span class="value">${invoice.supplier.name}</span></div>` : ''}
@@ -1607,9 +1643,9 @@ window.printInvoice = function(invoice) {
   
   <div class="line"></div>
   
-  <div class="row total-row"><span>الإجمالي:</span><span class="grand-total">${parseFloat(invoice.total || 0).toFixed(2)} ر.س</span></div>
-  <div class="row"><span>المدفوع:</span><span>${paid.toFixed(2)} ر.س</span></div>
-  <div class="row bold" style="font-size:13px"><span>الباقي:</span><span>${balance.toFixed(2)} ر.س</span></div>
+  <div class="row total-row"><span>الإجمالي:</span><span class="grand-total">${formatCurrency(invoice.total || 0)}</span></div>
+  <div class="row"><span>المدفوع:</span><span>${formatCurrency(paid)}</span></div>
+  <div class="row bold" style="font-size:13px"><span>الباقي:</span><span>${formatCurrency(balance)}</span></div>
   
   <div class="cut-here"></div>
   
