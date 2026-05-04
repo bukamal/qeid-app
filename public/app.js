@@ -1426,7 +1426,16 @@ async function deleteInvoice(id) {
 }
 
 async function sendInvoiceViaTelegram(invoiceId) {
-  const btn = document.querySelector(`[data-id="${invoiceId}"].send-invoice-btn`) || document.querySelector(`[data-id="${invoiceId}"]`);
+  // التحقق من صحة المعرف
+  const id = parseInt(invoiceId);
+  if (!id || isNaN(id)) {
+    showToast('معرف الفاتورة غير صالح', 'error');
+    return;
+  }
+
+  // البحث عن الزر بشكل آمن
+  const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) || 
+              document.querySelector(`button.send-invoice-btn[data-id="${id}"]`);
   const originalHTML = btn ? btn.innerHTML : null;
   
   if (btn) {
@@ -1435,18 +1444,15 @@ async function sendInvoiceViaTelegram(invoiceId) {
   }
   
   try {
-    const res = await fetch(apiBase + '/send-invoice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invoiceId: parseInt(invoiceId), initData })
+    // استخدام apiCall الموحد بدلاً من fetch مباشر
+    const res = await apiCall('/invoices/send', 'POST', { 
+      invoice_id: id 
     });
     
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || 'فشل الإرسال');
-    
     showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
+    return res;
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast(err.message || 'فشل في إرسال الفاتورة', 'error');
     console.error('Send invoice error:', err);
   } finally {
     if (btn && originalHTML) {
@@ -1455,6 +1461,7 @@ async function sendInvoiceViaTelegram(invoiceId) {
     }
   }
 }
+
 
 
 function showInvoiceDetail(invoice) {
