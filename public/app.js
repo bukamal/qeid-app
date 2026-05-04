@@ -205,45 +205,50 @@ async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
 
 // ========== نماذج عامة ==========
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess }) {
+  const formId = 'form-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
   let body = '';
   fields.forEach(f => {
     const val = initialValues[f.id] !== undefined ? initialValues[f.id] : '';
     if (f.type === 'select') {
-      body += `<div class="form-group"><label class="form-label">${f.label}</label><select class="select" id="fm-${f.id}">${f.options}</select></div>`;
+      body += `<div class="form-group"><label class="form-label">${f.label}</label><select class="select" id="${formId}-${f.id}">${f.options}</select></div>`;
     } else if (f.type === 'textarea') {
-      body += `<div class="form-group"><label class="form-label">${f.label}</label><textarea class="textarea" id="fm-${f.id}" placeholder="${f.placeholder || ''}">${val}</textarea></div>`;
+      body += `<div class="form-group"><label class="form-label">${f.label}</label><textarea class="textarea" id="${formId}-${f.id}" placeholder="${f.placeholder || ''}">${val}</textarea></div>`;
     } else {
-      body += `<div class="form-group"><label class="form-label">${f.label}</label><input class="input" id="fm-${f.id}" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${val}"></div>`;
+      body += `<div class="form-group"><label class="form-label">${f.label}</label><input class="input" id="${formId}-${f.id}" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${val}"></div>`;
     }
   });
 
   const modal = openModal({
     title,
     bodyHTML: body,
-    footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
+    footerHTML: `<button class="btn btn-secondary" id="${formId}-cancel">إلغاء</button><button class="btn btn-primary" id="${formId}-save">${ICONS.check} حفظ</button>`
   });
 
-  modal.element.querySelector('#fm-save').onclick = async () => {
-    const btn = modal.element.querySelector('#fm-save');
-    if (btn.disabled) return; // منع النقرات المتعددة
-    btn.disabled = true;
-    btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+  const cancelBtn = modal.element.querySelector(`#${formId}-cancel`);
+  const saveBtn = modal.element.querySelector(`#${formId}-save`);
+
+  cancelBtn.onclick = () => modal.close();
+  saveBtn.onclick = async () => {
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
 
     try {
-        const baseUnitName = baseNameInput.value.trim();
-        if (!baseUnitName) throw new Error('اسم الوحدة الأساسية مطلوب');
-        // ... باقي الكود داخل try ...
-
-        await apiCall('/items', 'POST', values);
-        modal.close(); 
-        showToast('تم الحفظ بنجاح', 'success'); 
-        loadItems();
+      const values = {};
+      fields.forEach(f => {
+        const el = modal.element.querySelector(`#${formId}-${f.id}`);
+        if (el) values[f.id] = el.value.trim();
+      });
+      const result = await onSave(values);
+      if (result && result.error) throw new Error(result.error.message || result.error);
+      modal.close();
+      showToast('تم الحفظ بنجاح', 'success');
+      if (onSuccess) onSuccess();
     } catch (e) {
-        showToast(e.message, 'error');
-        btn.disabled = false; 
-        btn.innerHTML = `${ICONS.check} حفظ`;
+      showToast(e.message, 'error');
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `${ICONS.check} حفظ`;
     }
-
   };
 }
 
@@ -744,66 +749,66 @@ function showAddItemModal() {
 
     const saveBtn = modal.element.querySelector('#fm-save');
     saveBtn.onclick = async () => {
-
-    const baseUnitName = baseNameInput.value.trim();
-    if (!baseUnitName) return showToast('اسم الوحدة الأساسية مطلوب', 'error');
-
-    // إنشاء/الحصول على الوحدات
-    const baseUnitId = await getOrCreateUnit(baseUnitName);
-    if (!baseUnitId) return showToast('فشل إنشاء الوحدة الأساسية', 'error');
-
-    const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
-    const u2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
-    const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
-    const u3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
-
-    let unit2Id = null, unit3Id = null;
-    if (u2Name) {
-      unit2Id = await getOrCreateUnit(u2Name);
-      if (!unit2Id) return showToast('فشل إنشاء الوحدة الفرعية 1', 'error');
-    }
-    if (u3Name) {
-      unit3Id = await getOrCreateUnit(u3Name);
-      if (!unit3Id) return showToast('فشل إنشاء الوحدة الفرعية 2', 'error');
-    }
-
-    const itemUnits = [];
-    if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
-    if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
-
-    // حساب الكمية بالوحدة الأساسية حسب اختيار المستخدم
-    const qtyEntered = parseFloat(qtyInput.value) || 0;
-    const qtyUnit = qtyUnitSel.value;
-    let quantity = qtyEntered;
-    if (qtyUnit === 'u2' && u2Factor > 0) quantity = qtyEntered * u2Factor;
-    else if (qtyUnit === 'u3' && u3Factor > 0) quantity = qtyEntered * u3Factor;
-
-    const values = {
-      name: modal.element.querySelector('#fm-name').value.trim(),
-      category_id: modal.element.querySelector('#fm-category_id').value || null,
-      item_type: modal.element.querySelector('#fm-item_type').value,
-      purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
-      selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
-      quantity: quantity,
-      base_unit_id: baseUnitId,
-      item_units: itemUnits
-    };
-
-    if (!values.name) return showToast('اسم المادة مطلوب', 'error');
-    if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) return showToast('توجد مادة بنفس الاسم', 'error');
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
 
     try {
-      const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      const baseUnitName = baseNameInput.value.trim();
+      if (!baseUnitName) throw new Error('اسم الوحدة الأساسية مطلوب');
+
+      // إنشاء/الحصول على الوحدات
+      const baseUnitId = await getOrCreateUnit(baseUnitName);
+      if (!baseUnitId) throw new Error('فشل إنشاء الوحدة الأساسية');
+
+      const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+      const u2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
+      const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+      const u3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
+
+      let unit2Id = null, unit3Id = null;
+      if (u2Name) {
+        unit2Id = await getOrCreateUnit(u2Name);
+        if (!unit2Id) throw new Error('فشل إنشاء الوحدة الفرعية 1');
+      }
+      if (u3Name) {
+        unit3Id = await getOrCreateUnit(u3Name);
+        if (!unit3Id) throw new Error('فشل إنشاء الوحدة الفرعية 2');
+      }
+
+      const itemUnits = [];
+      if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
+      if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
+
+      // حساب الكمية بالوحدة الأساسية حسب اختيار المستخدم
+      const qtyEntered = parseFloat(qtyInput.value) || 0;
+      const qtyUnit = qtyUnitSel.value;
+      let quantity = qtyEntered;
+      if (qtyUnit === 'u2' && u2Factor > 0) quantity = qtyEntered * u2Factor;
+      else if (qtyUnit === 'u3' && u3Factor > 0) quantity = qtyEntered * u3Factor;
+
+      const values = {
+        name: modal.element.querySelector('#fm-name').value.trim(),
+        category_id: modal.element.querySelector('#fm-category_id').value || null,
+        item_type: modal.element.querySelector('#fm-item_type').value,
+        purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
+        selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
+        quantity: quantity,
+        base_unit_id: baseUnitId,
+        item_units: itemUnits
+      };
+
+      if (!values.name) throw new Error('اسم المادة مطلوب');
+      if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) throw new Error('توجد مادة بنفس الاسم');
+
       await apiCall('/items', 'POST', values);
-      modal.close(); showToast('تم الحفظ بنجاح', 'success'); loadItems();
+      modal.close();
+      showToast('تم الحفظ بنجاح', 'success');
+      loadItems();
     } catch (e) {
       showToast(e.message, 'error');
-      const btn = modal.element.querySelector('#fm-save');
-      // في نهاية الدالة، تأكد من عدم تسرب المتغيرات
-      modal.element.querySelector('#fm-save').onclick = null;
-
-      btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`;
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `${ICONS.check} حفظ`;
     }
   };
 }
@@ -970,58 +975,63 @@ function showEditItemModal(itemId) {
     return newId;
   }
 
-  modal.element.querySelector('#fm-save').onclick = async () => {
-    const baseUnitName = baseNameInput.value.trim();
-    if (!baseUnitName) return showToast('اسم الوحدة الأساسية مطلوب', 'error');
-
-    const baseUnitId = await getOrCreateUnit(baseUnitName);
-    if (!baseUnitId) return showToast('فشل إنشاء الوحدة الأساسية', 'error');
-
-    const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
-    const u2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
-    const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
-    const u3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
-
-    let unit2Id = null, unit3Id = null;
-    if (u2Name) {
-      unit2Id = await getOrCreateUnit(u2Name);
-      if (!unit2Id) return showToast('فشل إنشاء الوحدة الفرعية 1', 'error');
-    }
-    if (u3Name) {
-      unit3Id = await getOrCreateUnit(u3Name);
-      if (!unit3Id) return showToast('فشل إنشاء الوحدة الفرعية 2', 'error');
-    }
-
-    const itemUnits = [];
-    if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
-    if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
-
-    const qtyEntered = parseFloat(qtyInput.value) || 0;
-    const qtyUnit = qtyUnitSel.value;
-    let quantity = qtyEntered;
-    if (qtyUnit === 'u2' && u2Factor > 0) quantity = qtyEntered * u2Factor;
-    else if (qtyUnit === 'u3' && u3Factor > 0) quantity = qtyEntered * u3Factor;
-
-    const values = {
-      name: modal.element.querySelector('#fm-name').value.trim(),
-      category_id: modal.element.querySelector('#fm-category_id').value || null,
-      item_type: modal.element.querySelector('#fm-item_type').value,
-      purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
-      selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
-      quantity: quantity,
-      base_unit_id: baseUnitId,
-      item_units: itemUnits
-    };
+  const saveBtn = modal.element.querySelector('#fm-save');
+  saveBtn.onclick = async () => {
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
 
     try {
-      const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
+      const baseUnitName = baseNameInput.value.trim();
+      if (!baseUnitName) throw new Error('اسم الوحدة الأساسية مطلوب');
+
+      const baseUnitId = await getOrCreateUnit(baseUnitName);
+      if (!baseUnitId) throw new Error('فشل إنشاء الوحدة الأساسية');
+
+      const u2Name = modal.element.querySelector('#fm-unit2-name').value.trim();
+      const u2Factor = parseFloat(modal.element.querySelector('#fm-unit2-factor').value);
+      const u3Name = modal.element.querySelector('#fm-unit3-name').value.trim();
+      const u3Factor = parseFloat(modal.element.querySelector('#fm-unit3-factor').value);
+
+      let unit2Id = null, unit3Id = null;
+      if (u2Name) {
+        unit2Id = await getOrCreateUnit(u2Name);
+        if (!unit2Id) throw new Error('فشل إنشاء الوحدة الفرعية 1');
+      }
+      if (u3Name) {
+        unit3Id = await getOrCreateUnit(u3Name);
+        if (!unit3Id) throw new Error('فشل إنشاء الوحدة الفرعية 2');
+      }
+
+      const itemUnits = [];
+      if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
+      if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
+
+      const qtyEntered = parseFloat(qtyInput.value) || 0;
+      const qtyUnit = qtyUnitSel.value;
+      let quantity = qtyEntered;
+      if (qtyUnit === 'u2' && u2Factor > 0) quantity = qtyEntered * u2Factor;
+      else if (qtyUnit === 'u3' && u3Factor > 0) quantity = qtyEntered * u3Factor;
+
+      const values = {
+        name: modal.element.querySelector('#fm-name').value.trim(),
+        category_id: modal.element.querySelector('#fm-category_id').value || null,
+        item_type: modal.element.querySelector('#fm-item_type').value,
+        purchase_price: parseFloat(modal.element.querySelector('#fm-purchase_price').value) || 0,
+        selling_price: parseFloat(modal.element.querySelector('#fm-selling_price').value) || 0,
+        quantity: quantity,
+        base_unit_id: baseUnitId,
+        item_units: itemUnits
+      };
+
       await apiCall('/items', 'PUT', { id: itemId, ...values });
-      modal.close(); showToast('تم الحفظ بنجاح', 'success'); loadItems();
+      modal.close();
+      showToast('تم الحفظ بنجاح', 'success');
+      loadItems();
     } catch (e) {
       showToast(e.message, 'error');
-      const btn = modal.element.querySelector('#fm-save');
-      btn.disabled = false; btn.innerHTML = `${ICONS.check} حفظ`;
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `${ICONS.check} حفظ`;
     }
   };
 }
@@ -1751,7 +1761,7 @@ async function loadDashboard() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== التقارير (نفس المحتوى السابق، بدون تغيير) ==========
+// ========== التقارير ==========
 async function loadReports() {
   document.getElementById('tab-content').innerHTML = `
     <div class="card"><h3 class="card-title">التقارير المالية</h3><p class="card-subtitle">اختر التقرير المطلوب لعرض التفاصيل</p></div>
