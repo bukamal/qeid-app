@@ -35,6 +35,7 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
+      // جلب المواد مع وحداتها
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select(`
@@ -52,27 +53,41 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
+      // جلب بنود الفواتير لحساب الكميات المستخدمة
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
-        .select('item_id, quantity, invoice:invoices!inner(type)')
+        .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type)')
         .eq('invoice.user_id', userId)
         .not('item_id', 'is', null);
       if (linesError) throw linesError;
 
+      // تجميع الكميات بالوحدة الأساسية لكل مادة
       const qtyMap = {};
       for (const line of invoiceLines) {
-        const { item_id, quantity, invoice } = line;
+        const { item_id, quantity_in_base, quantity, invoice } = line;
         if (!item_id) continue;
+
+        // نفضّل quantity_in_base، وإلا نستخدم quantity (للتوافق مع البيانات القديمة)
+        const qtyBase = parseFloat(quantity_in_base ?? quantity ?? 0);
+
         if (!qtyMap[item_id]) qtyMap[item_id] = { purchase: 0, sale: 0 };
-        if (invoice.type === 'purchase') qtyMap[item_id].purchase += parseFloat(quantity) || 0;
-        else if (invoice.type === 'sale') qtyMap[item_id].sale += parseFloat(quantity) || 0;
+        if (invoice.type === 'purchase') qtyMap[item_id].purchase += qtyBase;
+        else if (invoice.type === 'sale') qtyMap[item_id].sale += qtyBase;
       }
 
+      // إثراء المواد بالكميات المحسوبة
       const enrichedItems = items.map(item => {
         const q = qtyMap[item.id] || { purchase: 0, sale: 0 };
-        const available = (parseFloat(item.quantity) || 0) + q.purchase - q.sale;
+        const opening = parseFloat(item.quantity) || 0;
+        const available = opening + q.purchase - q.sale;
         const totalValue = available * (parseFloat(item.purchase_price) || 0);
-        return { ...item, purchase_qty: q.purchase, sale_qty: q.sale, available, total_value: totalValue };
+        return {
+          ...item,
+          purchase_qty: q.purchase,
+          sale_qty: q.sale,
+          available,
+          total_value: totalValue
+        };
       });
 
       return res.json(enrichedItems);
@@ -82,8 +97,14 @@ module.exports = async (req, res) => {
       const { name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
 
+      // التحقق من الوحدة الأساسية
       if (base_unit_id) {
-        const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
+        const { data: unitCheck } = await supabase
+          .from('units')
+          .select('id')
+          .eq('id', base_unit_id)
+          .eq('user_id', userId)
+          .single();
         if (!unitCheck) return res.status(400).json({ error: 'الوحدة الأساسية غير موجودة' });
       }
 
@@ -99,11 +120,17 @@ module.exports = async (req, res) => {
       }).select().single();
       if (error) throw error;
 
+      // إدراج الوحدات الفرعية
       if (item_units && Array.isArray(item_units) && data) {
         const validUnits = [];
         for (const u of item_units) {
           if (u.unit_id) {
-            const { data: unitCheck } = await supabase.from('units').select('id').eq('id', u.unit_id).eq('user_id', userId).single();
+            const { data: unitCheck } = await supabase
+              .from('units')
+              .select('id')
+              .eq('id', u.unit_id)
+              .eq('user_id', userId)
+              .single();
             if (unitCheck) {
               validUnits.push({
                 item_id: data.id,
@@ -118,6 +145,7 @@ module.exports = async (req, res) => {
         }
       }
 
+      // إرجاع المادة كاملة مع العلاقات
       const { data: fullData } = await supabase
         .from('items')
         .select(`
@@ -140,21 +168,37 @@ module.exports = async (req, res) => {
       const { id, name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
 
-      const { data: itemCheck } = await supabase.from('items').select('id').eq('id', id).eq('user_id', userId).single();
+      const { data: itemCheck } = await supabase
+        .from('items')
+        .select('id')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .single();
       if (!itemCheck) return res.status(404).json({ error: 'المادة غير موجودة' });
 
       if (base_unit_id) {
-        const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
+        const { data: unitCheck } = await supabase
+          .from('units')
+          .select('id')
+          .eq('id', base_unit_id)
+          .eq('user_id', userId)
+          .single();
         if (!unitCheck) return res.status(400).json({ error: 'الوحدة الأساسية غير موجودة' });
       }
 
+      // حذف الوحدات الفرعية القديمة وإعادة إدراجها
       await supabase.from('item_units').delete().eq('item_id', id);
 
       if (item_units && Array.isArray(item_units)) {
         const validUnits = [];
         for (const u of item_units) {
           if (u.unit_id) {
-            const { data: unitCheck } = await supabase.from('units').select('id').eq('id', u.unit_id).eq('user_id', userId).single();
+            const { data: unitCheck } = await supabase
+              .from('units')
+              .select('id')
+              .eq('id', u.unit_id)
+              .eq('user_id', userId)
+              .single();
             if (unitCheck) {
               validUnits.push({
                 item_id: id,
@@ -202,7 +246,7 @@ module.exports = async (req, res) => {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
 
-      // منع حذف المادة إذا كانت مستخدمة في أي فاتورة
+      // منع حذف المادة المستخدمة في الفواتير
       const { data: usedLines, error: checkError } = await supabase
         .from('invoice_lines')
         .select('id')
