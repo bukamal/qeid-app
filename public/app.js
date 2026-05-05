@@ -1355,66 +1355,83 @@ async function showInvoiceModal(type) {
 
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
-    // === حفظ الفاتورة مع تحديث المخزون والتحقق من الكمية ===
-    modal.element.querySelector('#inv-save').onclick = async () => {
-      const lines = [];
-      const rows = container.querySelectorAll('.line-row');
-      let dupCheck = new Set();
-      for (const row of rows) {
-        const itemId = row.querySelector('.item-select')?.value || null;
-        if (itemId) {
-          if (dupCheck.has(itemId)) return showToast('لا يمكن تكرار نفس المادة', 'error');
-          dupCheck.add(itemId);
-        }
-        const unitSel = row.querySelector('.unit-select');
-        const unitId = unitSel?.value || null;
-        const factor = parseFloat(unitSel?.selectedOptions[0]?.dataset.factor || 1);
-        const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
-        const price = parseFloat(row.querySelector('.price-input')?.value) || 0; // سعر الوحدة المختارة
-        const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
-        // استخراج السعر الأساسي
-        const basePrice = factor !== 0 ? price / factor : price;
-        if (itemId || qty > 0) {
-          lines.push({
-            item_id: itemId,
-            unit_id: unitId || null,
-            quantity: qty,
-            unit_price: parseFloat(basePrice.toFixed(2)),
-            conversion_factor: factor,
-            total: total
-          });
+// === حفظ الفاتورة مع التحقق من المخزون الديناميكي (available) ===
+modal.element.querySelector('#inv-save').onclick = async () => {
+  const lines = [];
+  const rows = container.querySelectorAll('.line-row');
+  let dupCheck = new Set();
+  for (const row of rows) {
+    const itemId = row.querySelector('.item-select')?.value || null;
+    if (itemId) {
+      if (dupCheck.has(itemId)) return showToast('لا يمكن تكرار نفس المادة', 'error');
+      dupCheck.add(itemId);
+    }
+    const unitSel = row.querySelector('.unit-select');
+    const unitId = unitSel?.value || null;
+    const factor = parseFloat(unitSel?.selectedOptions[0]?.dataset.factor || 1);
+    const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
+    const price = parseFloat(row.querySelector('.price-input')?.value) || 0; // سعر الوحدة المختارة
+    const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
+    // استخراج السعر الأساسي
+    const basePrice = factor !== 0 ? price / factor : price;
+    if (itemId || qty > 0) {
+      lines.push({
+        item_id: itemId,
+        unit_id: unitId || null,
+        quantity: qty,
+        unit_price: parseFloat(basePrice.toFixed(2)),
+        conversion_factor: factor,
+        total: total
+      });
+    }
+  }
+  if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
+
+  const btn = container.querySelector('#inv-save');
+  btn.disabled = true; btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
+
+  // ✅ التحقق من المخزون في حالة البيع باستخدام الكمية المتاحة (available) المحسوبة ديناميكيًا
+  if (type === 'sale') {
+    for (const line of lines) {
+      const item = itemsCache.find(i => i.id == line.item_id);
+      if (item) {
+        const deductedQty = line.quantity * (line.conversion_factor || 1);
+        // استخدام item.available بدلاً من item.quantity ليمثل الرصيد الحقيقي
+        if ((item.available || 0) < deductedQty) {
+          showToast(`المادة "${item.name}" غير متوفرة بالكمية المطلوبة`, 'error');
+          btn.disabled = false;
+          btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
+          return;
         }
       }
-      if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
+    }
+  }
 
-      const btn = container.querySelector('#inv-save');
-      btn.disabled = true; btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
+  try {
+    await apiCall('/invoices', 'POST', {
+      type,
+      customer_id: type === 'sale' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
+      supplier_id: type === 'purchase' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
+      date: container.querySelector('#inv-date').value,
+      reference: container.querySelector('#inv-ref').value.trim(),
+      notes: container.querySelector('#inv-notes').value.trim(),
+      lines,
+      total: lines.reduce((s, l) => s + l.total, 0),
+      paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
+    });
 
-      try {
-        await apiCall('/invoices', 'POST', {
-          type,
-          customer_id: type === 'sale' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
-          supplier_id: type === 'purchase' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
-          date: container.querySelector('#inv-date').value,
-          reference: container.querySelector('#inv-ref').value.trim(),
-          notes: container.querySelector('#inv-notes').value.trim(),
-          lines,
-          total: lines.reduce((s, l) => s + l.total, 0),
-          paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
-        });
+    // تحديث ذاكرة المواد من الخادم مباشرة بعد حفظ الفاتورة (ليست هناك حاجة لتعديلها يدوياً)
+    itemsCache = await apiCall('/items', 'GET');
 
-        // تحديث ذاكرة المواد من الخادم مباشرة بعد حفظ الفاتورة (ليست هناك حاجة لتعديلها يدوياً)
-        itemsCache = await apiCall('/items', 'GET');
-
-        modal.close();
-        showToast('تم حفظ الفاتورة بنجاح', 'success');
-        loadInvoices();
-      } catch (e) {
-        showToast(e.message, 'error');
-        btn.disabled = false;
-        btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
-      }
-    };
+    modal.close();
+    showToast('تم حفظ الفاتورة بنجاح', 'success');
+    loadInvoices();
+  } catch (e) {
+    showToast(e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
+  }
+};
   } catch (e) { showToast('خطأ في فتح الفاتورة: ' + e.message, 'error'); }
 }
 // ========== أحداث الفاتورة (مُعدَّلة) ==========
