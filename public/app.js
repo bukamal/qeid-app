@@ -1356,61 +1356,63 @@ async function showInvoiceModal(type) {
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
 // === حفظ الفاتورة مع التحقق من المخزون الديناميكي (available) ===
-modal.element.querySelector('#inv-save').onclick = async function handler() {
-  const btn = this; // الزر نفسه
+modal.element.querySelector('#inv-save').onclick = async () => {
+  const btn = container.querySelector('#inv-save');
   
-  // إذا كان الزر مُعطَّلاً مسبقاً، لا تفعل شيئاً (منع التكرار)
+  // ✅ حماية من النقر المتكرر أثناء بطء الشبكة
   if (btn.disabled) return;
+  
+  // تجميع بيانات البنود
+  const lines = [];
+  const rows = container.querySelectorAll('.line-row');
+  let dupCheck = new Set();
+  for (const row of rows) {
+    const itemId = row.querySelector('.item-select')?.value || null;
+    if (itemId) {
+      if (dupCheck.has(itemId)) return showToast('لا يمكن تكرار نفس المادة', 'error');
+      dupCheck.add(itemId);
+    }
+    const unitSel = row.querySelector('.unit-select');
+    const unitId = unitSel?.value || null;
+    const factor = parseFloat(unitSel?.selectedOptions[0]?.dataset.factor || 1);
+    const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
+    const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
+    const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
+    const basePrice = factor !== 0 ? price / factor : price;
+    if (itemId || qty > 0) {
+      lines.push({
+        item_id: itemId,
+        unit_id: unitId || null,
+        quantity: qty,
+        unit_price: parseFloat(basePrice.toFixed(2)),
+        conversion_factor: factor,
+        total: total
+      });
+    }
+  }
+  if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
 
-  // تعطيل الزر فوراً وإظهار حالة الانتظار
+  // تعطيل الزر وإظهار التحميل
   btn.disabled = true;
   btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
-  try {
-    // تجميع بيانات البنود (نفس الموجود سابقاً)
-    const lines = [];
-    const rows = container.querySelectorAll('.line-row');
-    let dupCheck = new Set();
-    for (const row of rows) {
-      const itemId = row.querySelector('.item-select')?.value || null;
-      if (itemId) {
-        if (dupCheck.has(itemId)) throw new Error('لا يمكن تكرار نفس المادة');
-        dupCheck.add(itemId);
-      }
-      const unitSel = row.querySelector('.unit-select');
-      const unitId = unitSel?.value || null;
-      const factor = parseFloat(unitSel?.selectedOptions[0]?.dataset.factor || 1);
-      const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
-      const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
-      const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
-      const basePrice = factor !== 0 ? price / factor : price;
-      if (itemId || qty > 0) {
-        lines.push({
-          item_id: itemId,
-          unit_id: unitId || null,
-          quantity: qty,
-          unit_price: parseFloat(basePrice.toFixed(2)),
-          conversion_factor: factor,
-          total: total
-        });
-      }
-    }
-    if (!lines.length) throw new Error('أضف بنداً واحداً على الأقل');
-
-    // التحقق من المخزون (للبيع فقط) باستخدام الكمية المتاحة ديناميكياً
-    if (type === 'sale') {
-      for (const line of lines) {
-        const item = itemsCache.find(i => i.id == line.item_id);
-        if (item) {
-          const deductedQty = line.quantity * (line.conversion_factor || 1);
-          if ((item.available || 0) < deductedQty) {
-            throw new Error(`المادة "${item.name}" غير متوفرة بالكمية المطلوبة`);
-          }
+  // التحقق من المخزون (للبيع) باستخدام الكمية المتاحة ديناميكياً
+  if (type === 'sale') {
+    for (const line of lines) {
+      const item = itemsCache.find(i => i.id == line.item_id);
+      if (item) {
+        const deductedQty = line.quantity * (line.conversion_factor || 1);
+        if ((item.available || 0) < deductedQty) {
+          showToast(`المادة "${item.name}" غير متوفرة بالكمية المطلوبة`, 'error');
+          btn.disabled = false;
+          btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
+          return;
         }
       }
     }
+  }
 
-    // إرسال الطلب
+  try {
     await apiCall('/invoices', 'POST', {
       type,
       customer_id: type === 'sale' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
@@ -1423,24 +1425,14 @@ modal.element.querySelector('#inv-save').onclick = async function handler() {
       paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
     });
 
-    // تحديث المواد بعد نجاح الحفظ
     itemsCache = await apiCall('/items', 'GET');
-
     modal.close();
     showToast('تم حفظ الفاتورة بنجاح', 'success');
     loadInvoices();
-
   } catch (e) {
-    // عرض الخطأ للمستخدم
-    showToast(e.message || 'حدث خطأ أثناء الحفظ', 'error');
-
-    // إعادة تمكين الزر بعد فترة وجيزة (حتى لا يعلق معطلاً للأبد)
-    setTimeout(() => {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
-      }
-    }, 800);
+    showToast(e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
   }
 };
 // ========== أحداث الفاتورة (مُعدَّلة) ==========
