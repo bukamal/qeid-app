@@ -92,11 +92,8 @@ module.exports = async (req, res) => {
         let lineTotal = parseFloat(line.total) || 0;
         total += lineTotal;
 
-        // الكمية المدخلة
         let qty = parseFloat(line.quantity) || 0;
-        // عامل التحويل من الواجهة (دائماً موجود)
         let factor = parseFloat(line.conversion_factor) || 1;
-        // الكمية بالوحدة الأساسية
         let qtyBase = qty * factor;
 
         lineData.push({
@@ -141,6 +138,14 @@ module.exports = async (req, res) => {
           payment_date: invoice.date,
           notes: 'دفعة تلقائية من الفاتورة'
         });
+      }
+
+      // تحديث المخزون: شراء يزيد، بيع ينقص
+      for (const line of lineData) {
+        if (line.item_id && line.quantity_in_base) {
+          const delta = type === 'purchase' ? line.quantity_in_base : -line.quantity_in_base;
+          await updateItemQuantity(line.item_id, userId, delta);
+        }
       }
 
       // تحديث الأرصدة
