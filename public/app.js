@@ -1,12 +1,11 @@
 /* ============================================
    الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
-   الجزء 1: الأساسيات - الأيقونات، الدوال المساعدة، المودال، API
+   الجزء 1: الأساسيات - الأيقونات، الدوال المساعدة، API
    ============================================ */
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// ========== الأيقونات ==========
 const ICONS = {
   home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
   box: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
@@ -33,7 +32,6 @@ const ICONS = {
   send: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>'
 };
 
-// ========== الثيم ==========
 function applyTheme() {
   document.body.classList.toggle('dark', tg.colorScheme === 'dark');
   tg.setHeaderColor(tg.colorScheme === 'dark' ? '#0b1120' : '#f1f5f9');
@@ -45,7 +43,6 @@ const initData = tg.initData;
 const user = tg.initDataUnsafe?.user;
 const apiBase = '/api';
 
-// ========== دوال مساعدة ==========
 function formatNumber(num) {
   if (num === undefined || num === null) return '0.00';
   return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -61,7 +58,6 @@ function debounce(fn, ms = 300) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
-// ========== التخزين المؤقت ==========
 const cache = {}; const CACHE_DURATION = 60000;
 function getCached(key) {
   const e = cache[key]; if (e && Date.now() - e.time < CACHE_DURATION) return e.data;
@@ -72,7 +68,6 @@ function invalidateCache(pattern) { Object.keys(cache).forEach(k => { if (k.incl
 
 let customersCache = [], suppliersCache = [], itemsCache = [], categoriesCache = [], invoicesCache = [], unitsCache = [];
 
-// ========== إدارة التمرير ==========
 let scrollLockPos = 0;
 function lockScroll() {
   scrollLockPos = window.scrollY || document.documentElement.scrollTop;
@@ -89,7 +84,6 @@ function unlockScroll() {
   window.scrollTo(0, scrollLockPos);
 }
 
-// ========== الإشعارات ==========
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
@@ -103,7 +97,6 @@ function showToast(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 }
 
-// ========== المودال ==========
 let activeModal = null;
 function openModal({ title, bodyHTML, footerHTML = '', onClose }) {
   const portal = document.getElementById('modal-portal');
@@ -141,10 +134,8 @@ function openModal({ title, bodyHTML, footerHTML = '', onClose }) {
 
   closeBtn.onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-
   const handleEsc = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', handleEsc, { once: true });
-
   return { close, element: overlay };
 }
 
@@ -161,7 +152,6 @@ function confirmDialog(message) {
   });
 }
 
-// ========== استدعاء API ==========
 async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
   let url = apiBase + endpoint;
   if (method === 'GET' || method === 'DELETE') {
@@ -203,7 +193,6 @@ async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
   }
 }
 
-// ========== نماذج عامة ==========
 function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess }) {
   const formId = 'form-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
   let body = '';
@@ -224,11 +213,9 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess })
     footerHTML: `<button class="btn btn-secondary" id="${formId}-cancel">إلغاء</button><button class="btn btn-primary" id="${formId}-save">${ICONS.check} حفظ</button>`
   });
 
-  const cancelBtn = modal.element.querySelector(`#${formId}-cancel`);
-  const saveBtn = modal.element.querySelector(`#${formId}-save`);
-
-  cancelBtn.onclick = () => modal.close();
-  saveBtn.onclick = async () => {
+  modal.element.querySelector(`#${formId}-cancel`).onclick = () => modal.close();
+  modal.element.querySelector(`#${formId}-save`).onclick = async () => {
+    const saveBtn = modal.element.querySelector(`#${formId}-save`);
     if (saveBtn.disabled) return;
     saveBtn.disabled = true;
     saveBtn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
@@ -252,12 +239,6 @@ function showFormModal({ title, fields, initialValues = {}, onSave, onSuccess })
   };
 }
 
-/* ============================================
-   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
-   الجزء 2: التنقل، الوحدات، المواد (عرض وإضافة وتفاصيل)
-   ============================================ */
-
-// ========== التنقل ==========
 const tabsConfig = {
   dashboard: { title: 'لوحة التحكم', subtitle: 'نظرة عامة على أداء عملك', icon: ICONS.home },
   items: { title: 'المواد', subtitle: 'إدارة المخزون والمنتجات', icon: ICONS.box },
@@ -320,12 +301,10 @@ function showMoreMenu() {
   lockScroll();
 }
 
-// ========== القائمة الفارغة ==========
 function emptyState(title, subtitle) {
   return `<div class="empty-state"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>${title}</h3><p>${subtitle}</p></div>`;
 }
 
-// ========== بناء القوائم ==========
 function initNavigation() {
   const sidebarNav = document.getElementById('sidebar-nav');
   const sheetGrid = document.getElementById('sheet-grid');
@@ -355,7 +334,6 @@ function initNavigation() {
   });
 }
 
-// مستمعات الأحداث الثابتة
 document.getElementById('menu-toggle').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('open');
 });
@@ -371,11 +349,8 @@ if (moreBackdrop) {
 document.querySelectorAll('.bottom-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const tabName = btn.dataset.tab;
-    if (tabName === 'more') {
-      showMoreMenu();
-    } else if (tabName) {
-      navigateTo(tabName);
-    }
+    if (tabName === 'more') showMoreMenu();
+    else if (tabName) navigateTo(tabName);
   });
 });
 
@@ -579,7 +554,7 @@ function showItemDetail(itemId) {
 
 /* ============================================
    الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
-   الجزء 3: إضافة وتعديل المواد، الأقسام العامة (عملاء، موردين، تصنيفات)
+   الجزء 6: إضافة وتعديل المواد، الأقسام العامة (عملاء، موردين، تصنيفات)
    ============================================ */
 
 // ========== إضافة مادة (وحدة أساسية نصية + وحدات فرعية نصية) ==========
@@ -806,7 +781,7 @@ function showAddItemModal() {
   };
 }
 
-// ========== تعديل مادة (وحدة أساسية نصية + وحدات فرعية نصية) ==========
+// ========== تعديل مادة (مشابه للإضافة مع البيانات الأولية) ==========
 function showEditItemModal(itemId) {
   const it = itemsCache.find(i => i.id === itemId);
   if (!it) return;
@@ -936,6 +911,7 @@ function showEditItemModal(itemId) {
   modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateQty);
   modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateQty);
 
+  // إضافة تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
@@ -1127,12 +1103,7 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-/* ============================================
-   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
-   الجزء 4: فاتورة المبيعات والمشتريات مع وحدات من قاعدة البيانات (معدّل لدعم التعديل)
-   ============================================ */
-
-// دالة مساعدة: توليد صف بند (تستخدم في الإنشاء والتعديل)
+// ========== دوال مساعدة للفواتير ==========
 function generateLineRowHtml(lineData = null, isSale) {
   const selectedItemId = lineData ? lineData.item_id : '';
   const qty = lineData ? lineData.quantity : '';
@@ -1159,7 +1130,6 @@ function generateLineRowHtml(lineData = null, isSale) {
     </div>`;
 }
 
-// دالة مساعدة: خيارات الوحدات لعنصر محدد مع اختيار الوحدة الحالية
 function getUnitOptionsForItem(itemId, selectedUnitId = null) {
   const item = itemsCache.find(i => i.id == itemId);
   if (!item) return '<option value="">اختر مادة</option>';
@@ -1174,7 +1144,6 @@ function getUnitOptionsForItem(itemId, selectedUnitId = null) {
   return opts;
 }
 
-// دالة تعديل الفاتورة (جديدة)
 async function editInvoice(invoiceId) {
   const invoice = invoicesCache.find(inv => inv.id === invoiceId);
   if (!invoice) {
@@ -1184,7 +1153,7 @@ async function editInvoice(invoiceId) {
   showInvoiceModal(invoice.type, { mode: 'edit', invoiceData: invoice });
 }
 
-// ===== فاتورة (بيع / شراء) – مع تحديث المخزون والتحقق من الكميات =====
+// ===== إنشاء/تعديل فاتورة (بيع / شراء) =====
 async function showInvoiceModal(type) {
   try {
     customersCache = await apiCall('/customers', 'GET');
@@ -1220,7 +1189,7 @@ async function showInvoiceModal(type) {
     const modal = openModal({ title: `فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'}`, bodyHTML: body, footerHTML: `<button class="btn btn-secondary" id="inv-cancel">إلغاء</button><button class="btn btn-primary" id="inv-save">${ICONS.check} حفظ الفاتورة</button>` });
     const container = modal.element;
 
-    // === دوال مساعدة للوحدات والحسابات ===
+    // دوال مساعدة داخل الفاتورة
     const updateGrandTotal = () => {
       let total = 0;
       container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
@@ -1328,217 +1297,93 @@ async function showInvoiceModal(type) {
         <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
         <button class="line-remove">${ICONS.trash}</button>`;
       linesContainer.appendChild(nl);
-
-      const newSel = nl.querySelector('.item-select');
-      const newPrice = nl.querySelector('.price-input');
-      const newUnit = nl.querySelector('.unit-select');
+      const newSel = nl.querySelector('.item-select'), newPrice = nl.querySelector('.price-input'), newUnit = nl.querySelector('.unit-select');
       newSel.addEventListener('change', function () {
-        if (isDup(this.value, this.closest('.line-row'))) {
-          showToast('المادة مضافة مسبقاً', 'warning');
-          this.value = '';
-          newPrice.value = '';
-          if (newUnit) newUnit.style.display = 'none';
-          return;
-        }
+        if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; newPrice.value = ''; if (newUnit) newUnit.style.display = 'none'; return; }
         autoFill(this, newPrice, newUnit);
       });
       nl.querySelector('.qty-input').addEventListener('input', () => calcRow(nl));
       nl.querySelector('.price-input').addEventListener('input', () => calcRow(nl));
       newUnit?.addEventListener('change', () => handleUnitChange(nl));
       nl.querySelector('.line-remove').addEventListener('click', () => {
-        if (linesContainer.querySelectorAll('.line-row').length > 1) {
-          nl.remove();
-          updateGrandTotal();
-        }
+        if (linesContainer.querySelectorAll('.line-row').length > 1) { nl.remove(); updateGrandTotal(); }
       });
     });
 
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
-// === حفظ الفاتورة مع التحقق من المخزون الديناميكي (available) ===
-modal.element.querySelector('#inv-save').onclick = async () => {
-  const btn = container.querySelector('#inv-save');
-  
-  // ✅ حماية من النقر المتكرر أثناء بطء الشبكة
-  if (btn.disabled) return;
-  
-  // تجميع بيانات البنود
-  const lines = [];
-  const rows = container.querySelectorAll('.line-row');
-  let dupCheck = new Set();
-  for (const row of rows) {
-    const itemId = row.querySelector('.item-select')?.value || null;
-    if (itemId) {
-      if (dupCheck.has(itemId)) return showToast('لا يمكن تكرار نفس المادة', 'error');
-      dupCheck.add(itemId);
-    }
-    const unitSel = row.querySelector('.unit-select');
-    const unitId = unitSel?.value || null;
-    const factor = parseFloat(unitSel?.selectedOptions[0]?.dataset.factor || 1);
-    const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
-    const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
-    const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
-    const basePrice = factor !== 0 ? price / factor : price;
-    if (itemId || qty > 0) {
-      lines.push({
-        item_id: itemId,
-        unit_id: unitId || null,
-        quantity: qty,
-        unit_price: parseFloat(basePrice.toFixed(2)),
-        conversion_factor: factor,
-        total: total
-      });
-    }
-  }
-  if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
+    // === حفظ الفاتورة (مع حماية التكرار والتحقق من المخزون الديناميكي) ===
+    modal.element.querySelector('#inv-save').onclick = async () => {
+      const btn = container.querySelector('#inv-save');
+      if (btn.disabled) return;
 
-  // تعطيل الزر وإظهار التحميل
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
-
-  // التحقق من المخزون (للبيع) باستخدام الكمية المتاحة ديناميكياً
-  if (type === 'sale') {
-    for (const line of lines) {
-      const item = itemsCache.find(i => i.id == line.item_id);
-      if (item) {
-        const deductedQty = line.quantity * (line.conversion_factor || 1);
-        if ((item.available || 0) < deductedQty) {
-          showToast(`المادة "${item.name}" غير متوفرة بالكمية المطلوبة`, 'error');
-          btn.disabled = false;
-          btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
-          return;
+      const lines = [];
+      const rows = container.querySelectorAll('.line-row');
+      let dupCheck = new Set();
+      for (const row of rows) {
+        const itemId = row.querySelector('.item-select')?.value || null;
+        if (itemId) {
+          if (dupCheck.has(itemId)) return showToast('لا يمكن تكرار نفس المادة', 'error');
+          dupCheck.add(itemId);
+        }
+        const unitSel = row.querySelector('.unit-select');
+        const unitId = unitSel?.value || null;
+        const factor = parseFloat(unitSel?.selectedOptions[0]?.dataset.factor || 1);
+        const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
+        const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
+        const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
+        const basePrice = factor !== 0 ? price / factor : price;
+        if (itemId || qty > 0) {
+          lines.push({ item_id: itemId, unit_id: unitId || null, quantity: qty, unit_price: parseFloat(basePrice.toFixed(2)), conversion_factor: factor, total: total });
         }
       }
-    }
-  }
+      if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
 
-  try {
-    await apiCall('/invoices', 'POST', {
-      type,
-      customer_id: type === 'sale' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
-      supplier_id: type === 'purchase' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
-      date: container.querySelector('#inv-date').value,
-      reference: container.querySelector('#inv-ref').value.trim(),
-      notes: container.querySelector('#inv-notes').value.trim(),
-      lines,
-      total: lines.reduce((s, l) => s + l.total, 0),
-      paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
-    });
+      btn.disabled = true;
+      btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
-    itemsCache = await apiCall('/items', 'GET');
-    modal.close();
-    showToast('تم حفظ الفاتورة بنجاح', 'success');
-    loadInvoices();
-  } catch (e) {
-    showToast(e.message, 'error');
-    btn.disabled = false;
-    btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
-  }
-};
-
-
-// ========== أحداث الفاتورة (مُعدَّلة) ==========
-function attachInvoiceEvents(invoiceType, container, mode = 'create', editData = null) {
-  const linesContainer = container.querySelector('#inv-lines');
-  if (!linesContainer) return;
-
-  function updateGrandTotal() {
-    let total = 0;
-    container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
-    const el = container.querySelector('#inv-grand-total'); if (el) el.textContent = formatNumber(total);
-  }
-
-  function isDup(id, cur) {
-    if (!id) return false;
-    let found = false;
-    container.querySelectorAll('.line-row').forEach(r => { if (r !== cur && r.querySelector('.item-select')?.value === id) found = true; });
-    return found;
-  }
-
-  function getUnitOptions(item) {
-    if (!item) return '<option value="">اختر مادة</option>';
-    const baseUnit = item.base_unit || {};
-    const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
-    let opts = `<option value="" data-factor="1">${baseUnitName} (أساسية)</option>`;
-    const itemUnits = item.item_units || [];
-    itemUnits.forEach(iu => {
-      const unit = iu.unit || {};
-      const unitName = unit.name || unit.abbreviation || 'وحدة';
-      opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}">${unitName} (${iu.conversion_factor}x ${baseUnitName})</option>`;
-    });
-    return opts;
-  }
-
-  function autoFill(sel, pr, unitSel) {
-    const id = sel.value;
-    if (!id) { pr.value = ''; if (unitSel) { unitSel.innerHTML = '<option value="">اختر مادة</option>'; unitSel.style.display = 'none'; } return; }
-    const item = itemsCache.find(i => i.id == id);
-    if (item) {
-      const basePrice = invoiceType === 'sale' ? (item.selling_price || 0) : (item.purchase_price || 0);
-      pr.value = basePrice;
-      if (unitSel) { 
-        unitSel.innerHTML = getUnitOptions(item); 
-        unitSel.style.display = 'block'; 
-        unitSel.dataset.basePrice = basePrice; 
+      // التحقق من المخزون (للبيع) باستخدام الكمية المتاحة ديناميكياً
+      if (type === 'sale') {
+        for (const line of lines) {
+          const item = itemsCache.find(i => i.id == line.item_id);
+          if (item) {
+            const deductedQty = line.quantity * (line.conversion_factor || 1);
+            if ((item.available || 0) < deductedQty) {
+              showToast(`المادة "${item.name}" غير متوفرة بالكمية المطلوبة`, 'error');
+              btn.disabled = false;
+              btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
+              return;
+            }
+          }
+        }
       }
-      const row = sel.closest('.line-row');
-      const qty = row.querySelector('.qty-input'), tot = row.querySelector('.total-input');
-      if (qty && tot) tot.value = (parseFloat(qty.value) || 0) * basePrice;
-      updateGrandTotal();
-    }
-  }
 
-  function calc(row) {
-    const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
-    const pr = parseFloat(row.querySelector('.price-input')?.value) || 0;
-    const tot = row.querySelector('.total-input');
-    if (tot) { tot.value = (qty * pr).toFixed(2); updateGrandTotal(); }
-  }
+      try {
+        await apiCall('/invoices', 'POST', {
+          type,
+          customer_id: type === 'sale' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
+          supplier_id: type === 'purchase' && container.querySelector('#inv-entity').value !== 'cash' ? container.querySelector('#inv-entity').value : null,
+          date: container.querySelector('#inv-date').value,
+          reference: container.querySelector('#inv-ref').value.trim(),
+          notes: container.querySelector('#inv-notes').value.trim(),
+          lines,
+          total: lines.reduce((s, l) => s + l.total, 0),
+          paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
+        });
 
-  function handleUnitChange(row) {
-    const sel = row.querySelector('.item-select'), unitSel = row.querySelector('.unit-select'), pr = row.querySelector('.price-input');
-    const item = itemsCache.find(i => i.id == sel.value);
-    if (!item || !unitSel) return;
-    const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
-    const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
-    pr.value = (basePrice * factor).toFixed(2);
-    calc(row);
-  }
-
-  container.querySelectorAll('.line-row').forEach(row => {
-    const sel = row.querySelector('.item-select'), pr = row.querySelector('.price-input'), unitSel = row.querySelector('.unit-select');
-    if (sel && pr) autoFill(sel, pr, unitSel);
-    sel?.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; if (unitSel) unitSel.style.display = 'none'; return; }
-      autoFill(this, pr, unitSel);
-    });
-    row.querySelector('.qty-input')?.addEventListener('input', () => calc(row));
-    row.querySelector('.price-input')?.addEventListener('input', () => calc(row));
-    unitSel?.addEventListener('change', () => handleUnitChange(row));
-  });
-
-  container.querySelector('#btn-add-line')?.addEventListener('click', () => {
-    const nl = document.createElement('div'); nl.className = 'line-row';
-    nl.innerHTML = generateLineRowHtml(null, invoiceType === 'sale');
-    linesContainer.appendChild(nl);
-    const sel = nl.querySelector('.item-select'), pr = nl.querySelector('.price-input'), unitSel = nl.querySelector('.unit-select');
-    sel.addEventListener('change', function() {
-      if (isDup(this.value, this.closest('.line-row'))) { showToast('المادة مضافة مسبقاً', 'warning'); this.value = ''; pr.value = ''; if (unitSel) unitSel.style.display = 'none'; return; }
-      autoFill(this, pr, unitSel);
-    });
-    nl.querySelector('.qty-input').addEventListener('input', () => calc(nl));
-    nl.querySelector('.price-input').addEventListener('input', () => calc(nl));
-    unitSel?.addEventListener('change', () => handleUnitChange(nl));
-    nl.querySelector('.line-remove').addEventListener('click', () => {
-      if (linesContainer.querySelectorAll('.line-row').length > 1) { nl.remove(); updateGrandTotal(); }
-    });
-  });
+        itemsCache = await apiCall('/items', 'GET');
+        modal.close();
+        showToast('تم حفظ الفاتورة بنجاح', 'success');
+        loadInvoices();
+      } catch (e) {
+        showToast(e.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
+      }
+    };
+  } catch (e) { showToast('خطأ في فتح الفاتورة: ' + e.message, 'error'); }
 }
 
-/* ============================================
-   الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
-   الجزء 5: قائمة الفواتير، المدفوعات، المصاريف، لوحة التحكم، التقارير، بدء التطبيق
-   ============================================ */
 
 // ========== قائمة الفواتير ==========
 async function loadInvoices() {
@@ -1604,136 +1449,24 @@ function renderFilteredInvoices() {
   });
   container.innerHTML = html;
 
-  // ========== زر عرض التفاصيل ==========
   container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
     if (inv) showInvoiceDetail(inv);
   }));
-
-  // ========== زر الطباعة (مُصلح - تصميم واضح) ==========
   container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
-    if (!inv) {
-      showToast('الفاتورة غير موجودة', 'error');
-      return;
-    }
-
-    const formatModal = openModal({
-      title: 'اختيار تنسيق الطباعة',
-      bodyHTML: `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 0;">
-          <!-- A4 Option -->
-          <div class="format-option" data-format="a4" style="
-            border: 2px solid #e2e8f0; 
-            border-radius: 12px; 
-            padding: 20px 12px; 
-            text-align: center; 
-            cursor: pointer; 
-            transition: all 0.2s;
-            background: #ffffff;
-          ">
-            <div style="font-size: 40px; margin-bottom: 8px;">📄</div>
-            <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">A4 رسمية</div>
-            <div style="font-size: 12px; color: #64748b; line-height: 1.4;">فاتورة كاملة<br>للطباعة على A4</div>
-          </div>
-          
-          <!-- Thermal Option -->
-          <div class="format-option" data-format="thermal" style="
-            border: 2px solid #e2e8f0; 
-            border-radius: 12px; 
-            padding: 20px 12px; 
-            text-align: center; 
-            cursor: pointer; 
-            transition: all 0.2s;
-            background: #ffffff;
-          ">
-            <div style="font-size: 40px; margin-bottom: 8px;">🧾</div>
-            <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">حرارية 80mm</div>
-            <div style="font-size: 12px; color: #64748b; line-height: 1.4;">للطابعة الحرارية<br>الصغيرة</div>
-          </div>
-        </div>
-        
-        <!-- Preview Checkbox -->
-        <div style="margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
-          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px; accent-color: #4f46e5;">
-            <span style="font-size: 14px; color: #1e293b; font-weight: 600;">عرض معاينة قبل الطباعة</span>
-          </label>
-        </div>
-      `,
-      footerHTML: `
-        <button class="btn btn-secondary" id="format-cancel" style="flex: 1; padding: 12px;">إلغاء</button>
-        <button class="btn btn-primary" id="format-confirm" style="flex: 1; padding: 12px; font-weight: 700;">
-          🖨️ متابعة
-        </button>
-      `
-    });
-
-    // Selection logic - DARK background when selected
-    const selectOption = (selected) => {
-      formatModal.element.querySelectorAll('.format-option').forEach(o => {
-        o.style.borderColor = '#e2e8f0';
-        o.style.background = '#ffffff';
-        o.style.boxShadow = 'none';
-        // Reset text to dark
-        const title = o.querySelector('div:nth-child(2)');
-        const desc = o.querySelector('div:nth-child(3)');
-        if (title) title.style.color = '#1e293b';
-        if (desc) desc.style.color = '#64748b';
-      });
-      
-      // Selected state - DARK BLUE background with WHITE text
-      selected.style.borderColor = '#4f46e5';
-      selected.style.background = '#4f46e5';
-      selected.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.3)';
-      
-      // Change text to WHITE for contrast
-      const selectedTitle = selected.querySelector('div:nth-child(2)');
-      const selectedDesc = selected.querySelector('div:nth-child(3)');
-      if (selectedTitle) selectedTitle.style.color = '#ffffff';
-      if (selectedDesc) selectedDesc.style.color = 'rgba(255,255,255,0.85)';
-    };
-
-    formatModal.element.querySelectorAll('.format-option').forEach(opt => {
-      opt.addEventListener('click', () => selectOption(opt));
-    });
-
-    // Default: select thermal
-    const defaultOption = formatModal.element.querySelector('[data-format="thermal"]');
-    if (defaultOption) selectOption(defaultOption);
-
-    // Cancel
-    formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
-
-    // Confirm
-    formatModal.element.querySelector('#format-confirm').onclick = () => {
-      const selected = formatModal.element.querySelector('.format-option[style*="background: rgb(79, 70, 229)"]') 
-                    || formatModal.element.querySelector('[data-format="thermal"]');
-      const selectedFormat = selected?.dataset.format || 'thermal';
-      const withPreview = formatModal.element.querySelector('#preview-check').checked;
-      
-      formatModal.close();
-      setTimeout(() => {
-        window.printInvoice(inv, { preview: withPreview, format: selectedFormat });
-      }, 300);
-    };
+    if (inv) printInvoiceWithFormat(inv);
   }));
-
-  // ========== زر إرسال عبر Telegram ==========
   container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     sendInvoiceViaTelegram(id);
   }));
-
-  // ========== زر تعديل الفاتورة ==========
   container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     editInvoice(id);
   }));
-
-  // ========== زر حذف الفاتورة ==========
   container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     deleteInvoice(id);
@@ -1753,41 +1486,26 @@ async function sendInvoiceViaTelegram(invoiceId) {
     showToast('معرف الفاتورة غير صالح', 'error');
     return;
   }
-
-  // إغلاق أي مودال مفتوح أولاً
-  if (activeModal) {
-    activeModal.querySelector('.modal-close')?.click();
-  }
+  if (activeModal) activeModal.querySelector('.modal-close')?.click();
 
   const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) || 
               document.querySelector(`.send-invoice-btn[data-id="${id}"]`);
   const originalHTML = btn ? btn.innerHTML : null;
-  
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = `<span class="loader-inline"></span> جاري الإرسال...`;
-  }
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الإرسال...`; }
   
   try {
     const res = await apiCall('/invoices-send', 'POST', { invoiceId: id });
-    
-    if (res && res.success) {
-      showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
-      return res;
-    } else {
-      throw new Error(res?.error || 'فشل في الإرسال');
-    }
+    if (res && res.success) showToast('تم إرسال الفاتورة إلى Telegram بنجاح', 'success');
+    else throw new Error(res?.error || 'فشل في الإرسال');
   } catch (err) {
     showToast(err.message || 'فشل في إرسال الفاتورة', 'error');
     console.error('Send invoice error:', err);
   } finally {
-    if (btn && originalHTML) {
-      btn.disabled = false;
-      btn.innerHTML = originalHTML;
-    }
+    if (btn && originalHTML) { btn.disabled = false; btn.innerHTML = originalHTML; }
   }
 }
 
+// ========== عرض تفاصيل الفاتورة ==========
 function showInvoiceDetail(invoice) {
   const lines = invoice.invoice_lines?.map(l => {
     const item = itemsCache.find(i => i.id === l.item_id);
@@ -1827,80 +1545,68 @@ function showInvoiceDetail(invoice) {
     `
   });
 
-  // زر الإغلاق
   modal.element.querySelector('#detail-close').onclick = () => modal.close();
-
-  // زر الطباعة (مُحدّث)
   modal.element.querySelector('#detail-print').onclick = () => {
     modal.close();
-    setTimeout(() => {
-      // فتح نفس مودال اختيار التنسيق
-      const formatModal = openModal({
-        title: 'اختيار تنسيق الطباعة',
-        bodyHTML: `
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 0;">
-            <div class="format-option" data-format="thermal" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
-              <div style="font-size: 40px; margin-bottom: 12px;">🧾</div>
-              <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">حرارية 80mm</div>
-              <div style="font-size: 13px; color: #64748b;">للطابعة الحرارية الصغيرة</div>
-            </div>
-            <div class="format-option" data-format="a4" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;">
-              <div style="font-size: 40px; margin-bottom: 12px;">📄</div>
-              <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">A4 رسمية</div>
-              <div style="font-size: 13px; color: #64748b;">فاتورة رسمية كاملة</div>
-            </div>
-          </div>
-          <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px;">
-              <span style="font-size: 14px;">عرض معاينة قبل الطباعة</span>
-            </label>
-          </div>
-        `,
-        footerHTML: `
-          <button class="btn btn-secondary" id="format-cancel">إلغاء</button>
-          <button class="btn btn-primary" id="format-confirm">🖨️ متابعة</button>
-        `
-      });
-
-      const selectOption = (selected) => {
-        formatModal.element.querySelectorAll('.format-option').forEach(o => {
-          o.style.borderColor = '#e2e8f0';
-          o.style.background = 'white';
-        });
-        selected.style.borderColor = '#4f46e5';
-        selected.style.background = '#eef2ff';
-      };
-
-      formatModal.element.querySelectorAll('.format-option').forEach(opt => {
-        opt.addEventListener('click', () => selectOption(opt));
-      });
-
-      const defaultOption = formatModal.element.querySelector('[data-format="thermal"]');
-      if (defaultOption) selectOption(defaultOption);
-
-      formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
-
-      formatModal.element.querySelector('#format-confirm').onclick = () => {
-        const selected = formatModal.element.querySelector('.format-option[style*="border-color: rgb(79, 70, 229)"]') 
-                      || formatModal.element.querySelector('[data-format="thermal"]');
-        const selectedFormat = selected?.dataset.format || 'thermal';
-        const withPreview = formatModal.element.querySelector('#preview-check').checked;
-        
-        formatModal.close();
-        setTimeout(() => {
-          window.printInvoice(invoice, { preview: withPreview, format: selectedFormat });
-        }, 300);
-      };
-    }, 300);
+    setTimeout(() => printInvoiceWithFormat(invoice), 300);
   };
-
-  // زر الإرسال
   modal.element.querySelector('#detail-send').onclick = () => {
     modal.close();
-    setTimeout(() => {
-      sendInvoiceViaTelegram(invoice.id);
-    }, 300);
+    setTimeout(() => sendInvoiceViaTelegram(invoice.id), 300);
+  };
+}
+
+// ========== اختيار تنسيق الطباعة ==========
+function printInvoiceWithFormat(invoice) {
+  const formatModal = openModal({
+    title: 'اختيار تنسيق الطباعة',
+    bodyHTML: `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 0;">
+        <div class="format-option" data-format="a4" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px 12px; text-align: center; cursor: pointer; background: #ffffff;">
+          <div style="font-size: 40px; margin-bottom: 8px;">📄</div>
+          <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">A4 رسمية</div>
+          <div style="font-size: 12px; color: #64748b; line-height: 1.4;">فاتورة كاملة<br>للطباعة على A4</div>
+        </div>
+        <div class="format-option" data-format="thermal" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px 12px; text-align: center; cursor: pointer; background: #ffffff;">
+          <div style="font-size: 40px; margin-bottom: 8px;">🧾</div>
+          <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">حرارية 80mm</div>
+          <div style="font-size: 12px; color: #64748b; line-height: 1.4;">للطابعة الحرارية<br>الصغيرة</div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px; accent-color: #4f46e5;">
+          <span style="font-size: 14px; color: #1e293b; font-weight: 600;">عرض معاينة قبل الطباعة</span>
+        </label>
+      </div>`,
+    footerHTML: `<button class="btn btn-secondary" id="format-cancel">إلغاء</button><button class="btn btn-primary" id="format-confirm">🖨️ متابعة</button>`
+  });
+
+  const selectOption = (selected) => {
+    formatModal.element.querySelectorAll('.format-option').forEach(o => {
+      o.style.borderColor = '#e2e8f0';
+      o.style.background = '#ffffff';
+      o.style.boxShadow = 'none';
+    });
+    selected.style.borderColor = '#4f46e5';
+    selected.style.background = '#eef2ff';
+    selected.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.2)';
+  };
+
+  formatModal.element.querySelectorAll('.format-option').forEach(opt => {
+    opt.addEventListener('click', () => selectOption(opt));
+  });
+
+  selectOption(formatModal.element.querySelector('[data-format="thermal"]'));
+
+  formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
+  formatModal.element.querySelector('#format-confirm').onclick = () => {
+    const selected = formatModal.element.querySelector('.format-option[style*="border-color: rgb(79, 70, 229)"]') 
+                  || formatModal.element.querySelector('[data-format="thermal"]');
+    const selectedFormat = selected?.dataset.format || 'thermal';
+    const withPreview = formatModal.element.querySelector('#preview-check').checked;
+    formatModal.close();
+    setTimeout(() => window.printInvoice(invoice, { preview: withPreview, format: selectedFormat }), 300);
   };
 }
 
@@ -1911,9 +1617,8 @@ window.printInvoice = function(invoice, options = {}) {
     return;
   }
 
-  const { preview = false, format = 'thermal' } = options; // format: 'thermal' | 'a4'
+  const { preview = false, format = 'thermal' } = options;
 
-  // إعدادات العملة والتنسيق
   const CURRENCY = { symbol: 'ل.س', decimals: 2 };
   
   function formatCurrency(amount) {
@@ -2247,13 +1952,32 @@ function executePrint(htmlContent) {
 // ========== المدفوعات ==========
 async function loadPayments() {
   try {
-    const [payments, invoices, customers, suppliers] = await Promise.all([apiCall('/payments', 'GET'), apiCall('/invoices', 'GET'), apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET')]);
+    const [payments, invoices, customers, suppliers] = await Promise.all([
+      apiCall('/payments', 'GET'),
+      apiCall('/invoices', 'GET'),
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET')
+    ]);
     let html = `<div class="card"><div class="card-header"><div><h3 class="card-title">الدفعات</h3><span class="card-subtitle">سجل المقبوضات والمدفوعات</span></div><button class="btn btn-primary btn-sm" id="btn-add-pmt">${ICONS.plus} إضافة</button></div></div>`;
     if (!payments.length) html += emptyState('لا توجد دفعات مسجلة', 'سجل أول دفعة باستخدام الزر أعلاه');
     else {
       payments.forEach(p => {
         const isIn = !!p.customer_id;
-        html += `<div class="card" style="border-right:3px solid ${isIn?'var(--success)':'var(--danger)'};"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:900;font-size:20px;color:${isIn?'var(--success)':'var(--danger)'};">${isIn?'+':'-'} ${formatNumber(p.amount)}</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${formatDate(p.payment_date)}</div></div><button class="btn btn-ghost btn-sm" onclick="deletePayment(${p.id})">${ICONS.trash}</button></div><div style="margin-top:10px;font-size:13px;color:var(--text-secondary);line-height:1.6;">${p.customer?.name ? '<span style="color:var(--success);font-weight:700;">▲ عميل: ' + p.customer.name + '</span>' : ''}${p.supplier?.name ? '<span style="color:var(--danger);font-weight:700;">▼ مورد: ' + p.supplier.name + '</span>' : ''}${p.invoice ? '· فاتورة: ' + (p.invoice.type==='sale'?'بيع':'شراء') + ' ' + (p.invoice.reference||'') : ''}${p.notes ? '<div style="margin-top:4px;color:var(--text-muted);">' + p.notes + '</div>' : ''}</div></div>`;
+        html += `<div class="card" style="border-right:3px solid ${isIn ? 'var(--success)' : 'var(--danger)'};">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-weight:900;font-size:20px;color:${isIn ? 'var(--success)' : 'var(--danger)'};">${isIn ? '+' : '-'} ${formatNumber(p.amount)}</div>
+              <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${formatDate(p.payment_date)}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="deletePayment(${p.id})">${ICONS.trash}</button>
+          </div>
+          <div style="margin-top:10px;font-size:13px;color:var(--text-secondary);line-height:1.6;">
+            ${p.customer?.name ? '<span style="color:var(--success);font-weight:700;">▲ عميل: ' + p.customer.name + '</span>' : ''}
+            ${p.supplier?.name ? '<span style="color:var(--danger);font-weight:700;">▼ مورد: ' + p.supplier.name + '</span>' : ''}
+            ${p.invoice ? '· فاتورة: ' + (p.invoice.type === 'sale' ? 'بيع' : 'شراء') + ' ' + (p.invoice.reference || '') : ''}
+            ${p.notes ? '<div style="margin-top:4px;color:var(--text-muted);">' + p.notes + '</div>' : ''}
+          </div>
+        </div>`;
       });
     }
     document.getElementById('tab-content').innerHTML = html;
@@ -2274,7 +1998,7 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   const tSel = modal.element.querySelector('#pmt-type'), cBlock = modal.element.querySelector('#pmt-cust-block'), sBlock = modal.element.querySelector('#pmt-supp-block'), invSel = modal.element.querySelector('#pmt-invoice'), cSel = modal.element.querySelector('#pmt-customer'), sSel = modal.element.querySelector('#pmt-supplier');
   const updateInv = (type, eId) => {
     const filt = invoices.filter(inv => type === 'customer' ? inv.type === 'sale' && inv.customer_id == eId : inv.type === 'purchase' && inv.supplier_id == eId);
-    invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type==='sale'?'بيع':'شراء'} ${inv.reference||''} (${formatNumber(inv.total)})</option>`).join('');
+    invSel.innerHTML = '<option value="">بدون فاتورة</option>' + filt.map(inv => `<option value="${inv.id}">${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''} (${formatNumber(inv.total)})</option>`).join('');
   };
   tSel.addEventListener('change', () => { if (tSel.value === 'customer') { cBlock.style.display = 'block'; sBlock.style.display = 'none'; updateInv('customer', cSel.value); } else { cBlock.style.display = 'none'; sBlock.style.display = 'block'; updateInv('supplier', sSel.value); } });
   cSel.addEventListener('change', () => updateInv('customer', cSel.value));
