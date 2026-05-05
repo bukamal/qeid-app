@@ -1390,22 +1390,6 @@ async function showInvoiceModal(type) {
       const btn = container.querySelector('#inv-save');
       btn.disabled = true; btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
-      // التحقق من المخزون في حالة البيع
-      if (type === 'sale') {
-        for (const line of lines) {
-          const item = itemsCache.find(i => i.id == line.item_id);
-          if (item) {
-            const deductedQty = line.quantity * (line.conversion_factor || 1);
-            if ((item.quantity || 0) < deductedQty) {
-              showToast(`المادة "${item.name}" غير متوفرة بالكمية المطلوبة`, 'error');
-              btn.disabled = false;
-              btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
-              return;
-            }
-          }
-        }
-      }
-
       try {
         await apiCall('/invoices', 'POST', {
           type,
@@ -1419,19 +1403,8 @@ async function showInvoiceModal(type) {
           paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
         });
 
-        // تحديث المخزون بعد الحفظ الناجح
-        for (const line of lines) {
-          const item = itemsCache.find(i => i.id == line.item_id);
-          if (item) {
-            const delta = line.quantity * (line.conversion_factor || 1);
-            if (type === 'purchase') {
-              item.quantity = (item.quantity || 0) + delta;
-            } else if (type === 'sale') {
-              item.quantity = (item.quantity || 0) - delta;
-            }
-            await apiCall('/items', 'PUT', { id: item.id, quantity: item.quantity });
-          }
-        }
+        // تحديث ذاكرة المواد من الخادم مباشرة بعد حفظ الفاتورة (ليست هناك حاجة لتعديلها يدوياً)
+        itemsCache = await apiCall('/items', 'GET');
 
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
@@ -2488,4 +2461,3 @@ async function verifyUser() {
   }
 }
 verifyUser();
-
