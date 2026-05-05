@@ -380,7 +380,6 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
 });
 
 // ========== الوحدات (Units) - مربوطة بقاعدة البيانات ==========
-
 async function loadUnitsSection() {
   try {
     const [data, items] = await Promise.all([
@@ -460,13 +459,9 @@ function showEditUnitModal(unitId) {
 async function deleteUnit(unitId) {
   const unit = unitsCache.find(u => u.id == unitId);
   if (!unit) return;
-  
-  // تأكد من تحميل المواد للتحقق من الاستخدام
   if (!itemsCache || itemsCache.length === 0) {
     try { itemsCache = await apiCall('/items', 'GET'); } catch(e) {}
   }
-  
-  // التحقق: هل الوحدة مستخدمة كوحدة أساسية أو فرعية في أي مادة؟
   const usedInItems = [];
   (itemsCache || []).forEach(item => {
     if (item.base_unit_id == unitId) {
@@ -477,14 +472,12 @@ async function deleteUnit(unitId) {
       });
     }
   });
-  
   if (usedInItems.length > 0) {
     const uniqueItems = [...new Set(usedInItems)].slice(0, 3);
     const more = usedInItems.length > 3 ? ` و${usedInItems.length - 3} أخرى` : '';
     showToast(`لا يمكن حذف "${unit.name}" لأنها مستخدمة في: ${uniqueItems.join('، ')}${more}`, 'error');
     return;
   }
-  
   if (!await confirmDialog(`هل أنت متأكد من حذف الوحدة <strong>${unit.name}</strong>؟`)) return;
   try {
     await apiCall(`/definitions?type=unit&id=${unitId}`, 'DELETE');
@@ -492,6 +485,7 @@ async function deleteUnit(unitId) {
     loadUnitsSection();
   } catch (e) { showToast(e.message, 'error'); }
 }
+
 // ========== المواد (Items) مع وحدات مربوطة بقاعدة البيانات ==========
 function renderFilteredItems() {
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
@@ -532,7 +526,6 @@ async function loadItems() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== تفاصيل المادة مع وحدات من قاعدة البيانات ==========
 function showItemDetail(itemId) {
   const item = itemsCache.find(i => i.id === itemId);
   if (!item) return;
@@ -1036,7 +1029,6 @@ function showEditItemModal(itemId) {
   };
 }
 
-
 // ========== الأقسام العامة (عملاء، موردين، تصنيفات) ==========
 function buildGenericItemHtml(item, opts) {
   const info = opts.extraFields.map(f => {
@@ -1137,46 +1129,120 @@ document.addEventListener('click', async (e) => {
 
 /* ============================================
    الراجحي للمحاسبة - المنطق المحسّن v4 Pro (ربط الوحدات بقاعدة البيانات)
-   الجزء 4: فاتورة المبيعات والمشتريات مع وحدات من قاعدة البيانات
+   الجزء 4: فاتورة المبيعات والمشتريات مع وحدات من قاعدة البيانات (معدّل لدعم التعديل)
    ============================================ */
 
-// ========== فاتورة المبيعات والمشتريات مع وحدات من قاعدة البيانات ==========
-async function showInvoiceModal(type) {
+// دالة مساعدة: توليد صف بند (تستخدم في الإنشاء والتعديل)
+function generateLineRowHtml(lineData = null, isSale) {
+  const selectedItemId = lineData ? lineData.item_id : '';
+  const qty = lineData ? lineData.quantity : '';
+  const price = lineData ? lineData.unit_price : '';
+  const total = lineData ? lineData.total : '';
+  const unitId = lineData ? lineData.unit_id : '';
+  
+  const itemOptions = itemsCache.map(i => `<option value="${i.id}" ${i.id == selectedItemId ? 'selected' : ''}>${i.name}</option>`).join('');
+  
+  return `
+    <div class="line-row">
+      <div class="form-group" style="grid-column:1/-1">
+        <select class="select item-select"><option value="">اختر مادة</option>${itemOptions}</select>
+      </div>
+      <div class="form-group">
+        <select class="select unit-select" style="${selectedItemId ? '' : 'display:none;'}">
+          ${selectedItemId ? getUnitOptionsForItem(selectedItemId, unitId) : '<option value="">الوحدة</option>'}
+        </select>
+      </div>
+      <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية" value="${qty}"></div>
+      <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر" value="${price}"></div>
+      <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;" value="${total}"></div>
+      <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
+    </div>`;
+}
+
+// دالة مساعدة: خيارات الوحدات لعنصر محدد مع اختيار الوحدة الحالية
+function getUnitOptionsForItem(itemId, selectedUnitId = null) {
+  const item = itemsCache.find(i => i.id == itemId);
+  if (!item) return '<option value="">اختر مادة</option>';
+  const baseUnit = item.base_unit || {};
+  const baseName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
+  let opts = `<option value="" data-factor="1" ${!selectedUnitId ? 'selected' : ''}>${baseName} (أساسية)</option>`;
+  (item.item_units || []).forEach(iu => {
+    const u = iu.unit || {};
+    const name = u.name || u.abbreviation || 'وحدة';
+    opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}" ${iu.unit_id == selectedUnitId ? 'selected' : ''}>${name} (${iu.conversion_factor}x ${baseName})</option>`;
+  });
+  return opts;
+}
+
+// دالة تعديل الفاتورة (جديدة)
+async function editInvoice(invoiceId) {
+  const invoice = invoicesCache.find(inv => inv.id === invoiceId);
+  if (!invoice) {
+    showToast('الفاتورة غير موجودة', 'error');
+    return;
+  }
+  showInvoiceModal(invoice.type, { mode: 'edit', invoiceData: invoice });
+}
+
+// ========== فاتورة المبيعات والمشتريات (مُعدَّلة) ==========
+async function showInvoiceModal(type, options = {}) {
+  const mode = options.mode || 'create';
+  const editData = options.invoiceData || null;
+  
   try {
-    const [customers, suppliers, items] = await Promise.all([apiCall('/customers', 'GET'), apiCall('/suppliers', 'GET'), apiCall('/items', 'GET')]);
+    const [customers, suppliers, items] = await Promise.all([
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET'),
+      apiCall('/items', 'GET')
+    ]);
     itemsCache = items; customersCache = customers; suppliersCache = suppliers;
 
     const entOpts = type === 'sale'
       ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}`
       : `<option value="cash">مورد نقدي</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}`;
 
+    // بناء أسطر الفاتورة
+    let linesHtml = '';
+    if (mode === 'edit' && editData && editData.invoice_lines) {
+      editData.invoice_lines.forEach(line => {
+        linesHtml += generateLineRowHtml(line, type === 'sale');
+      });
+    } else {
+      linesHtml = generateLineRowHtml(null, type === 'sale');
+    }
+
     const body = `
       <input type="hidden" id="inv-type" value="${type}">
-      <div class="invoice-lines" id="inv-lines">
-        <div class="line-row">
-          <div class="form-group" style="grid-column:1/-1"><select class="select item-select"><option value="">اختر مادة</option>${items.map(i => `<option value="${i.id}" data-price="${type==='sale'?i.selling_price:i.purchase_price}">${i.name}</option>`).join('')}</select></div>
-          <div class="form-group"><select class="select unit-select" style="display:none;"><option value="">الوحدة</option></select></div>
-          <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية"></div>
-          <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
-          <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
-        </div>
-      </div>
+      ${mode === 'edit' ? `<input type="hidden" id="inv-edit-id" value="${editData ? editData.id : ''}">` : ''}
+      <div class="invoice-lines" id="inv-lines">${linesHtml}</div>
       <button class="btn btn-secondary btn-sm" id="btn-add-line" style="width:auto;margin-bottom:16px;">${ICONS.plus} إضافة بند</button>
       <div class="form-group"><label class="form-label">${type === 'sale' ? 'العميل' : 'المورد'}</label><select class="select" id="inv-entity">${entOpts}</select></div>
-      <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="input" id="inv-date" value="${new Date().toISOString().split('T')[0]}"></div>
-      <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" placeholder="رقم الفاتورة أو المرجع"></div>
-      <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="inv-notes" placeholder="أي ملاحظات إضافية..."></textarea></div>
+      <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="input" id="inv-date" value="${editData ? editData.date : new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" value="${editData ? editData.reference || '' : ''}" placeholder="رقم الفاتورة أو المرجع"></div>
+      <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="inv-notes" placeholder="أي ملاحظات إضافية...">${editData ? editData.notes || '' : ''}</textarea></div>
       <div style="background:var(--bg);border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group" style="margin:0;"><label class="form-label">المبلغ المدفوع</label><input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="0"></div>
-        <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">0.00</div></div>
+        <div class="form-group" style="margin:0;"><label class="form-label">المبلغ المدفوع</label><input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="0" ${mode === 'edit' ? 'disabled' : ''}></div>
+        <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">${editData ? formatNumber(editData.total) : '0.00'}</div></div>
       </div>`;
+
     const modal = openModal({
-      title: `فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'}`,
+      title: mode === 'edit' ? `تعديل فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'}` : `فاتورة ${type === 'sale' ? 'مبيعات' : 'مشتريات'}`,
       bodyHTML: body,
-      footerHTML: `<button class="btn btn-secondary" id="inv-cancel">إلغاء</button><button class="btn btn-primary" id="inv-save">${ICONS.check} حفظ الفاتورة</button>`
+      footerHTML: `<button class="btn btn-secondary" id="inv-cancel">إلغاء</button><button class="btn btn-primary" id="inv-save">${ICONS.check} ${mode === 'edit' ? 'تحديث' : 'حفظ'} الفاتورة</button>`
     });
 
-    attachInvoiceEvents(type, modal.element);
+    // تعيين الكيان في وضع التعديل
+    if (mode === 'edit' && editData) {
+      const entitySelect = modal.element.querySelector('#inv-entity');
+      if (type === 'sale' && editData.customer_id) {
+        entitySelect.value = editData.customer_id;
+      } else if (type === 'purchase' && editData.supplier_id) {
+        entitySelect.value = editData.supplier_id;
+      }
+    }
+
+    attachInvoiceEvents(type, modal.element, mode, editData);
+
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
     modal.element.querySelector('#inv-save').onclick = async () => {
       const itype = modal.element.querySelector('#inv-type').value;
@@ -1199,21 +1265,44 @@ async function showInvoiceModal(type) {
       });
       if (dup) return showToast('لا يمكن تكرار نفس المادة في الفاتورة', 'error');
       if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
+
       try {
         const btn = modal.element.querySelector('#inv-save');
         btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الحفظ...`;
-        await apiCall('/invoices', 'POST', {
-          type: itype, customer_id: cust, supplier_id: supp, date: modal.element.querySelector('#inv-date').value,
-          reference: modal.element.querySelector('#inv-ref').value.trim(), notes: modal.element.querySelector('#inv-notes').value.trim(),
-          lines, paid_amount: parseFloat(modal.element.querySelector('#inv-paid').value) || 0
-        });
-        modal.close(); showToast('تم حفظ الفاتورة بنجاح', 'success'); loadInvoices();
-      } catch (e) { showToast(e.message, 'error'); }
+
+        const payload = {
+          type: itype,
+          customer_id: cust,
+          supplier_id: supp,
+          date: modal.element.querySelector('#inv-date').value,
+          reference: modal.element.querySelector('#inv-ref').value.trim(),
+          notes: modal.element.querySelector('#inv-notes').value.trim(),
+          lines
+        };
+
+        if (mode === 'edit') {
+          payload.id = editData.id;
+          await apiCall('/invoices', 'PUT', payload);
+        } else {
+          payload.paid_amount = parseFloat(modal.element.querySelector('#inv-paid').value) || 0;
+          await apiCall('/invoices', 'POST', payload);
+        }
+
+        modal.close();
+        showToast(mode === 'edit' ? 'تم تعديل الفاتورة بنجاح' : 'تم حفظ الفاتورة بنجاح', 'success');
+        loadInvoices();
+      } catch (e) {
+        showToast(e.message, 'error');
+        const btn = modal.element.querySelector('#inv-save');
+        btn.disabled = false;
+        btn.innerHTML = `${ICONS.check} حفظ`;
+      }
     };
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-function attachInvoiceEvents(invoiceType, container) {
+// ========== أحداث الفاتورة (مُعدَّلة) ==========
+function attachInvoiceEvents(invoiceType, container, mode = 'create', editData = null) {
   const linesContainer = container.querySelector('#inv-lines');
   if (!linesContainer) return;
 
@@ -1230,13 +1319,11 @@ function attachInvoiceEvents(invoiceType, container) {
     return found;
   }
 
-  // Build unit options from database-linked units
   function getUnitOptions(item) {
     if (!item) return '<option value="">اختر مادة</option>';
     const baseUnit = item.base_unit || {};
     const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
     let opts = `<option value="" data-factor="1">${baseUnitName} (أساسية)</option>`;
-    
     const itemUnits = item.item_units || [];
     itemUnits.forEach(iu => {
       const unit = iu.unit || {};
@@ -1296,13 +1383,7 @@ function attachInvoiceEvents(invoiceType, container) {
 
   container.querySelector('#btn-add-line')?.addEventListener('click', () => {
     const nl = document.createElement('div'); nl.className = 'line-row';
-    nl.innerHTML = `
-      <div class="form-group" style="grid-column:1/-1"><select class="select item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select></div>
-      <div class="form-group"><select class="select unit-select" style="display:none;"><option value="">الوحدة</option></select></div>
-      <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية"></div>
-      <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
-      <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;"></div>
-      <button class="line-remove" title="حذف البند">${ICONS.trash}</button>`;
+    nl.innerHTML = generateLineRowHtml(null, invoiceType === 'sale');
     linesContainer.appendChild(nl);
     const sel = nl.querySelector('.item-select'), pr = nl.querySelector('.price-input'), unitSel = nl.querySelector('.unit-select');
     sel.addEventListener('change', function() {
@@ -1380,6 +1461,7 @@ function renderFilteredInvoices() {
           <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
           <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
           <button class="btn btn-success btn-sm send-invoice-btn" data-id="${inv.id}">${ICONS.file} إرسال</button>
+          <button class="btn btn-warning btn-sm edit-invoice-btn" data-id="${inv.id}">${ICONS.edit} تعديل</button>
           <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
         </div>
       </div>`;
@@ -1509,6 +1591,12 @@ function renderFilteredInvoices() {
     sendInvoiceViaTelegram(id);
   }));
 
+  // ========== زر تعديل الفاتورة ==========
+  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
+    const id = parseInt(e.target.closest('button').dataset.id);
+    editInvoice(id);
+  }));
+
   // ========== زر حذف الفاتورة ==========
   container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
@@ -1516,13 +1604,11 @@ function renderFilteredInvoices() {
   }));
 }
 
-
 async function deleteInvoice(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟ سيتم التراجع عن جميع التأثيرات المالية.')) return;
   try { await apiCall(`/invoices?id=${id}`, 'DELETE'); showToast('تم الحذف بنجاح', 'success'); loadInvoices(); }
   catch (e) { showToast(e.message, 'error'); }
 }
-
 
 // ========== إرسال الفاتورة عبر Telegram ==========
 async function sendInvoiceViaTelegram(invoiceId) {
@@ -1565,7 +1651,6 @@ async function sendInvoiceViaTelegram(invoiceId) {
     }
   }
 }
-
 
 function showInvoiceDetail(invoice) {
   const lines = invoice.invoice_lines?.map(l => {
@@ -1683,9 +1768,7 @@ function showInvoiceDetail(invoice) {
   };
 }
 
-
 // ========== طباعة الفاتورة (متاحة عالمياً) ==========
-
 window.printInvoice = function(invoice, options = {}) {
   if (!invoice) {
     showToast('لا توجد بيانات للطباعة', 'error');
@@ -2025,7 +2108,6 @@ function executePrint(htmlContent) {
   }, 800);
 }
 
-
 // ========== المدفوعات ==========
 async function loadPayments() {
   try {
@@ -2263,3 +2345,4 @@ async function verifyUser() {
   }
 }
 verifyUser();
+
