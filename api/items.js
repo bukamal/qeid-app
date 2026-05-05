@@ -35,7 +35,6 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      // Get items with their units linked to the units table
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select(`
@@ -53,7 +52,6 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
-      // Calculate quantities from invoices
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
         .select('item_id, quantity, invoice:invoices!inner(type)')
@@ -84,7 +82,6 @@ module.exports = async (req, res) => {
       const { name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
 
-      // Verify base_unit belongs to user
       if (base_unit_id) {
         const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
         if (!unitCheck) return res.status(400).json({ error: 'الوحدة الأساسية غير موجودة' });
@@ -102,12 +99,10 @@ module.exports = async (req, res) => {
       }).select().single();
       if (error) throw error;
 
-      // Insert item_units with unit_id references
       if (item_units && Array.isArray(item_units) && data) {
         const validUnits = [];
         for (const u of item_units) {
           if (u.unit_id) {
-            // Verify unit belongs to user
             const { data: unitCheck } = await supabase.from('units').select('id').eq('id', u.unit_id).eq('user_id', userId).single();
             if (unitCheck) {
               validUnits.push({
@@ -123,7 +118,6 @@ module.exports = async (req, res) => {
         }
       }
 
-      // Return full item with unit data
       const { data: fullData } = await supabase
         .from('items')
         .select(`
@@ -146,20 +140,16 @@ module.exports = async (req, res) => {
       const { id, name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
 
-      // Verify item belongs to user
       const { data: itemCheck } = await supabase.from('items').select('id').eq('id', id).eq('user_id', userId).single();
       if (!itemCheck) return res.status(404).json({ error: 'المادة غير موجودة' });
 
-      // Verify base_unit belongs to user
       if (base_unit_id) {
         const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
         if (!unitCheck) return res.status(400).json({ error: 'الوحدة الأساسية غير موجودة' });
       }
 
-      // Delete existing item_units
       await supabase.from('item_units').delete().eq('item_id', id);
 
-      // Insert new item_units with unit_id references
       if (item_units && Array.isArray(item_units)) {
         const validUnits = [];
         for (const u of item_units) {
@@ -190,7 +180,6 @@ module.exports = async (req, res) => {
       }).eq('id', id).eq('user_id', userId).select().single();
       if (error) throw error;
 
-      // Return full item with unit data
       const { data: fullData } = await supabase
         .from('items')
         .select(`
@@ -212,6 +201,18 @@ module.exports = async (req, res) => {
     if (req.method === 'DELETE') {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
+
+      // منع حذف المادة إذا كانت مستخدمة في أي فاتورة
+      const { data: usedLines, error: checkError } = await supabase
+        .from('invoice_lines')
+        .select('id')
+        .eq('item_id', id)
+        .limit(1);
+      if (checkError) throw checkError;
+      if (usedLines && usedLines.length > 0) {
+        return res.status(400).json({ error: 'لا يمكن حذف المادة لأنها مستخدمة في فواتير' });
+      }
+
       await supabase.from('item_units').delete().eq('item_id', id);
       const { error } = await supabase.from('items').delete().eq('id', id).eq('user_id', userId);
       if (error) throw error;
