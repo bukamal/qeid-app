@@ -26,7 +26,7 @@ async function getUserId(initData) {
   return JSON.parse(new URLSearchParams(initData).get('user')).id;
 }
 
-// دالة مساعدة: تحديث رصيد العميل بأمان
+// دوال مساعدة لتحديث الأرصدة والمخزون بأمان
 async function updateCustomerBalance(customerId, userId, change) {
   const { data: cur } = await supabase.from('customers').select('balance').eq('id', customerId).eq('user_id', userId).single();
   if (cur) {
@@ -35,7 +35,6 @@ async function updateCustomerBalance(customerId, userId, change) {
   }
 }
 
-// دالة مساعدة: تحديث رصيد المورد بأمان
 async function updateSupplierBalance(supplierId, userId, change) {
   const { data: cur } = await supabase.from('suppliers').select('balance').eq('id', supplierId).eq('user_id', userId).single();
   if (cur) {
@@ -44,7 +43,6 @@ async function updateSupplierBalance(supplierId, userId, change) {
   }
 }
 
-// دالة مساعدة: تحديث كمية المادة بأمان
 async function updateItemQuantity(itemId, userId, change) {
   const { data: cur } = await supabase.from('items').select('quantity').eq('id', itemId).eq('user_id', userId).single();
   if (cur) {
@@ -94,17 +92,13 @@ module.exports = async (req, res) => {
         let lineTotal = parseFloat(line.total) || 0;
         total += lineTotal;
 
+        // الكمية المدخلة
         let qty = parseFloat(line.quantity) || 0;
-        let qtyBase = qty;
-        if (line.unit_id && line.item_id) {
-          const { data: iu } = await supabase
-            .from('item_units')
-            .select('conversion_factor')
-            .eq('item_id', line.item_id)
-            .eq('unit_id', line.unit_id)
-            .maybeSingle();
-          if (iu) qtyBase = qty * parseFloat(iu.conversion_factor);
-        }
+        // عامل التحويل من الواجهة (دائماً موجود)
+        let factor = parseFloat(line.conversion_factor) || 1;
+        // الكمية بالوحدة الأساسية
+        let qtyBase = qty * factor;
+
         lineData.push({
           item_id: line.item_id || null,
           description: line.description,
@@ -163,7 +157,6 @@ module.exports = async (req, res) => {
       const { id, type, customer_id, supplier_id, date, reference, notes, lines } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
 
-      // 1. جلب الفاتورة القديمة
       const { data: oldInvoice, error: fetchError } = await supabase
         .from('invoices')
         .select(`id, type, customer_id, supplier_id, total, invoice_lines ( id, item_id, quantity, quantity_in_base, unit_id )`)
@@ -172,21 +165,16 @@ module.exports = async (req, res) => {
         .single();
       if (fetchError || !oldInvoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-      // 2. جلب الدفعات المرتبطة القديمة
       const { data: oldPayments, error: payError } = await supabase
         .from('payments')
         .select('id, amount, customer_id, supplier_id')
         .eq('invoice_id', id);
       if (payError) throw payError;
 
-      // 3. عكس أثر القديم
+      // عكس أثر القديم
       for (const payment of (oldPayments || [])) {
-        if (payment.customer_id) {
-          await updateCustomerBalance(payment.customer_id, userId, payment.amount);
-        }
-        if (payment.supplier_id) {
-          await updateSupplierBalance(payment.supplier_id, userId, payment.amount);
-        }
+        if (payment.customer_id) await updateCustomerBalance(payment.customer_id, userId, payment.amount);
+        if (payment.supplier_id) await updateSupplierBalance(payment.supplier_id, userId, payment.amount);
       }
 
       if (oldInvoice.type === 'sale' && oldInvoice.customer_id) {
@@ -195,20 +183,17 @@ module.exports = async (req, res) => {
         await updateSupplierBalance(oldInvoice.supplier_id, userId, -oldInvoice.total);
       }
 
-      // عكس أثر المخزون
       for (const line of (oldInvoice.invoice_lines || [])) {
         const qty = parseFloat(line.quantity_in_base || line.quantity || 0);
         if (line.item_id && qty !== 0) {
-          const delta = oldInvoice.type === 'sale' ? qty : -qty; // بيع قديم: نخصم من المخزون (نعيد الكميات لاحقاً بعد تطبيق الجديد)
+          const delta = oldInvoice.type === 'sale' ? qty : -qty;
           await updateItemQuantity(line.item_id, userId, delta);
         }
       }
 
-      // 4. حذف الدفعات والبنود القديمة
       await supabase.from('payments').delete().eq('invoice_id', id);
       await supabase.from('invoice_lines').delete().eq('invoice_id', id);
 
-      // 5. البنود الجديدة
       const newCust = parseInt(customer_id) && customer_id !== 'cash' ? parseInt(customer_id) : null;
       const newSupp = parseInt(supplier_id) && supplier_id !== 'cash' ? parseInt(supplier_id) : null;
       const newType = type || oldInvoice.type;
@@ -220,11 +205,9 @@ module.exports = async (req, res) => {
         newTotal += lineTotal;
 
         let qty = parseFloat(line.quantity) || 0;
-        let qtyBase = qty;
-        if (line.unit_id && line.item_id) {
-          const { data: iu } = await supabase.from('item_units').select('conversion_factor').eq('item_id', line.item_id).eq('unit_id', line.unit_id).maybeSingle();
-          if (iu) qtyBase = qty * parseFloat(iu.conversion_factor);
-        }
+        let factor = parseFloat(line.conversion_factor) || 1;
+        let qtyBase = qty * factor;
+
         newLineData.push({
           invoice_id: id,
           item_id: line.item_id || null,
@@ -241,7 +224,6 @@ module.exports = async (req, res) => {
         await supabase.from('invoice_lines').insert(newLineData);
       }
 
-      // 6. تحديث رأس الفاتورة
       const { data: updatedInvoice, error: updateError } = await supabase
         .from('invoices')
         .update({
@@ -259,18 +241,16 @@ module.exports = async (req, res) => {
         .single();
       if (updateError) throw updateError;
 
-      // 7. تطبيق أثر الفاتورة الجديدة على الأرصدة (بدون دفعات)
       if (newType === 'sale' && newCust) {
         await updateCustomerBalance(newCust, userId, newTotal);
       } else if (newType === 'purchase' && newSupp) {
         await updateSupplierBalance(newSupp, userId, newTotal);
       }
 
-      // 8. تطبيق أثر المخزون الجديد
       for (const line of newLineData) {
         const qty = parseFloat(line.quantity_in_base || line.quantity || 0);
         if (line.item_id && qty !== 0) {
-          const delta = newType === 'sale' ? -qty : qty; // بيع: نخصم، شراء: نضيف
+          const delta = newType === 'sale' ? -qty : qty;
           await updateItemQuantity(line.item_id, userId, delta);
         }
       }
@@ -282,7 +262,6 @@ module.exports = async (req, res) => {
       const invoiceId = req.query.id;
       if (!invoiceId) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
 
-      // 1. جلب الفاتورة كاملة
       const { data: invoice, error: fetchError } = await supabase
         .from('invoices')
         .select(`id, type, customer_id, supplier_id, total, invoice_lines ( id, item_id, quantity, quantity_in_base, unit_id )`)
@@ -291,46 +270,33 @@ module.exports = async (req, res) => {
         .single();
       if (fetchError || !invoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-      // 2. جلب الدفعات المرتبطة
       const { data: payments, error: payError } = await supabase
         .from('payments')
         .select('id, amount, customer_id, supplier_id')
         .eq('invoice_id', invoiceId);
       if (payError) throw payError;
 
-      // 3. عكس أثر الدفعات
       for (const payment of (payments || [])) {
-        if (payment.customer_id) {
-          await updateCustomerBalance(payment.customer_id, userId, payment.amount);
-        }
-        if (payment.supplier_id) {
-          await updateSupplierBalance(payment.supplier_id, userId, payment.amount);
-        }
+        if (payment.customer_id) await updateCustomerBalance(payment.customer_id, userId, payment.amount);
+        if (payment.supplier_id) await updateSupplierBalance(payment.supplier_id, userId, payment.amount);
       }
 
-      // 4. عكس أثر الفاتورة نفسها
       if (invoice.type === 'sale' && invoice.customer_id) {
         await updateCustomerBalance(invoice.customer_id, userId, -invoice.total);
       } else if (invoice.type === 'purchase' && invoice.supplier_id) {
         await updateSupplierBalance(invoice.supplier_id, userId, -invoice.total);
       }
 
-      // 5. تعديل المخزون
       for (const line of (invoice.invoice_lines || [])) {
         const qty = parseFloat(line.quantity_in_base || line.quantity || 0);
         if (line.item_id && qty !== 0) {
-          const delta = invoice.type === 'sale' ? qty : -qty; // بيع: نعيد الكمية، شراء: نخصم
+          const delta = invoice.type === 'sale' ? qty : -qty;
           await updateItemQuantity(line.item_id, userId, delta);
         }
       }
 
-      // 6. حذف الدفعات
       await supabase.from('payments').delete().eq('invoice_id', invoiceId);
-
-      // 7. حذف بنود الفاتورة
       await supabase.from('invoice_lines').delete().eq('invoice_id', invoiceId);
-
-      // 8. حذف الفاتورة
       const { error: deleteError } = await supabase.from('invoices').delete().eq('id', invoiceId).eq('user_id', userId);
       if (deleteError) throw deleteError;
 
