@@ -1434,6 +1434,7 @@ modal.element.querySelector('#inv-save').onclick = async () => {
     btn.disabled = false;
     btn.innerHTML = `${ICONS.check} حفظ الفاتورة`;
   }
+}
 };
 // ========== أحداث الفاتورة (مُعدَّلة) ==========
 function attachInvoiceEvents(invoiceType, container, mode = 'create', editData = null) {
