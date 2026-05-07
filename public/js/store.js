@@ -12,8 +12,8 @@ const store = {
     items:            ['invoices'],
     units:            ['items', 'invoices'],
     categories:       ['items', 'invoices'],
-    invoices:         ['payments', 'summary', 'items'],
-    payments:         ['invoices', 'summary'],
+    invoices:         ['payments', 'summary', 'customers', 'suppliers', 'items'],
+    payments:         ['invoices', 'summary', 'customers', 'suppliers'],
     expenses:         ['summary'],
     summary:          [],
     reports:          [],
@@ -85,7 +85,7 @@ function invalidateKey(key) {
 }
 
 /**
- * إبطال مفتاح وكافة تبعياته
+ * إبطال مفتاح وكافة تبعياته المباشرة (مع منع التكرار)
  */
 export function invalidate(key) {
   if (!key) return;
@@ -93,7 +93,9 @@ export function invalidate(key) {
   // إبطال المفتاح الأساسي
   invalidateKey(key);
   
-  // إبطال التبعيات (بشكل مسطح لتجنب التكرار)
+  // إبطال التبعيات (المستوى الأول فقط، لكن التبعيات نفسها قد تشمل تبعياتها
+  // ولكن نظراً لأن الخريطة الحالية لا تحتاج تكراراً عميقاً، نكتفي بمستوى واحد.
+  // مع ذلك نضمن عدم تكرار المفاتيح)
   const deps = store.dependencies[key] || [];
   const visited = new Set([key]);
   
