@@ -1,11 +1,10 @@
+// public/js/sections.js
+// إدارة الأقسام العامة: العملاء، الموردين، التصنيفات، الوحدات
+
 import {
-  apiCall, formatNumber, ICONS,
-  customersCache, setCustomersCache,
-  suppliersCache, setSuppliersCache,
-  categoriesCache, setCategoriesCache,
-  unitsCache, setUnitsCache,
-  itemsCache, setItemsCache
+  apiCall, formatNumber, ICONS
 } from './core.js';
+import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
 // ========== تعريف الأقسام العامة ==========
@@ -13,7 +12,7 @@ export function getSectionOptions(key) {
   switch (key) {
     case '/customers':
       return {
-        cache: customersCache,
+        cacheKey: 'customers',
         title: 'عميل',
         titlePlural: 'العملاء',
         apiBase: '/customers',
@@ -38,7 +37,7 @@ export function getSectionOptions(key) {
       };
     case '/suppliers':
       return {
-        cache: suppliersCache,
+        cacheKey: 'suppliers',
         title: 'مورد',
         titlePlural: 'الموردين',
         apiBase: '/suppliers',
@@ -63,7 +62,7 @@ export function getSectionOptions(key) {
       };
     case '/definitions?type=category':
       return {
-        cache: categoriesCache,
+        cacheKey: 'categories',
         title: 'تصنيف',
         titlePlural: 'التصنيفات',
         apiBase: '/definitions?type=category',
@@ -111,11 +110,6 @@ export async function loadGenericSection(options) {
   try {
     const data = await apiCall(options.apiBase, 'GET');
 
-    // تحديث الذاكرة المؤقتة
-    if (options.apiBase === '/customers') setCustomersCache(data);
-    else if (options.apiBase === '/suppliers') setSuppliersCache(data);
-    else if (options.apiBase === '/definitions?type=category') setCategoriesCache(data);
-
     let html = `<div class="card">
       <div class="card-header">
         <div>
@@ -143,12 +137,14 @@ export async function loadGenericSection(options) {
 // ========== الوحدات ==========
 export async function loadUnitsSection() {
   try {
-    const [data, items] = await Promise.all([
+    // جلب الوحدات والمواد
+    await Promise.all([
       apiCall('/definitions?type=unit', 'GET'),
-      itemsCache.length ? Promise.resolve(itemsCache) : apiCall('/items', 'GET')
+      apiCall('/items', 'GET')
     ]);
-    setUnitsCache(data);
-    if (!itemsCache.length) setItemsCache(items);
+    
+    const units = storeGet('units') || [];
+    const items = storeGet('items') || [];
 
     let html = `<div class="card">
       <div class="card-header">
@@ -160,11 +156,11 @@ export async function loadUnitsSection() {
       </div>
     </div>`;
 
-    if (!data || !data.length) {
+    if (!units.length) {
       html += emptyState('لا توجد وحدات مسجلة', 'أضف وحدات القياس المستخدمة في عملك');
     } else {
       html += '<div class="table-wrap"><table class="table"><thead><tr><th>الوحدة</th><th>الاختصار</th><th>الإجراءات</th></tr></thead><tbody>';
-      data.forEach(unit => {
+      units.forEach(unit => {
         html += `<tr>
           <td style="font-weight:700;">${unit.name}</td>
           <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${unit.abbreviation || '-'}</span></td>
@@ -199,7 +195,8 @@ export function showAddUnitModal() {
     ],
     onSave: async (values) => {
       if (!values.name?.trim()) throw new Error('اسم الوحدة مطلوب');
-      if (unitsCache.some(u => u.name.toLowerCase() === values.name.trim().toLowerCase())) {
+      const units = storeGet('units') || [];
+      if (units.some(u => u.name.toLowerCase() === values.name.trim().toLowerCase())) {
         throw new Error('توجد وحدة بنفس الاسم');
       }
       return apiCall('/definitions?type=unit', 'POST', {
@@ -213,7 +210,8 @@ export function showAddUnitModal() {
 }
 
 export function showEditUnitModal(unitId) {
-  const unit = unitsCache.find(u => u.id == unitId);
+  const units = storeGet('units') || [];
+  const unit = units.find(u => u.id == unitId);
   if (!unit) return;
 
   showFormModal({
@@ -237,18 +235,13 @@ export function showEditUnitModal(unitId) {
 }
 
 export async function deleteUnit(unitId) {
-  const unit = unitsCache.find(u => u.id == unitId);
+  const units = storeGet('units') || [];
+  const items = storeGet('items') || [];
+  const unit = units.find(u => u.id == unitId);
   if (!unit) return;
 
-  if (!itemsCache || itemsCache.length === 0) {
-    try {
-      const fresh = await apiCall('/items', 'GET');
-      setItemsCache(fresh);
-    } catch (e) {}
-  }
-
   const usedInItems = [];
-  (itemsCache || []).forEach(item => {
+  items.forEach(item => {
     if (item.base_unit_id == unitId) {
       usedInItems.push(item.name);
     } else if (item.item_units && Array.isArray(item.item_units)) {
@@ -301,7 +294,8 @@ document.addEventListener('click', async (e) => {
       title: `إضافة ${opts.title} جديد`,
       fields: opts.addFields,
       onSave: async (values) => {
-        if (values.name?.trim() && opts.cache.some(x => x.name?.toLowerCase() === values.name.trim().toLowerCase())) {
+        const items = storeGet(opts.cacheKey) || [];
+        if (values.name?.trim() && items.some(x => x.name?.toLowerCase() === values.name.trim().toLowerCase())) {
           throw new Error(`يوجد ${opts.title} بنفس الاسم`);
         }
         return apiCall(opts.apiBase, 'POST', opts.prepareAdd(values));
@@ -313,7 +307,8 @@ document.addEventListener('click', async (e) => {
     const opts = getSectionOptions(t.dataset.type);
     if (!opts) return;
     const id = t.dataset.id;
-    const item = opts.cache.find(x => x[opts.idField] == id);
+    const items = storeGet(opts.cacheKey) || [];
+    const item = items.find(x => x[opts.idField] == id);
     if (!item) return;
 
     const init = {};
@@ -331,7 +326,8 @@ document.addEventListener('click', async (e) => {
     const opts = getSectionOptions(t.dataset.type);
     if (!opts) return;
     const id = t.dataset.id;
-    const found = opts.cache.find(x => x[opts.idField] == id);
+    const items = storeGet(opts.cacheKey) || [];
+    const found = items.find(x => x[opts.idField] == id);
 
     if (!await confirmDialog(`هل أنت متأكد من حذف ${opts.title} <strong>${found?.[opts.nameField] || ''}</strong>؟`)) return;
 

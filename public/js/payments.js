@@ -1,17 +1,34 @@
-import {
-  apiCall, formatNumber, formatDate, ICONS,
-  customersCache, suppliersCache, invoicesCache
-} from './core.js';
+// public/js/payments.js
+// إدارة الدفعات: عرض، إضافة، حذف
+
+import { apiCall, formatNumber, formatDate, ICONS } from './core.js';
+import { get as storeGet } from './store.js';
 import { showToast, confirmDialog, openModal } from './modal.js';
 
-// ========== تحميل المدفوعات ==========
+/**
+ * دالة لعرض حالة فارغة عند عدم وجود بيانات
+ */
+function emptyState(title, subtitle) {
+  return `<div class="empty-state">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </svg>
+    <h3>${title}</h3>
+    <p>${subtitle}</p>
+  </div>`;
+}
+
+/**
+ * تحميل قائمة الدفعات وعرضها
+ */
 export async function loadPayments() {
   try {
+    // جلب جميع البيانات المطلوبة في وقت واحد
     const [payments, invoices, customers, suppliers] = await Promise.all([
       apiCall('/payments', 'GET'),
-      invoicesCache.length ? Promise.resolve(invoicesCache) : apiCall('/invoices', 'GET'),
-      customersCache.length ? Promise.resolve(customersCache) : apiCall('/customers', 'GET'),
-      suppliersCache.length ? Promise.resolve(suppliersCache) : apiCall('/suppliers', 'GET')
+      apiCall('/invoices', 'GET'),
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET')
     ]);
 
     let html = `<div class="card">
@@ -63,7 +80,9 @@ export async function loadPayments() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== عرض نموذج إضافة دفعة ==========
+/**
+ * عرض نافذة إضافة دفعة جديدة
+ */
 function showAddPaymentModal(customers, suppliers, invoices) {
   const body = `
     <div class="form-group">
@@ -171,7 +190,9 @@ function showAddPaymentModal(customers, suppliers, invoices) {
   };
 }
 
-// ========== حذف دفعة ==========
+/**
+ * حذف دفعة بعد تأكيد المستخدم
+ */
 export async function deletePayment(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الدفعة؟')) return;
   try {
