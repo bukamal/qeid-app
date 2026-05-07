@@ -341,21 +341,6 @@ export async function showInvoiceModal(type, options = {}) {
 export async function loadInvoices() {
   try {
     document.getElementById('tab-content').innerHTML = `
-      container.innerHTML = `
-    <div class="card">
-      <div class="card-header"><div><h3 class="card-title">الفواتير</h3><span class="card-subtitle">سجل الفواتير والحركات المالية</span></div></div>
-      <div class="filter-bar">
-        <button class="filter-pill active" data-filter="all">الكل</button>
-        <button class="filter-pill" data-filter="sale">مبيعات</button>
-        <button class="filter-pill" data-filter="purchase">مشتريات</button>
-      </div>
-      <div class="form-group" style="margin-bottom:0;"><input type="text" class="input" id="invoice-search" placeholder="البحث في الفواتير..."></div>
-    </div>
-    <div id="invoices-list">
-      ${renderSkeleton('list')}
-    </div>
-  `;
-
         <div class="card">
         <div class="card-header"><div><h3 class="card-title">الفواتير</h3><span class="card-subtitle">سجل الفواتير والحركات المالية</span></div></div>
         <div class="filter-bar">
