@@ -116,7 +116,7 @@ function getEntityFromEndpoint(endpoint) {
 }
 
 /**
- * دالة apiCall المعدلة مع استخدام store
+ * دالة apiCall المعدلة مع استخدام store وتحسين رسائل الخطأ
  */
 export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
   let url = apiBase + endpoint;
@@ -127,7 +127,6 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
 
   const storeKey = getStoreKey(endpoint);
 
-  // تحقق من الكاش لطلبات GET
   if (method === 'GET') {
     const cached = storeGet(storeKey);
     if (cached !== undefined) {
@@ -150,12 +149,10 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
 
-    // تخزين نتيجة GET في المتجر
     if (method === 'GET') {
       storeSet(storeKey, json);
     }
 
-    // بعد أي كتابة ناجحة، إبطال الكيان الأساسي وتوابعه
     if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
       const entity = getEntityFromEndpoint(endpoint);
       invalidate(entity);
@@ -166,7 +163,15 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
     if (retries > 0 && err.name !== 'AbortError') {
       return apiCall(endpoint, method, body, retries - 1);
     }
-    throw err;
+    // تحسين رسالة الخطأ لتكون عربية
+    let message = 'حدث خطأ أثناء الاتصال بالخادم';
+    if (err.message) {
+      if (err.message === 'Unauthorized') message = 'غير مصرح لك بالوصول';
+      else if (err.message.includes('Failed to fetch') || err.name === 'TypeError') 
+        message = 'تعذر الاتصال بالخادم، تحقق من اتصالك';
+      else message = err.message;
+    }
+    throw new Error(message);
   }
 }
 
@@ -217,4 +222,70 @@ export function generateLineRowHtml(lineData = null, isSale) {
       <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;" value="${total}"></div>
       <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
     </div>`;
+}
+
+/**
+ * توليد هيكل تحميل (skeleton) لقسم معين
+ */
+export function renderSkeleton(type = 'cards') {
+  let html = '';
+  switch (type) {
+    case 'cards':
+      html = Array(3).fill(`
+        <div class="skeleton-card">
+          <div class="skeleton-line w-60"></div>
+          <div class="skeleton-line w-80"></div>
+          <div class="skeleton-line w-40"></div>
+        </div>
+      `).join('');
+      break;
+    case 'table':
+      html = `
+        <div class="skeleton-table">
+          <div class="skeleton-header">
+            <div class="skeleton-line w-25"></div>
+            <div class="skeleton-line w-25"></div>
+            <div class="skeleton-line w-25"></div>
+            <div class="skeleton-line w-25"></div>
+          </div>
+          ${Array(5).fill(`
+            <div class="skeleton-row">
+              <div class="skeleton-line w-30"></div>
+              <div class="skeleton-line w-20"></div>
+              <div class="skeleton-line w-15"></div>
+              <div class="skeleton-line w-15"></div>
+            </div>
+          `).join('')}
+        </div>`;
+      break;
+    case 'stats':
+      html = `
+        <div class="skeleton-stats">
+          ${Array(4).fill(`
+            <div class="skeleton-stat">
+              <div class="skeleton-line w-50"></div>
+              <div class="skeleton-line w-70" style="height: 28px; margin-top: 8px;"></div>
+            </div>
+          `).join('')}
+        </div>`;
+      break;
+    case 'list':
+      html = Array(4).fill(`
+        <div class="skeleton-list-item">
+          <div class="skeleton-line w-60"></div>
+          <div class="skeleton-line w-30"></div>
+        </div>
+      `).join('');
+      break;
+    case 'chart':
+      html = `
+        <div class="skeleton-chart">
+          <div class="skeleton-line w-40" style="margin-bottom: 16px;"></div>
+          <div style="height: 200px; background: var(--border); border-radius: 8px; animation: pulse 1.5s infinite;"></div>
+        </div>`;
+      break;
+    default:
+      html = '<div class="skeleton-card"><div class="skeleton-line w-80"></div></div>';
+  }
+  return `<div class="skeleton-container">${html}</div>`;
 }
