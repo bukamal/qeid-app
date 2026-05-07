@@ -77,17 +77,13 @@ export async function showInvoiceModal(type, options = {}) {
       <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" placeholder="رقم الفاتورة أو المرجع" value="${invData.reference || ''}"></div>
       <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="inv-notes" placeholder="أي ملاحظات إضافية...">${invData.notes || ''}</textarea></div>
       <div style="background:var(--bg);border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        ${mode === 'edit' ? `
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">المدفوع الحالي</label>
-          <div style="font-weight:700; color: var(--success); padding: 8px 0;">
-            ${formatNumber(invData.paid || 0)} (يتم تعديل الدفعات من شاشة الدفعات)
-          </div>
-        </div>` : `
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">المبلغ المدفوع</label>
-          <input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="0">
-        </div>`}
+       
+       <div class="form-group" style="margin:0;">
+  <label class="form-label">المبلغ المدفوع</label>
+  <input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="${mode === 'edit' ? (invData.paid || 0) : '0'}">
+  ${mode === 'edit' ? '<span style="font-size:12px; color: var(--text-muted);">يمكنك تعديل الدفعة المرتبطة مباشرة بالفاتورة</span>' : ''}
+</div>
+       
         <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">${mode === 'edit' ? formatNumber(invData.total || 0) : '0.00'}</div></div>
       </div>`;
 
@@ -286,10 +282,7 @@ export async function showInvoiceModal(type, options = {}) {
       };
 
       // المبلغ المدفوع يُرسل فقط عند الإنشاء
-      if (mode === 'create') {
-        payload.paid_amount = parseFloat(container.querySelector('#inv-paid')?.value) || 0;
-      }
-
+      payload.paid_amount = parseFloat(container.querySelector('#inv-paid')?.value) || 0;
       try {
         if (mode === 'edit') {
           await apiCall('/invoices', 'PUT', { id: invData.id, ...payload });

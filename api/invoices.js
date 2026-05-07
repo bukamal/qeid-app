@@ -166,7 +166,7 @@ module.exports = async (req, res) => {
 
     // ==================== PUT ====================
     if (req.method === 'PUT') {
-      const { id, type, customer_id, supplier_id, date, reference, notes, lines } = req.body;
+      const { id, type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
 
       const { data: oldInvoice, error: fetchError } = await supabase
@@ -246,18 +246,52 @@ module.exports = async (req, res) => {
         .single();
       if (updateError) throw updateError;
 
-      // تطبيق أثر الفاتورة الجديدة على الرصيد
+      // --- معالجة الدفعة الأولية (تعديل آمن) ---
+      const newPaid = parseFloat(paid_amount) || 0;
+
+      // جلب الدفعات الموجودة حالياً (لا نحذفها)
+      const { data: currentPayments } = await supabase
+        .from('payments')
+        .select('id, amount, customer_id, supplier_id')
+        .eq('invoice_id', id);
+
+      // تحديد الدفعة "التلقائية" (إن وجدت) – نفترض أن الدفعة التي أُنشئت مع الفاتورة هي التي لها ملاحظة محددة
+      const autoPayment = currentPayments?.find(p => p.notes === 'دفعة تلقائية من الفاتورة');
+
+      if (autoPayment) {
+        // إذا كانت موجودة، نحدثها بالقيمة الجديدة (أو نحذفها إذا أصبحت صفرًا)
+        if (newPaid > 0) {
+          await supabase.from('payments').update({ amount: newPaid }).eq('id', autoPayment.id);
+        } else {
+          await supabase.from('payments').delete().eq('id', autoPayment.id);
+        }
+      } else if (newPaid > 0) {
+        // لا توجد دفعة تلقائية، ننشئ واحدة جديدة
+        await supabase.from('payments').insert({
+          user_id: userId,
+          invoice_id: id,
+          customer_id: newCust || null,
+          supplier_id: newSupp || null,
+          amount: newPaid,
+          payment_date: date || oldInvoice.date,
+          notes: 'دفعة تلقائية من الفاتورة'
+        });
+      }
+      // إذا كان newPaid == 0 ولا توجد دفعة تلقائية، لا نفعل شيئاً
+
+      // --- إعادة حساب المدفوع والمتبقي من جميع الدفعات ---
+      const { data: finalPayments } = await supabase.from('payments').select('amount').eq('invoice_id', id);
+      const totalPaid = finalPayments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
+
+      // تطبيق أثر الفاتورة الجديدة على الرصيد (بناءً على الفرق بين الإجمالي والمدفوع الكلي)
       if (newType === 'sale' && newCust) {
-        await updateCustomerBalance(newCust, userId, newTotal);
+        await updateCustomerBalance(newCust, userId, newTotal - totalPaid);
       } else if (newType === 'purchase' && newSupp) {
-        await updateSupplierBalance(newSupp, userId, newTotal);
+        await updateSupplierBalance(newSupp, userId, newTotal - totalPaid);
       }
 
-      // إعادة حساب المدفوع والمتبقي من الدفعات الحالية
-      const { data: payments } = await supabase.from('payments').select('amount').eq('invoice_id', id);
-      const paid = payments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
-      updatedInvoice.paid = paid;
-      updatedInvoice.balance = newTotal - paid;
+      updatedInvoice.paid = totalPaid;
+      updatedInvoice.balance = newTotal - totalPaid;
 
       return res.json(updatedInvoice);
     }
