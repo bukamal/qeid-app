@@ -1,3 +1,4 @@
+// ========== public/js/invoices.js ==========
 import {
   apiCall, itemsCache, setItemsCache, customersCache, suppliersCache,
   unitsCache, invoicesCache, setInvoicesCache, formatNumber, formatDate,
@@ -7,7 +8,7 @@ import {
 import { showToast, openModal, confirmDialog, closeActiveModal } from './modal.js';
 import { currentTab, navigateTo } from './navigation.js';
 
-// ========== تحرير فاتورة موجودة ==========
+// ========== تعديل فاتورة موجودة ==========
 export async function editInvoice(invoiceId) {
   const invoice = invoicesCache.find(inv => inv.id === invoiceId);
   if (!invoice) {
@@ -64,6 +65,8 @@ export async function showInvoiceModal(type, options = {}) {
       linesHtml = generateLineRowHtml(null, isSale);
     }
 
+    // console.log('paid:', invData.paid);
+
     const body = `
       <input type="hidden" id="inv-type" value="${type}">
       <input type="hidden" id="inv-id" value="${mode === 'edit' ? invData.id : ''}">
@@ -74,7 +77,17 @@ export async function showInvoiceModal(type, options = {}) {
       <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" placeholder="رقم الفاتورة أو المرجع" value="${invData.reference || ''}"></div>
       <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="inv-notes" placeholder="أي ملاحظات إضافية...">${invData.notes || ''}</textarea></div>
       <div style="background:var(--bg);border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group" style="margin:0;"><label class="form-label">المبلغ المدفوع</label><input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="${mode === 'edit' ? (invData.paid || 0) : '0'}"></div>
+        ${mode === 'edit' ? `
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">المدفوع الحالي</label>
+          <div style="font-weight:700; color: var(--success); padding: 8px 0;">
+            ${formatNumber(invData.paid || 0)} (يتم تعديل الدفعات من شاشة الدفعات)
+          </div>
+        </div>` : `
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">المبلغ المدفوع</label>
+          <input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="0">
+        </div>`}
         <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">${mode === 'edit' ? formatNumber(invData.total || 0) : '0.00'}</div></div>
       </div>`;
 
@@ -240,6 +253,7 @@ export async function showInvoiceModal(type, options = {}) {
       btn.disabled = true;
       btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
+      // التحقق من المخزون (للبيع) باستخدام الكمية المتاحة
       if (isSale) {
         for (const line of lines) {
           const item = itemsCache.find(i => i.id == line.item_id);
@@ -268,9 +282,13 @@ export async function showInvoiceModal(type, options = {}) {
         reference: container.querySelector('#inv-ref').value.trim(),
         notes: container.querySelector('#inv-notes').value.trim(),
         lines,
-        total: lines.reduce((s, l) => s + l.total, 0),
-        paid_amount: parseFloat(container.querySelector('#inv-paid').value) || 0
+        total: lines.reduce((s, l) => s + l.total, 0)
       };
+
+      // المبلغ المدفوع يُرسل فقط عند الإنشاء
+      if (mode === 'create') {
+        payload.paid_amount = parseFloat(container.querySelector('#inv-paid')?.value) || 0;
+      }
 
       try {
         if (mode === 'edit') {
@@ -285,12 +303,11 @@ export async function showInvoiceModal(type, options = {}) {
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
 
-        // ===== السلوك المُصحَّح =====
+        // الانتقال إلى القائمة أو تحديثها حسب التبويب الحالي
         if (currentTab === 'items') {
           const { loadItems } = await import('./items.js');
           await loadItems();
         } else {
-          // الانتقال إلى قائمة الفواتير وليس إعادة فتح نموذج الفاتورة
           navigateTo('invoices');
         }
       } catch (e) {
@@ -344,7 +361,6 @@ export async function loadInvoices() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-
 // ========== عرض الفواتير بعد التصفية ==========
 export function renderFilteredInvoices() {
   const filt = document.querySelector('.filter-pill.active')?.dataset.filter || 'all';
@@ -393,7 +409,6 @@ export function renderFilteredInvoices() {
   });
   container.innerHTML = html;
 
-  // ربط الأحداث
   container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
     const inv = invoicesCache.find(i => i.id === id);
@@ -435,7 +450,6 @@ export async function sendInvoiceViaTelegram(invoiceId) {
     showToast('معرف الفاتورة غير صالح', 'error');
     return;
   }
-  // إغلاق أي مودال مفتوح باستخدام الدالة الآمنة
   closeActiveModal();
 
   const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) ||
