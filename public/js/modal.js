@@ -15,9 +15,29 @@ export function showToast(message, type = 'info') {
   setTimeout(() => toast.remove(), 3000);
 }
 
+export function closeActiveModal() {
+  if (!activeModal) return;
+  const closeBtn = activeModal.querySelector('.modal-close');
+  if (closeBtn) {
+    closeBtn.click();
+  } else {
+    // إغلاق يدوي
+    if (activeModal.classList) {
+      const box = activeModal.querySelector('.modal-box');
+      activeModal.style.animation = 'fadeIn 0.2s ease reverse';
+      if (box) box.style.animation = 'slideUp 0.25s ease reverse';
+      setTimeout(() => {
+        activeModal.remove();
+        if (activeModal === activeModal) activeModal = null; // eslint-disable-line
+        unlockScroll();
+      }, 200);
+    }
+  }
+}
+
 export function openModal({ title, bodyHTML, footerHTML = '', onClose }) {
   const portal = document.getElementById('modal-portal');
-  if (activeModal) activeModal.close();
+  if (activeModal) closeActiveModal();
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';

@@ -4,7 +4,7 @@ import {
   debounce, ICONS, initData,
   generateLineRowHtml, getUnitOptionsForItem
 } from './core.js';
-import { showToast, openModal, confirmDialog } from './modal.js';
+import { showToast, openModal, confirmDialog, closeActiveModal } from './modal.js';
 import { currentTab, navigateTo } from './navigation.js';
 
 // ========== تحرير فاتورة موجودة ==========
@@ -449,12 +449,8 @@ export async function sendInvoiceViaTelegram(invoiceId) {
     showToast('معرف الفاتورة غير صالح', 'error');
     return;
   }
-  // إغلاق أي مودال مفتوح
-  const activeModal = document.querySelector('.modal-overlay');
-  if (activeModal) {
-    const closeBtn = activeModal.querySelector('.modal-close');
-    if (closeBtn) closeBtn.click();
-  }
+  // إغلاق أي مودال مفتوح باستخدام الدالة الآمنة
+  closeActiveModal();
 
   const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) ||
               document.querySelector(`.send-invoice-btn[data-id="${id}"]`);
@@ -904,7 +900,7 @@ function executePrint(htmlContent) {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } catch (e) {
-      showToast('⚠️ الطباعة غير متاحة. جاري إرسال الملف...', 'warning');
+      showToast('⚠️ الطباعة غير متاحة.', 'warning');
     }
   }, 800);
 }
