@@ -54,11 +54,15 @@ module.exports = async (req, res) => {
     if (reportType === 'income_statement') {
       const { data: sales } = await supabase.from('invoices').select('id, total').eq('user_id', userId).eq('type', 'sale');
       const totalIncome = sales?.reduce((s, inv) => s + parseFloat(inv.total), 0) || 0;
+
       let totalCostOfSales = 0;
       if (sales && sales.length > 0) {
         const saleIds = sales.map(inv => inv.id);
-        const { data: lines } = await supabase.from('invoice_lines').select('quantity, item:items(purchase_price)').in('invoice_id', saleIds);
-        if (lines) for (const line of lines) totalCostOfSales += (parseFloat(line.quantity) || 0) * (parseFloat(line.item?.purchase_price) || 0);
+        const { data: costLines } = await supabase
+          .from('invoice_lines')
+          .select('cost_amount')
+          .in('invoice_id', saleIds);
+        totalCostOfSales = costLines?.reduce((s, l) => s + (parseFloat(l.cost_amount) || 0), 0) || 0;
       }
 
       const { data: generalExpenses } = await supabase.from('expenses').select('amount').eq('user_id', userId);
@@ -136,26 +140,27 @@ module.exports = async (req, res) => {
         const { data: expenses } = await supabase.from('expenses').select('amount, expense_date, description').eq('user_id', userId).order('expense_date', { ascending: true });
         expenses?.forEach(ex => { lines.push({ date: ex.expense_date, description: ex.description || 'مصروف', debit: ex.amount, credit: 0 }); });
       } else if (accountName === 'المخزون') {
+        // استخدمنا cost_amount من سطور الشراء والبيع لتمثيل قيمة المخزون
+        // لكن للأستاذ نظل نستخدم كميات مبسطة مع متوسط التكلفة
         const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
         if (purchaseInvoices && purchaseInvoices.length > 0) {
           const purchaseIds = purchaseInvoices.map(inv => inv.id);
-          const { data: purchaseLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice_id').in('invoice_id', purchaseIds).order('invoice_id', { ascending: true });
+          const { data: purchaseLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, average_cost), invoice_id').in('invoice_id', purchaseIds).order('invoice_id', { ascending: true });
           purchaseLines?.forEach(line => {
             const inv = purchaseInvoices.find(i => i.id === line.invoice_id);
             const qty = parseFloat(line.quantity) || 0;
-            const price = parseFloat(line.item?.purchase_price) || 0;
+            const price = parseFloat(line.item?.average_cost) || 0;
             lines.push({ date: inv?.date, description: `شراء ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: qty * price, credit: 0 });
           });
         }
         const { data: saleInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'sale').order('date', { ascending: true });
         if (saleInvoices && saleInvoices.length > 0) {
           const saleIds = saleInvoices.map(inv => inv.id);
-          const { data: saleLines } = await supabase.from('invoice_lines').select('quantity, item:items(name, purchase_price), invoice_id').in('invoice_id', saleIds).order('invoice_id', { ascending: true });
+          const { data: saleLines } = await supabase.from('invoice_lines').select('quantity, cost_amount, item:items(name, average_cost), invoice_id').in('invoice_id', saleIds).order('invoice_id', { ascending: true });
           saleLines?.forEach(line => {
             const inv = saleInvoices.find(i => i.id === line.invoice_id);
-            const qty = parseFloat(line.quantity) || 0;
-            const price = parseFloat(line.item?.purchase_price) || 0;
-            lines.push({ date: inv?.date, description: `بيع ${line.item?.name || 'مادة'} (${qty} × ${price})`, debit: 0, credit: qty * price });
+            const cost = parseFloat(line.cost_amount) || 0;
+            lines.push({ date: inv?.date, description: `بيع ${line.item?.name || 'مادة'}`, debit: 0, credit: cost });
           });
         }
       } else if (accountName === 'رأس المال') {
@@ -259,11 +264,40 @@ module.exports = async (req, res) => {
     }
 
     if (reportType === 'daily_profit') {
-      const { data: invoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId).order('date', { ascending: true });
+      // جلب فواتير البيع مع تكلفتها الفعلية
+      const { data: invoices } = await supabase.from('invoices').select('id, type, total, date').eq('user_id', userId).order('date', { ascending: true });
       const { data: expenses } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
+
+      const saleInvoices = invoices?.filter(inv => inv.type === 'sale') || [];
+      let costByInvoice = {};
+      if (saleInvoices.length > 0) {
+        const saleIds = saleInvoices.map(inv => inv.id);
+        const { data: saleLines } = await supabase
+          .from('invoice_lines')
+          .select('invoice_id, cost_amount')
+          .in('invoice_id', saleIds);
+        saleLines?.forEach(line => {
+          costByInvoice[line.invoice_id] = (costByInvoice[line.invoice_id] || 0) + (parseFloat(line.cost_amount) || 0);
+        });
+      }
+
       const daily = {};
-      invoices?.forEach(inv => { if (!inv.date) return; const day = inv.date; if (!daily[day]) daily[day] = 0; if (inv.type === 'sale') daily[day] += parseFloat(inv.total||0); else if (inv.type === 'purchase') daily[day] -= parseFloat(inv.total||0); });
-      expenses?.forEach(ex => { if (!ex.expense_date) return; const day = ex.expense_date; if (!daily[day]) daily[day] = 0; daily[day] -= parseFloat(ex.amount||0); });
+      invoices?.forEach(inv => {
+        if (!inv.date) return;
+        const day = inv.date;
+        if (!daily[day]) daily[day] = 0;
+        if (inv.type === 'sale') {
+          const cost = costByInvoice[inv.id] || 0;
+          daily[day] += parseFloat(inv.total || 0) - cost;
+        }
+        // المشتريات لا تطرح من الربح اليومي
+      });
+      expenses?.forEach(ex => {
+        if (!ex.expense_date) return;
+        const day = ex.expense_date;
+        if (!daily[day]) daily[day] = 0;
+        daily[day] -= parseFloat(ex.amount || 0);
+      });
       const dates = Object.keys(daily).sort();
       return res.json({ dates, profits: dates.map(d => daily[d]) });
     }
