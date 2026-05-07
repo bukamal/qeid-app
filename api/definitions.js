@@ -30,9 +30,18 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
-      const entry = { name: req.body.name };
+      const entry = { name: req.body.name?.trim() };
       if (type === 'unit') entry.abbreviation = req.body.abbreviation || null;
       if (!entry.name) return res.status(400).json({ error: 'الاسم مطلوب' });
+
+      const { data: existing } = await supabase
+        .from(config.table)
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('name', entry.name)
+        .maybeSingle();
+      if (existing) return res.status(400).json({ error: `${type === 'category' ? 'تصنيف' : 'وحدة'} بنفس الاسم موجودة` });
+
       const { data, error } = await supabase
         .from(config.table)
         .insert({ user_id: userId, ...entry })
@@ -45,8 +54,20 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       const { id, name, abbreviation } = req.body;
       if (!id) return res.status(400).json({ error: 'المعرف مطلوب' });
-      const updates = { name };
+      const updates = { name: name?.trim() };
       if (type === 'unit') updates.abbreviation = abbreviation || null;
+
+      if (updates.name) {
+        const { data: existing } = await supabase
+          .from(config.table)
+          .select('id')
+          .eq('user_id', userId)
+          .ilike('name', updates.name)
+          .neq('id', id)
+          .maybeSingle();
+        if (existing) return res.status(400).json({ error: `${type === 'category' ? 'تصنيف' : 'وحدة'} آخر بنفس الاسم موجود` });
+      }
+
       const { data, error } = await supabase
         .from(config.table)
         .update(updates)
@@ -61,6 +82,32 @@ module.exports = async (req, res) => {
     if (req.method === 'DELETE') {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'المعرف مطلوب' });
+
+      if (type === 'category') {
+        const { data: items } = await supabase
+          .from('items')
+          .select('id')
+          .eq('category_id', id)
+          .limit(1);
+        if (items && items.length > 0) return res.status(400).json({ error: 'لا يمكن حذف التصنيف لاستخدامه في مواد' });
+      }
+
+      if (type === 'unit') {
+        const { data: baseUnits } = await supabase
+          .from('items')
+          .select('id')
+          .eq('base_unit_id', id)
+          .limit(1);
+        if (baseUnits && baseUnits.length > 0) return res.status(400).json({ error: 'لا يمكن حذف الوحدة لأنها وحدة أساسية لمواد' });
+
+        const { data: itemUnits } = await supabase
+          .from('item_units')
+          .select('id')
+          .eq('unit_id', id)
+          .limit(1);
+        if (itemUnits && itemUnits.length > 0) return res.status(400).json({ error: 'لا يمكن حذف الوحدة لاستخدامها في وحدات فرعية لمواد' });
+      }
+
       const { error } = await supabase
         .from(config.table)
         .delete()

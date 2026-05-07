@@ -11,9 +11,7 @@ module.exports = async (req, res) => {
     let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
     const userId = await getUserId(initData);
 
-    // ==================== GET ====================
     if (req.method === 'GET') {
-      // جلب المواد مع العلاقات
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`)
@@ -21,7 +19,7 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
-      // جلب حركات الفواتير لحساب إجمالي المشتريات والمبيعات (للعرض فقط)
+      // جلب حركات الفواتير لحساب إجمالي المشتريات والمبيعات للعرض
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
         .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type)')
@@ -39,16 +37,15 @@ module.exports = async (req, res) => {
         else if (invoice.type === 'sale') qtyMap[item_id].sale += qtyBase;
       }
 
-      // إثراء المواد بالبيانات
       const enrichedItems = items.map(item => {
         const q = qtyMap[item.id] || { purchase: 0, sale: 0 };
-        const available = parseFloat(item.quantity) || 0;        // المخزون الفعلي
+        const available = parseFloat(item.quantity) || 0;
         const totalValue = available * (parseFloat(item.average_cost) || 0);
         return {
           ...item,
-          purchase_qty: q.purchase,  // معروض في تفاصيل المادة
-          sale_qty: q.sale,          // معروض في تفاصيل المادة
-          available,                 // الواجهة تستخدم available
+          purchase_qty: q.purchase,
+          sale_qty: q.sale,
+          available,
           total_value: totalValue
         };
       });
@@ -56,10 +53,19 @@ module.exports = async (req, res) => {
       return res.json(enrichedItems);
     }
 
-    // ==================== POST ====================
     if (req.method === 'POST') {
       const { name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
+
+      const trimmedName = name.trim();
+      // منع تكرار الاسم
+      const { data: existing } = await supabase
+        .from('items')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('name', trimmedName)
+        .maybeSingle();
+      if (existing) return res.status(400).json({ error: 'توجد مادة بنفس الاسم' });
 
       if (base_unit_id) {
         const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
@@ -69,7 +75,7 @@ module.exports = async (req, res) => {
       const avgCost = parseFloat(purchase_price) || 0;
 
       const { data, error } = await supabase.from('items').insert({
-        user_id: userId, name: name.trim(), category_id: category_id || null,
+        user_id: userId, name: trimmedName, category_id: category_id || null,
         item_type: item_type || 'مخزون', purchase_price: parseFloat(purchase_price) || 0,
         selling_price: parseFloat(selling_price) || 0, quantity: parseFloat(quantity) || 0,
         base_unit_id: base_unit_id || null,
@@ -92,13 +98,24 @@ module.exports = async (req, res) => {
       return res.json(fullData || data);
     }
 
-    // ==================== PUT ====================
     if (req.method === 'PUT') {
       const { id, name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
 
       const { data: itemCheck } = await supabase.from('items').select('id').eq('id', id).eq('user_id', userId).single();
       if (!itemCheck) return res.status(404).json({ error: 'المادة غير موجودة' });
+
+      if (name) {
+        const trimmedName = name.trim();
+        const { data: existing } = await supabase
+          .from('items')
+          .select('id')
+          .eq('user_id', userId)
+          .ilike('name', trimmedName)
+          .neq('id', id)
+          .maybeSingle();
+        if (existing) return res.status(400).json({ error: 'توجد مادة أخرى بنفس الاسم' });
+      }
 
       if (base_unit_id) {
         const { data: unitCheck } = await supabase.from('units').select('id').eq('id', base_unit_id).eq('user_id', userId).single();
@@ -129,7 +146,6 @@ module.exports = async (req, res) => {
       return res.json(fullData || data);
     }
 
-    // ==================== DELETE ====================
     if (req.method === 'DELETE') {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });

@@ -24,9 +24,18 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const { name, phone, address } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المورد مطلوب' });
+
+      const { data: existing } = await supabase
+        .from('suppliers')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('name', name.trim())
+        .maybeSingle();
+      if (existing) return res.status(400).json({ error: 'يوجد مورد بنفس الاسم' });
+
       const { data, error } = await supabase
         .from('suppliers')
-        .insert({ user_id: userId, name, phone: phone || null, address: address || null, balance: 0 })
+        .insert({ user_id: userId, name: name.trim(), phone: phone || null, address: address || null, balance: 0 })
         .select()
         .single();
       if (error) throw error;
@@ -36,9 +45,21 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       const { id, name, phone, address } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المورد مطلوب' });
+
+      if (name) {
+        const { data: existing } = await supabase
+          .from('suppliers')
+          .select('id')
+          .eq('user_id', userId)
+          .ilike('name', name.trim())
+          .neq('id', id)
+          .maybeSingle();
+        if (existing) return res.status(400).json({ error: 'يوجد مورد آخر بنفس الاسم' });
+      }
+
       const { data, error } = await supabase
         .from('suppliers')
-        .update({ name, phone, address })
+        .update({ name: name?.trim(), phone, address })
         .eq('id', id)
         .eq('user_id', userId)
         .select()
@@ -51,15 +72,22 @@ module.exports = async (req, res) => {
       const supplierId = req.query.id;
       if (!supplierId) return res.status(400).json({ error: 'معرف المورد مطلوب' });
 
-      // منع حذف المورد إذا كانت له فواتير
-      const { data: invCheck, error: checkError } = await supabase
+      const { data: invoiceCheck } = await supabase
         .from('invoices')
         .select('id')
         .eq('supplier_id', supplierId)
         .limit(1);
-      if (checkError) throw checkError;
-      if (invCheck && invCheck.length > 0) {
+      if (invoiceCheck && invoiceCheck.length > 0) {
         return res.status(400).json({ error: 'لا يمكن حذف المورد لارتباطه بفواتير' });
+      }
+
+      const { data: paymentCheck } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('supplier_id', supplierId)
+        .limit(1);
+      if (paymentCheck && paymentCheck.length > 0) {
+        return res.status(400).json({ error: 'لا يمكن حذف المورد لارتباطه بدفعات' });
       }
 
       const { error } = await supabase

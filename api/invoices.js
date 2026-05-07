@@ -103,7 +103,7 @@ async function reverseSaleFromItem(itemId, userId, qtySold, supabase) {
   if (updateError) throw updateError;
 }
 
-// ========== دوال الأرصدة (بدون تغيير) ==========
+// ========== دوال الأرصدة ==========
 async function updateCustomerBalance(customerId, userId, change) {
   const { data: cur } = await supabase.from('customers').select('balance').eq('id', customerId).eq('user_id', userId).single();
   if (cur) {
@@ -120,7 +120,7 @@ async function updateSupplierBalance(supplierId, userId, change) {
   }
 }
 
-// ========== دوال مساعدة للفواتير ==========
+// ========== دوال مساعدة ==========
 async function resolveConversionFactor(itemId, unitId, fallbackFactor) {
   if (!unitId || !itemId) return parseFloat(fallbackFactor) || 1;
   try {
@@ -152,8 +152,8 @@ async function buildLineData(line, invoiceId = null) {
     total: parseFloat(line.total) || 0,
     unit_id: line.unit_id || null,
     quantity_in_base: qtyBase,
-    unit_cost: line.unit_cost || null,   // لتخزين تكلفة الوحدة الأساسية (في الشراء)
-    cost_amount: line.cost_amount || null // لتخزين تكلفة السطر (في البيع)
+    unit_cost: line.unit_cost || null,
+    cost_amount: line.cost_amount || null
   };
   if (invoiceId) obj.invoice_id = invoiceId;
   return obj;
@@ -194,7 +194,6 @@ module.exports = async (req, res) => {
       const cust = parseInt(customer_id) && customer_id !== 'cash' ? parseInt(customer_id) : null;
       const supp = parseInt(supplier_id) && supplier_id !== 'cash' ? parseInt(supplier_id) : null;
 
-      // بناء السطور
       const lineData = [];
       let total = 0;
       for (let line of lines) {
@@ -203,7 +202,6 @@ module.exports = async (req, res) => {
         total += l.total;
       }
 
-      // إنشاء رأس الفاتورة
       const { data: invoice, error: invError } = await supabase
         .from('invoices')
         .insert({
@@ -221,7 +219,6 @@ module.exports = async (req, res) => {
         .single();
       if (invError) throw invError;
 
-      // حفظ السطور الأولية (بدون cost_amount بعد)
       lineData.forEach(l => l.invoice_id = invoice.id);
       const { data: insertedLines, error: linesError } = await supabase
         .from('invoice_lines')
@@ -229,16 +226,13 @@ module.exports = async (req, res) => {
         .select();
       if (linesError) throw linesError;
 
-      // بعد حفظ السطور، نُحدّث المخزون ونسجل التكاليف
       const processedLines = [];
       for (const line of insertedLines) {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
           if (type === 'purchase') {
-            // شراء: نسجل تكلفة الوحدة الأساسية ونُحدّث المخزون
             const unitCost = line.unit_price / (line.conversion_factor || (await resolveConversionFactor(line.item_id, line.unit_id, 1)));
             await applyPurchaseToItem(line.item_id, userId, baseQty, unitCost, supabase);
-            // نُحدّث السطر بـ unit_cost
             const { error: updError } = await supabase
               .from('invoice_lines')
               .update({ unit_cost: unitCost })
@@ -246,7 +240,6 @@ module.exports = async (req, res) => {
             if (updError) throw updError;
             processedLines.push({ ...line, unit_cost: unitCost });
           } else if (type === 'sale') {
-            // بيع: استهلاك المخزون وتسجيل التكلفة
             const costAmount = await applySaleToItem(line.item_id, userId, baseQty, supabase);
             const { error: updError } = await supabase
               .from('invoice_lines')
@@ -260,7 +253,6 @@ module.exports = async (req, res) => {
         }
       }
 
-      // الدفعة الأولية
       const paid = parseFloat(paid_amount) || 0;
       if (paid > 0) {
         await supabase.from('payments').insert({
@@ -274,14 +266,12 @@ module.exports = async (req, res) => {
         });
       }
 
-      // تحديث أرصدة العملاء/الموردين
       if (type === 'sale' && cust) {
         await updateCustomerBalance(cust, userId, total - paid);
       } else if (type === 'purchase' && supp) {
         await updateSupplierBalance(supp, userId, total - paid);
       }
 
-      // إعادة الفاتورة مع السطور المعالجة
       const finalInvoice = {
         ...invoice,
         invoice_lines: processedLines,
@@ -296,7 +286,6 @@ module.exports = async (req, res) => {
       const { id, type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
 
-      // جلب الفاتورة القديمة
       const { data: oldInvoice, error: fetchError } = await supabase
         .from('invoices')
         .select(`id, type, customer_id, supplier_id, total, invoice_lines (*)`)
@@ -305,7 +294,6 @@ module.exports = async (req, res) => {
         .single();
       if (fetchError || !oldInvoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-      // عكس تأثير المخزون للفاتورة القديمة
       for (const oldLine of oldInvoice.invoice_lines) {
         if (oldLine.item_id) {
           const baseQty = oldLine.quantity_in_base || (oldLine.quantity * (await resolveConversionFactor(oldLine.item_id, oldLine.unit_id, oldLine.conversion_factor)));
@@ -318,21 +306,18 @@ module.exports = async (req, res) => {
         }
       }
 
-      // عكس أرصدة العملاء/الموردين للقديم
       if (oldInvoice.type === 'sale' && oldInvoice.customer_id) {
         await updateCustomerBalance(oldInvoice.customer_id, userId, -oldInvoice.total);
       } else if (oldInvoice.type === 'purchase' && oldInvoice.supplier_id) {
         await updateSupplierBalance(oldInvoice.supplier_id, userId, -oldInvoice.total);
       }
 
-      // حذف السطور القديمة
       await supabase.from('invoice_lines').delete().eq('invoice_id', id);
 
       const newType = type || oldInvoice.type;
       const newCust = parseInt(customer_id) && customer_id !== 'cash' ? parseInt(customer_id) : null;
       const newSupp = parseInt(supplier_id) && supplier_id !== 'cash' ? parseInt(supplier_id) : null;
 
-      // بناء السطور الجديدة
       const newLineData = [];
       let newTotal = 0;
       for (let line of (lines || [])) {
@@ -341,14 +326,12 @@ module.exports = async (req, res) => {
         newTotal += l.total;
       }
 
-      // إدراج السطور الجديدة
       const { data: insertedNewLines, error: insertError } = await supabase
         .from('invoice_lines')
         .insert(newLineData)
         .select();
       if (insertError) throw insertError;
 
-      // تحديث المخزون للجديد
       for (const newLine of insertedNewLines) {
         if (newLine.item_id) {
           const baseQty = newLine.quantity_in_base || (newLine.quantity * (await resolveConversionFactor(newLine.item_id, newLine.unit_id, newLine.conversion_factor)));
@@ -365,7 +348,6 @@ module.exports = async (req, res) => {
         }
       }
 
-      // تحديث رأس الفاتورة
       const { data: updatedInvoice, error: updateError } = await supabase
         .from('invoices')
         .update({
@@ -383,7 +365,6 @@ module.exports = async (req, res) => {
         .single();
       if (updateError) throw updateError;
 
-      // معالجة الدفعة التلقائية
       const newPaid = parseFloat(paid_amount) || 0;
       const { data: currentPayments } = await supabase
         .from('payments')
@@ -413,7 +394,6 @@ module.exports = async (req, res) => {
       const { data: finalPayments } = await supabase.from('payments').select('amount').eq('invoice_id', id);
       const totalPaid = finalPayments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
 
-      // تحديث أرصدة الكيانات
       if (newType === 'sale' && newCust) {
         await updateCustomerBalance(newCust, userId, newTotal - totalPaid);
       } else if (newType === 'purchase' && newSupp) {
@@ -422,7 +402,7 @@ module.exports = async (req, res) => {
 
       updatedInvoice.paid = totalPaid;
       updatedInvoice.balance = newTotal - totalPaid;
-      updatedInvoice.invoice_lines = insertedNewLines; // مرفقة
+      updatedInvoice.invoice_lines = insertedNewLines;
 
       return res.json(updatedInvoice);
     }
@@ -440,7 +420,6 @@ module.exports = async (req, res) => {
         .single();
       if (fetchError || !invoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-      // عكس تأثير المخزون
       for (const line of invoice.invoice_lines) {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
@@ -453,7 +432,6 @@ module.exports = async (req, res) => {
         }
       }
 
-      // عكس أرصدة الدفعات
       const { data: payments } = await supabase
         .from('payments')
         .select('id, amount, customer_id, supplier_id')
@@ -463,14 +441,12 @@ module.exports = async (req, res) => {
         if (p.supplier_id) await updateSupplierBalance(p.supplier_id, userId, p.amount);
       }
 
-      // عكس رصيد الفاتورة الأساسي
       if (invoice.type === 'sale' && invoice.customer_id) {
         await updateCustomerBalance(invoice.customer_id, userId, -invoice.total);
       } else if (invoice.type === 'purchase' && invoice.supplier_id) {
         await updateSupplierBalance(invoice.supplier_id, userId, -invoice.total);
       }
 
-      // الحذف النهائي
       await supabase.from('payments').delete().eq('invoice_id', invoiceId);
       await supabase.from('invoice_lines').delete().eq('invoice_id', invoiceId);
       await supabase.from('invoices').delete().eq('id', invoiceId).eq('user_id', userId);

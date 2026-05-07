@@ -31,10 +31,8 @@ module.exports = async (req, res) => {
       const { data: suppliers } = await supabase.from('suppliers').select('name, balance').eq('user_id', userId);
       const totalCustomerBalance = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
       const totalSupplierBalance = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
-
       const { data: expensesData } = await supabase.from('expenses').select('amount').eq('user_id', userId);
       const totalGeneralExpenses = expensesData?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
-
       const totalAssets = cashBalance + totalCustomerBalance;
       const totalLiabilities = totalSupplierBalance;
       const equity = totalAssets - totalLiabilities - totalGeneralExpenses;
@@ -96,10 +94,8 @@ module.exports = async (req, res) => {
       const { data: suppliers } = await supabase.from('suppliers').select('balance').eq('user_id', userId);
       const receivables = customers?.reduce((s, c) => s + parseFloat(c.balance), 0) || 0;
       const payables = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
-
       const { data: expensesData } = await supabase.from('expenses').select('amount').eq('user_id', userId);
       const totalGeneralExpenses = expensesData?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
-
       const totalAssets = cash + receivables;
       const equity = totalAssets - payables - totalGeneralExpenses;
 
@@ -140,8 +136,6 @@ module.exports = async (req, res) => {
         const { data: expenses } = await supabase.from('expenses').select('amount, expense_date, description').eq('user_id', userId).order('expense_date', { ascending: true });
         expenses?.forEach(ex => { lines.push({ date: ex.expense_date, description: ex.description || 'مصروف', debit: ex.amount, credit: 0 }); });
       } else if (accountName === 'المخزون') {
-        // استخدمنا cost_amount من سطور الشراء والبيع لتمثيل قيمة المخزون
-        // لكن للأستاذ نظل نستخدم كميات مبسطة مع متوسط التكلفة
         const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
         if (purchaseInvoices && purchaseInvoices.length > 0) {
           const purchaseIds = purchaseInvoices.map(inv => inv.id);
@@ -264,7 +258,6 @@ module.exports = async (req, res) => {
     }
 
     if (reportType === 'daily_profit') {
-      // جلب فواتير البيع مع تكلفتها الفعلية
       const { data: invoices } = await supabase.from('invoices').select('id, type, total, date').eq('user_id', userId).order('date', { ascending: true });
       const { data: expenses } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
 
@@ -290,7 +283,6 @@ module.exports = async (req, res) => {
           const cost = costByInvoice[inv.id] || 0;
           daily[day] += parseFloat(inv.total || 0) - cost;
         }
-        // المشتريات لا تطرح من الربح اليومي
       });
       expenses?.forEach(ex => {
         if (!ex.expense_date) return;
