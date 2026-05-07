@@ -1,6 +1,4 @@
 // public/js/invoices.js
-// إدارة الفواتير: عرض، إنشاء، تعديل، حذف، طباعة، إرسال
-
 import {
   apiCall, formatNumber, formatDate, debounce, ICONS, initData,
   generateLineRowHtml, getUnitOptionsForItem
@@ -8,6 +6,7 @@ import {
 import { get as storeGet } from './store.js';
 import { showToast, openModal, confirmDialog, closeActiveModal } from './modal.js';
 import { currentTab, navigateTo } from './navigation.js';
+import { subscribe } from './store.js';
 
 // ========== تعديل فاتورة موجودة ==========
 export async function editInvoice(invoiceId) {
@@ -307,7 +306,6 @@ export async function showInvoiceModal(type, options = {}) {
           await apiCall('/invoices', 'POST', payload);
         }
 
-
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
 
@@ -366,6 +364,17 @@ export async function loadInvoices() {
       await apiCall('/invoices', 'GET');
     }
     renderFilteredInvoices();
+
+    // الاشتراكات لتحديث القائمة تلقائياً عند تغير البيانات
+    subscribe('invoices', () => {
+      if (currentTab === 'invoices') loadInvoices();
+    });
+    subscribe('customers', () => {
+      if (currentTab === 'invoices') loadInvoices();
+    });
+    subscribe('suppliers', () => {
+      if (currentTab === 'invoices') loadInvoices();
+    });
   } catch (err) { showToast(err.message, 'error'); }
 }
 
