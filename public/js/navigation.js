@@ -1,3 +1,4 @@
+// public/js/navigation.js
 import { ICONS, unlockScroll } from './core.js';
 
 // تتبع التبويب النشط
@@ -11,7 +12,7 @@ export const tabsConfig = {
   customers: { title: 'العملاء', subtitle: 'قائمة العملاء والذمم المدينة', icon: ICONS.users },
   suppliers: { title: 'الموردين', subtitle: 'قائمة الموردين والذمم الدائنة', icon: ICONS.factory },
   categories: { title: 'التصنيفات', subtitle: 'تصنيفات المواد', icon: ICONS.tag },
-  units: { title: 'الوحدات', subtitle: 'إدارة وحدات القياس', icon: ICONS.scale },
+  // units: { title: 'الوحدات', subtitle: 'إدارة وحدات القياس', icon: ICONS.scale },   // <-- مخفي
   payments: { title: 'الدفعات', subtitle: 'سجل المقبوضات والمدفوعات', icon: ICONS.wallet },
   expenses: { title: 'المصاريف', subtitle: 'تتبع المصاريف التشغيلية', icon: ICONS.dollar },
   invoices: { title: 'الفواتير', subtitle: 'سجل الفواتير والحركات', icon: ICONS.fileText },
@@ -47,7 +48,7 @@ export function navigateTo(tabName) {
       case 'customers': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/customers')); break; }
       case 'suppliers': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/suppliers')); break; }
       case 'categories': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/definitions?type=category')); break; }
-      case 'units': { const m = await import('./sections.js'); m.loadUnitsSection(); break; }
+      // case 'units': { const m = await import('./sections.js'); m.loadUnitsSection(); break; }   // <-- لم يعد متاحاً
       case 'payments': { const m = await import('./payments.js'); m.loadPayments(); break; }
       case 'expenses': { const m = await import('./expenses.js'); m.loadExpenses(); break; }
       case 'invoices': { const m = await import('./invoices.js'); m.loadInvoices(); break; }
@@ -70,8 +71,12 @@ function showMoreMenu() {
 export function initNavigation() {
   const sidebarNav = document.getElementById('sidebar-nav');
   const sheetGrid = document.getElementById('sheet-grid');
-  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','units','payments','expenses','invoices','reports'];
-  const moreTabs = ['purchase-invoice','customers','suppliers','categories','units','payments','expenses','reports'];
+  
+  // التبويبات الرئيسية (في الشريط الجانبي)
+  const mainTabs = ['dashboard', 'items', 'sale-invoice', 'purchase-invoice', 'customers', 'suppliers', 'categories', 'payments', 'expenses', 'invoices', 'reports'];
+  
+  // التبويبات الإضافية التي تظهر في قائمة "المزيد" على الجوال
+  const moreTabs = ['purchase-invoice', 'customers', 'suppliers', 'categories', 'payments', 'expenses', 'reports'];
 
   mainTabs.forEach(key => {
     const cfg = tabsConfig[key];
