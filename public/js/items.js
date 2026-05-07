@@ -5,7 +5,7 @@ import {
   apiCall, formatNumber, formatDate, debounce, ICONS,
   getUnitOptionsForItem
 } from './core.js';
-import { get as storeGet } from './store.js';
+import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
 /**
@@ -181,7 +181,6 @@ export function showItemDetail(itemId) {
  */
 function showAddItemModal() {
   const categories = storeGet('categories') || [];
-  const units = storeGet('units') || [];
   const catOpts = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
   const body = `
@@ -310,9 +309,8 @@ function showAddItemModal() {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      // تحديث القائمة محلياً دون انتظار جلب جديد
-      const updatedCats = [...(storeGet('categories') || []), { id: newId, name }];
-      import('./store.js').then(m => m.set('categories', updatedCats));
+      // تحديث القائمة محلياً
+      storeSet('categories', [...cats, { id: newId, name }]);
       const o = document.createElement('option');
       o.value = newId; o.textContent = name;
       select.appendChild(o);
@@ -334,8 +332,7 @@ function showAddItemModal() {
     const newId = res?.id || res?.data?.id;
     if (newId) {
       // تحديث المخزن محلياً
-      units = [...(storeGet('units') || []), { id: newId, name, abbreviation: name }];
-      import('./store.js').then(m => m.set('units', units));
+      storeSet('units', [...units, { id: newId, name, abbreviation: name }]);
     }
     return newId;
   }
@@ -478,7 +475,6 @@ function showEditItemModal(itemId) {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
-  // إعدادات مشابهة للإضافة ولكن مع getOrCreateUnit والتصنيف السريع
   const baseNameInput = modal.element.querySelector('#fm-base_unit_name');
   const extraUnitsDiv = modal.element.querySelector('#extra-units');
   const toggleBtn = modal.element.querySelector('#btn-toggle-units');
@@ -540,6 +536,7 @@ function showEditItemModal(itemId) {
   modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateQty);
   modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateQty);
 
+  // إضافة تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
@@ -551,8 +548,7 @@ function showEditItemModal(itemId) {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      const updatedCats = [...(storeGet('categories') || []), { id: newId, name }];
-      import('./store.js').then(m => m.set('categories', updatedCats));
+      storeSet('categories', [...cats, { id: newId, name }]);
       const o = document.createElement('option');
       o.value = newId; o.textContent = name;
       select.appendChild(o);
@@ -572,8 +568,7 @@ function showEditItemModal(itemId) {
     const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: name });
     const newId = res?.id || res?.data?.id;
     if (newId) {
-      units = [...(storeGet('units') || []), { id: newId, name, abbreviation: name }];
-      import('./store.js').then(m => m.set('units', units));
+      storeSet('units', [...units, { id: newId, name, abbreviation: name }]);
     }
     return newId;
   }
