@@ -12,7 +12,7 @@ const store = {
     items:            ['invoices'],
     units:            ['items', 'invoices'],
     categories:       ['items', 'invoices'],
-    invoices:         ['payments', 'summary'],
+    invoices:         ['payments', 'summary', 'items'],
     payments:         ['invoices', 'summary'],
     expenses:         ['summary'],
     summary:          [],
