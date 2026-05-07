@@ -50,10 +50,9 @@ export function renderFilteredItems() {
 /**
  * تحميل قائمة المواد (واجهة كاملة)
  */
-export async function loadItems() {
+  export async function loadItems() {
   const container = document.getElementById('tab-content');
   
-  // عرض رأس البطاقة + هيكل تحميل
   container.innerHTML = `
     <div class="card">
       <div class="card-header">
@@ -67,7 +66,9 @@ export async function loadItems() {
         <input type="text" class="input" id="items-search" placeholder="البحث في المواد...">
       </div>
     </div>
-    ${renderSkeleton('table')}
+    <div id="items-list">
+      ${renderSkeleton('table')}
+    </div>
   `;
   
   document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
