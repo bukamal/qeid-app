@@ -307,8 +307,6 @@ export async function showInvoiceModal(type, options = {}) {
           await apiCall('/invoices', 'POST', payload);
         }
 
-        // إعادة تحميل المواد لتحديث الكميات المتاحة
-        await apiCall('/items', 'GET');
 
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
