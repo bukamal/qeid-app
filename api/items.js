@@ -12,6 +12,7 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
+      // المواد الأساسية
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`)
@@ -19,6 +20,7 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
+      // جلب حركات الفواتير لحساب إجمالي المشتريات والمبيعات (للعرض فقط)
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
         .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type)')
@@ -38,10 +40,16 @@ module.exports = async (req, res) => {
 
       const enrichedItems = items.map(item => {
         const q = qtyMap[item.id] || { purchase: 0, sale: 0 };
-        const opening = parseFloat(item.quantity) || 0;
-        const available = opening + q.purchase - q.sale;
+        // الكمية المتاحة = المخزون الفعلي من جدول items (الذي يحدث مباشرة من الفواتير)
+        const available = parseFloat(item.quantity) || 0;
         const totalValue = available * (parseFloat(item.purchase_price) || 0);
-        return { ...item, purchase_qty: q.purchase, sale_qty: q.sale, available, total_value: totalValue };
+        return {
+          ...item,
+          purchase_qty: q.purchase,
+          sale_qty: q.sale,
+          available,
+          total_value: totalValue
+        };
       });
 
       return res.json(enrichedItems);
