@@ -1,4 +1,3 @@
-// ========== public/js/invoices.js ==========
 import {
   apiCall, itemsCache, setItemsCache, customersCache, suppliersCache,
   unitsCache, invoicesCache, setInvoicesCache, formatNumber, formatDate,
@@ -49,6 +48,7 @@ export async function showInvoiceModal(type, options = {}) {
     const invData = options.invoiceData || {};
     const invLines = invData.invoice_lines || [];
 
+    // بناء صفوف البنود
     let linesHtml = '';
     if (mode === 'edit' && invLines.length) {
       invLines.forEach(line => {
@@ -65,8 +65,6 @@ export async function showInvoiceModal(type, options = {}) {
       linesHtml = generateLineRowHtml(null, isSale);
     }
 
-    // console.log('paid:', invData.paid);
-
     const body = `
       <input type="hidden" id="inv-type" value="${type}">
       <input type="hidden" id="inv-id" value="${mode === 'edit' ? invData.id : ''}">
@@ -77,13 +75,11 @@ export async function showInvoiceModal(type, options = {}) {
       <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" placeholder="رقم الفاتورة أو المرجع" value="${invData.reference || ''}"></div>
       <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="inv-notes" placeholder="أي ملاحظات إضافية...">${invData.notes || ''}</textarea></div>
       <div style="background:var(--bg);border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-       
-       <div class="form-group" style="margin:0;">
-  <label class="form-label">المبلغ المدفوع</label>
-  <input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="${mode === 'edit' ? (invData.paid || 0) : '0'}">
-  ${mode === 'edit' ? '<span style="font-size:12px; color: var(--text-muted);">يمكنك تعديل الدفعة المرتبطة مباشرة بالفاتورة</span>' : ''}
-</div>
-       
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">المبلغ المدفوع</label>
+          <input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="${mode === 'edit' ? (invData.paid || 0) : '0'}">
+          ${mode === 'edit' ? '<span style="font-size:12px; color: var(--text-muted);">يمكنك تعديل الدفعة المرتبطة مباشرة بالفاتورة</span>' : '<span style="font-size:12px; color: var(--text-muted);">سيُملأ تلقائياً بالإجمالي، يمكنك تغييره</span>'}
+        </div>
         <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">${mode === 'edit' ? formatNumber(invData.total || 0) : '0.00'}</div></div>
       </div>`;
 
@@ -98,11 +94,23 @@ export async function showInvoiceModal(type, options = {}) {
     });
 
     const container = modal.element;
+    const paidInput = container.querySelector('#inv-paid');
+    let paidManuallyEdited = false;
+
+    // وضع علامة إذا قام المستخدم بتغيير المدفوع يدوياً
+    paidInput.addEventListener('input', () => {
+      paidManuallyEdited = true;
+    });
 
     const updateGrandTotal = () => {
       let total = 0;
       container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
       container.querySelector('#inv-grand-total').textContent = formatNumber(total);
+
+      // في وضع الإنشاء، املأ المدفوع تلقائياً بالإجمالي ما لم يعدّله المستخدم يدوياً
+      if (mode === 'create' && !paidManuallyEdited) {
+        paidInput.value = total.toFixed(2);
+      }
     };
 
     function isDup(itemId, currentRow) {
@@ -172,6 +180,7 @@ export async function showInvoiceModal(type, options = {}) {
       calcRow(row);
     }
 
+    // تجهيز الصفوف الحالية
     container.querySelectorAll('.line-row').forEach(row => {
       const sel = row.querySelector('.item-select');
       const price = row.querySelector('.price-input');
@@ -192,6 +201,7 @@ export async function showInvoiceModal(type, options = {}) {
       unitSel?.addEventListener('change', () => handleUnitChange(row));
     });
 
+    // إضافة بند جديد
     container.querySelector('#btn-add-line').addEventListener('click', () => {
       const linesContainer = container.querySelector('#inv-lines');
       const nl = document.createElement('div');
@@ -217,9 +227,14 @@ export async function showInvoiceModal(type, options = {}) {
       });
     });
 
+    // في وضع الإنشاء، عند الفتح، قد لا يكون هناك بنود، لذا المدفوع = 0، وسيتم ملؤه عند إضافة بند أول
+    if (mode === 'create') {
+      paidManuallyEdited = false; // لم يعدّله أحد بعد
+    }
+
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
-    // ========== حفظ الفاتورة ==========
+    // حفظ الفاتورة
     modal.element.querySelector('#inv-save').onclick = async () => {
       const btn = container.querySelector('#inv-save');
       if (btn.disabled) return;
@@ -249,7 +264,7 @@ export async function showInvoiceModal(type, options = {}) {
       btn.disabled = true;
       btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
-      // التحقق من المخزون (للبيع) باستخدام الكمية المتاحة
+      // التحقق من المخزون (للبيع)
       if (isSale) {
         for (const line of lines) {
           const item = itemsCache.find(i => i.id == line.item_id);
@@ -270,6 +285,7 @@ export async function showInvoiceModal(type, options = {}) {
       const customer_id = isSale && !isCash ? entityVal : null;
       const supplier_id = !isSale && !isCash ? entityVal : null;
 
+      const totalAmount = lines.reduce((s, l) => s + l.total, 0);
       const payload = {
         type,
         customer_id,
@@ -278,11 +294,10 @@ export async function showInvoiceModal(type, options = {}) {
         reference: container.querySelector('#inv-ref').value.trim(),
         notes: container.querySelector('#inv-notes').value.trim(),
         lines,
-        total: lines.reduce((s, l) => s + l.total, 0)
+        total: totalAmount,
+        paid_amount: parseFloat(paidInput.value) || 0
       };
 
-      // المبلغ المدفوع يُرسل فقط عند الإنشاء
-      payload.paid_amount = parseFloat(container.querySelector('#inv-paid')?.value) || 0;
       try {
         if (mode === 'edit') {
           await apiCall('/invoices', 'PUT', { id: invData.id, ...payload });
@@ -296,7 +311,6 @@ export async function showInvoiceModal(type, options = {}) {
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
 
-        // الانتقال إلى القائمة أو تحديثها حسب التبويب الحالي
         if (currentTab === 'items') {
           const { loadItems } = await import('./items.js');
           await loadItems();
@@ -310,6 +324,7 @@ export async function showInvoiceModal(type, options = {}) {
       }
     };
 
+    // تعيين الكيان الافتراضي في وضع التعديل
     if (mode === 'edit') {
       const entitySelect = container.querySelector('#inv-entity');
       if (invData.customer_id) entitySelect.value = invData.customer_id;
