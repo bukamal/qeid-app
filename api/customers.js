@@ -1,30 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
-const crypto = require('crypto');
+const { setCorsHeaders, getUserId } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function verifyTelegramData(initData) {
-  if (!initData) return false;
-  const BOT_TOKEN = process.env.BOT_TOKEN;
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  params.delete('hash');
-  const pairs = Array.from(params.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
-  return crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex') === hash;
-}
-
-async function getUserId(initData) {
-  if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
-  return JSON.parse(new URLSearchParams(initData).get('user')).id;
-}
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
@@ -74,7 +51,6 @@ module.exports = async (req, res) => {
       const customerId = req.query.id;
       if (!customerId) return res.status(400).json({ error: 'معرف العميل مطلوب' });
 
-      // منع حذف العميل إذا كانت له فواتير
       const { data: invCheck, error: checkError } = await supabase
         .from('invoices')
         .select('id')

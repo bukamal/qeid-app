@@ -1,30 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
-const crypto = require('crypto');
+const { setCorsHeaders, getUserId } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function verifyTelegramData(initData) {
-  if (!initData) return false;
-  const BOT_TOKEN = process.env.BOT_TOKEN;
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  params.delete('hash');
-  const pairs = Array.from(params.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
-  return crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex') === hash;
-}
-
-async function getUserId(initData) {
-  if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
-  return JSON.parse(new URLSearchParams(initData).get('user')).id;
-}
 
 // دوال مساعدة لتحديث أرصدة العملاء والموردين فقط (لا مساس بالمخزون)
 async function updateCustomerBalance(customerId, userId, change) {
@@ -43,7 +20,7 @@ async function updateSupplierBalance(supplierId, userId, change) {
   }
 }
 
-// --- حساب عامل التحويل بدقة من قاعدة البيانات ---
+// حساب عامل التحويل بدقة من قاعدة البيانات
 async function resolveConversionFactor(itemId, unitId, fallbackFactor) {
   if (!unitId || !itemId) return parseFloat(fallbackFactor) || 1;
   try {
@@ -58,7 +35,7 @@ async function resolveConversionFactor(itemId, unitId, fallbackFactor) {
   return parseFloat(fallbackFactor) || 1;
 }
 
-// --- بناء بيانات البند مع quantity_in_base الصحيحة ---
+// بناء بيانات البند مع quantity_in_base الصحيحة
 async function buildLineData(line, invoiceId = null) {
   const qty = parseFloat(line.quantity) || 0;
   let factor = 1;

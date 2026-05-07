@@ -1,17 +1,12 @@
 const { createClient } = require('@supabase/supabase-js');
-const crypto = require('crypto');
 const https = require('https');
 const FormData = require('form-data');
+const { setCorsHeaders, getUserId } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// ========== إعدادات العملة ==========
-const CURRENCY = {
-  symbol: 'ل.س',      // ليرة سورية
-  name: 'ليرة سورية',
-  decimals: 2
-};
+const CURRENCY = { symbol: 'ل.س', name: 'ليرة سورية', decimals: 2 };
 
 function formatCurrency(amount) {
   return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: CURRENCY.decimals, maximumFractionDigits: CURRENCY.decimals }) + ' ' + CURRENCY.symbol;
@@ -34,28 +29,6 @@ function formatTimeEn(date) {
   return `${hours}:${minutes}`;
 }
 
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function verifyTelegramData(initData) {
-  if (!initData) return false;
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  params.delete('hash');
-  const pairs = Array.from(params.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
-  return crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex') === hash;
-}
-
-async function getUserId(initData) {
-  if (!initData || !verifyTelegramData(initData)) throw new Error('Unauthorized');
-  return JSON.parse(new URLSearchParams(initData).get('user')).id;
-}
-
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -67,19 +40,9 @@ module.exports = async (req, res) => {
     
     const userId = await getUserId(initData);
 
-    // جلب الفاتورة مع كل التفاصيل
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
-      .select(`
-        *,
-        customer:customers(name, phone, address),
-        supplier:suppliers(name, phone, address),
-        invoice_lines(
-          *,
-          item:items(name),
-          unit:units(name, abbreviation)
-        )
-      `)
+      .select(`*, customer:customers(name, phone, address), supplier:suppliers(name, phone, address), invoice_lines(*, item:items(name), unit:units(name, abbreviation))`)
       .eq('id', invoiceId)
       .eq('user_id', userId)
       .single();
@@ -89,7 +52,6 @@ module.exports = async (req, res) => {
       return res.status(404).json({ error: 'الفاتورة غير موجودة' });
     }
 
-    // جلب الدفعات
     const { data: payments } = await supabase
       .from('payments')
       .select('amount, payment_date, notes')
@@ -104,7 +66,7 @@ module.exports = async (req, res) => {
     const timeStr = formatTimeEn(now);
     const dateStr = formatDateEn(invoice.date);
 
-    // إنشاء HTML للفاتورة
+    // إنشاء HTML للفاتورة (نفس المحتوى السابق تماماً)
     const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -275,4 +237,3 @@ ${payments && payments.length > 0 ? `
     res.status(500).json({ error: err.message });
   }
 };
-

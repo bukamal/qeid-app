@@ -1,1 +1,41 @@
-const{createClient}=require('@supabase/supabase-js'),crypto=require('crypto'),supabase=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY);function setCorsHeaders(res){res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type')}function verifyTelegramData(initData){if(!initData)return!1;const t=process.env.BOT_TOKEN,e=crypto.createHmac('sha256','WebAppData').update(t).digest(),n=new URLSearchParams(initData),o=n.get('hash');n.delete('hash');const r=Array.from(n.entries()).sort(((t,e)=>t[0].localeCompare(e[0]))).map((([t,e])=>`${t}=${e}`)).join('\n');return crypto.createHmac('sha256',e).update(r).digest('hex')===o}async function getUserId(initData){if(!initData||!verifyTelegramData(initData))throw new Error('Unauthorized');return JSON.parse(new URLSearchParams(initData).get('user')).id}module.exports=async(req,res)=>{setCorsHeaders(res);if('OPTIONS'===req.method)return res.status(200).end();try{const userId=await getUserId('GET'===req.method?req.query.initData:req.body?.initData);if('GET'===req.method){const{data:t,error:e}=await supabase.from('accounts').select('*').eq('user_id',userId).order('name');if(e)throw e;return res.json(t)}else if('POST'===req.method){const{name:t,type:e}=req.body;if(!t)return res.status(400).json({error:'اسم الحساب مطلوب'});const{data:n,error:o}=await supabase.from('accounts').insert({user_id:userId,name:t,type:e||'expense',balance:0}).select().single();if(o)throw o;return res.json(n)}return res.status(405).json({error:'Method not allowed'})}catch(err){if('Unauthorized'===err.message)return res.status(401).json({error:'غير مصرح'});res.status(500).json({error:err.message})}};
+const { createClient } = require('@supabase/supabase-js');
+const { setCorsHeaders, getUserId } = require('../lib/auth');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+module.exports = async (req, res) => {
+  setCorsHeaders(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  try {
+    const initData = req.method === 'GET' ? req.query.initData : req.body?.initData;
+    const userId = await getUserId(initData);
+
+    if (req.method === 'GET') {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'POST') {
+      const { name, type } = req.body;
+      if (!name) return res.status(400).json({ error: 'اسم الحساب مطلوب' });
+      const { data, error } = await supabase
+        .from('accounts')
+        .insert({ user_id: userId, name, type: type || 'expense', balance: 0 })
+        .select()
+        .single();
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    if (err.message === 'Unauthorized') return res.status(401).json({ error: 'غير مصرح' });
+    res.status(500).json({ error: err.message });
+  }
+};

@@ -1,29 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
-const crypto = require('crypto');
+const { setCorsHeaders, verifyTelegramData } = require('../lib/auth');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function verifyTelegramData(initData) {
-  if (!initData) return false;
-  const BOT_TOKEN = process.env.BOT_TOKEN;
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  params.delete('hash');
-  const pairs = Array.from(params.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
-  const computedHash = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
-  return computedHash === hash;
-}
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
@@ -39,14 +17,12 @@ module.exports = async (req, res) => {
     const params = new URLSearchParams(initData);
     const user = JSON.parse(params.get('user'));
 
-    // فحص المستخدمين المسموح لهم
     const allowedUsers = process.env.ALLOWED_USERS || '';
     const allowedIds = allowedUsers.split(',').map(id => id.trim()).filter(Boolean);
     if (allowedIds.length > 0 && !allowedIds.includes(String(user.id))) {
       return res.status(403).json({ verified: false, error: 'غير مصرح لك باستخدام التطبيق' });
     }
 
-    // تسجيل/تحديث المستخدم في Supabase
     const { error } = await supabase
       .from('users')
       .upsert({ id: user.id, first_name: user.first_name, username: user.username }, { onConflict: 'id' });
@@ -56,7 +32,6 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + error.message });
     }
 
-    // إنشاء الحسابات الافتراضية
     const defaultAccounts = [
       { name: 'الصندوق', type: 'asset' },
       { name: 'المبيعات', type: 'income' },
