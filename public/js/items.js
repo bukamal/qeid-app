@@ -50,9 +50,10 @@ export function renderFilteredItems() {
 /**
  * تحميل قائمة المواد (واجهة كاملة)
  */
-  export async function loadItems() {
+export async function loadItems() {
   const container = document.getElementById('tab-content');
   
+  // عرض رأس البطاقة + السكليتون داخل الحاوية id="items-list"
   container.innerHTML = `
     <div class="card">
       <div class="card-header">
