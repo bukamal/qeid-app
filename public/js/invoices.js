@@ -5,6 +5,7 @@ import {
   generateLineRowHtml, getUnitOptionsForItem
 } from './core.js';
 import { showToast, openModal, confirmDialog } from './modal.js';
+import { currentTab, navigateTo } from './navigation.js';
 
 // ========== تحرير فاتورة موجودة ==========
 export async function editInvoice(invoiceId) {
@@ -289,11 +290,23 @@ export async function showInvoiceModal(type, options = {}) {
         } else {
           await apiCall('/invoices', 'POST', payload);
         }
+
+        // تحديث بيانات المواد في الذاكرة المؤقتة
         const freshItems = await apiCall('/items', 'GET');
         setItemsCache(freshItems);
+
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
-        loadInvoices();
+
+        // العودة للتبويب السابق مع تحديث المواد إذا لزم الأمر
+        if (currentTab === 'items') {
+          const { loadItems } = await import('./items.js');
+          await loadItems();
+        } else if (currentTab === 'invoices') {
+          await loadInvoices();
+        } else {
+          navigateTo(currentTab);
+        }
       } catch (e) {
         showToast(e.message, 'error');
         btn.disabled = false;
@@ -892,7 +905,6 @@ function executePrint(htmlContent) {
       iframe.contentWindow.print();
     } catch (e) {
       showToast('⚠️ الطباعة غير متاحة. جاري إرسال الملف...', 'warning');
-      // محاولة إرسال الفاتورة الحالية؟ لكن ليس لدينا invoice هنا، نمرر فقط
     }
   }, 800);
 }

@@ -62,11 +62,9 @@ export async function loadItems() {
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
     document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
     
-    // تأكد من وجود بيانات المواد
-    if (!itemsCache.length) {
-      const fresh = await apiCall('/items', 'GET');
-      setItemsCache(fresh);
-    }
+    // جلب أحدث البيانات من الخادم لتحديث المتوفر مباشرة
+    const fresh = await apiCall('/items', 'GET');
+    setItemsCache(fresh);
     
     renderFilteredItems();
   } catch (err) {

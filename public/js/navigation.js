@@ -1,12 +1,7 @@
 import { ICONS, unlockScroll } from './core.js';
-import { loadDashboard } from './dashboard.js';
-import { loadItems } from './items.js';
-import { showInvoiceModal } from './invoices.js';
-import { loadGenericSection, getSectionOptions, loadUnitsSection } from './sections.js';
-import { loadPayments } from './payments.js';
-import { loadExpenses } from './expenses.js';
-import { loadInvoices } from './invoices.js';
-import { loadReports } from './reports.js';
+
+// تتبع التبويب النشط
+export let currentTab = 'dashboard';
 
 export const tabsConfig = {
   dashboard: { title: 'لوحة التحكم', subtitle: 'نظرة عامة على أداء عملك', icon: ICONS.home },
@@ -32,6 +27,7 @@ export function setActiveTab(tabName) {
 }
 
 export function navigateTo(tabName) {
+  currentTab = tabName;  // حفظ التبويب الحالي
   setActiveTab(tabName);
   document.getElementById('more-menu').style.display = 'none';
   document.getElementById('sidebar').classList.remove('open');
@@ -41,20 +37,21 @@ export function navigateTo(tabName) {
   content.style.opacity = '0';
   content.style.transform = 'translateY(10px)';
 
-  setTimeout(() => {
+  setTimeout(async () => {
+    // استيراد الدوال حسب الحاجة
     switch (tabName) {
-      case 'dashboard': loadDashboard(); break;
-      case 'items': loadItems(); break;
-      case 'sale-invoice': showInvoiceModal('sale'); break;
-      case 'purchase-invoice': showInvoiceModal('purchase'); break;
-      case 'customers': loadGenericSection(getSectionOptions('/customers')); break;
-      case 'suppliers': loadGenericSection(getSectionOptions('/suppliers')); break;
-      case 'categories': loadGenericSection(getSectionOptions('/definitions?type=category')); break;
-      case 'units': loadUnitsSection(); break;
-      case 'payments': loadPayments(); break;
-      case 'expenses': loadExpenses(); break;
-      case 'invoices': loadInvoices(); break;
-      case 'reports': loadReports(); break;
+      case 'dashboard': { const m = await import('./dashboard.js'); m.loadDashboard(); break; }
+      case 'items': { const m = await import('./items.js'); m.loadItems(); break; }
+      case 'sale-invoice': { const m = await import('./invoices.js'); m.showInvoiceModal('sale'); break; }
+      case 'purchase-invoice': { const m = await import('./invoices.js'); m.showInvoiceModal('purchase'); break; }
+      case 'customers': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/customers')); break; }
+      case 'suppliers': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/suppliers')); break; }
+      case 'categories': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/definitions?type=category')); break; }
+      case 'units': { const m = await import('./sections.js'); m.loadUnitsSection(); break; }
+      case 'payments': { const m = await import('./payments.js'); m.loadPayments(); break; }
+      case 'expenses': { const m = await import('./expenses.js'); m.loadExpenses(); break; }
+      case 'invoices': { const m = await import('./invoices.js'); m.loadInvoices(); break; }
+      case 'reports': { const m = await import('./reports.js'); m.loadReports(); break; }
       case 'more': showMoreMenu(); break;
     }
     requestAnimationFrame(() => {
@@ -99,7 +96,6 @@ export function initNavigation() {
   });
 }
 
-// ربط الأحداث
 document.getElementById('menu-toggle').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('open');
 });
