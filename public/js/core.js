@@ -1,4 +1,8 @@
-// ========== الأساسيات ==========
+// public/js/core.js
+// الأساسيات: أيقونات، دوال مساعدة، نظام التخزين المركزي، و apiCall
+
+import { get as storeGet, set as storeSet, invalidate } from './store.js';
+
 export const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
@@ -55,88 +59,6 @@ export function debounce(fn, ms = 300) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
-// نظام التخزين المؤقت
-const cache = {};
-const CACHE_DURATION = 60000;
-export function getCached(key) {
-  const e = cache[key]; if (e && Date.now() - e.time < CACHE_DURATION) return e.data;
-  delete cache[key]; return null;
-}
-export function setCache(key, data) { cache[key] = { data, time: Date.now() }; }
-export function invalidateCache(pattern) {
-  Object.keys(cache).forEach(k => { if (k.includes(pattern)) delete cache[k]; });
-}
-
-// المتغيرات العامة للمخابئ
-export let customersCache = [];
-export let suppliersCache = [];
-export let itemsCache = [];
-export let categoriesCache = [];
-export let invoicesCache = [];
-export let unitsCache = [];
-
-export function setCustomersCache(data) { customersCache = data; }
-export function setSuppliersCache(data) { suppliersCache = data; }
-export function setItemsCache(data) { itemsCache = data; }
-export function setCategoriesCache(data) { categoriesCache = data; }
-export function setInvoicesCache(data) { invoicesCache = data; }
-export function setUnitsCache(data) { unitsCache = data; }
-
-// دالة apiCall
-export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
-  let url = apiBase + endpoint;
-  if (method === 'GET' || method === 'DELETE') {
-    const sep = url.includes('?') ? '&' : '?';
-    url += `${sep}initData=${encodeURIComponent(initData)}`;
-  }
-  if (method === 'GET') { const c = getCached(url); if (c) return c; }
-
-  const options = { method, headers: { 'Content-Type': 'application/json' } };
-  if (method !== 'GET' && method !== 'DELETE') options.body = JSON.stringify({ ...body, initData });
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    options.signal = controller.signal;
-
-    const res = await fetch(url, options);
-    clearTimeout(timeout);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
-    if (method === 'GET') setCache(url, json);
-
-    if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-      const base = endpoint.split('?')[0].split('/')[1];
-      invalidateCache('/' + base);
-      if (base === 'definitions') {
-        invalidateCache('/definitions');
-        const freshUnits = await apiCall('/definitions?type=unit', 'GET');
-        setUnitsCache(freshUnits);
-      }
-      if (base === 'invoices') {
-        const freshInvoices = await apiCall('/invoices', 'GET');
-        setInvoicesCache(freshInvoices);
-      }
-      if (base === 'items') {
-        const freshItems = await apiCall('/items', 'GET');
-        setItemsCache(freshItems);
-      }
-      if (base === 'customers') {
-        const freshCustomers = await apiCall('/customers', 'GET');
-        setCustomersCache(freshCustomers);
-      }
-      if (base === 'suppliers') {
-        const freshSuppliers = await apiCall('/suppliers', 'GET');
-        setSuppliersCache(freshSuppliers);
-      }
-    }
-    return json;
-  } catch (err) {
-    if (retries > 0 && err.name !== 'AbortError') return apiCall(endpoint, method, body, retries - 1);
-    throw err;
-  }
-}
-
 // دوال scroll lock
 let scrollLockPos = 0;
 export function lockScroll() {
@@ -154,16 +76,132 @@ export function unlockScroll() {
   window.scrollTo(0, scrollLockPos);
 }
 
-// دوال مساعدة للفواتير (مشتركة)
+/**
+ * استخراج مفتاح تخزين موحد من مسار الطلب
+ */
+function getStoreKey(endpoint) {
+  const [path, queryString] = endpoint.split('?');
+  const params = new URLSearchParams(queryString || '');
+  params.delete('initData');
+
+  if (path === '/definitions') {
+    const type = params.get('type');
+    return type ? `definitions_${type}` : 'definitions';
+  }
+  if (path === '/reports') {
+    const type = params.get('type');
+    const extra = [];
+    ['account_id', 'customer_id', 'supplier_id'].forEach(key => {
+      if (params.get(key)) extra.push(`${key}_${params.get(key)}`);
+    });
+    const suffix = extra.length ? `_${extra.join('_')}` : '';
+    return type ? `reports_${type}${suffix}` : 'reports';
+  }
+  return path.replace(/^\//, '') || 'root';
+}
+
+/**
+ * استخراج اسم الكيان الأساسي (من أجل إبطال التبعيات)
+ */
+function getEntityFromEndpoint(endpoint) {
+  const path = endpoint.split('?')[0];
+  if (path === '/definitions') {
+    const qs = endpoint.split('?')[1] || '';
+    if (qs.includes('type=unit')) return 'units';
+    if (qs.includes('type=category')) return 'categories';
+    return 'definitions';
+  }
+  if (path === '/reports') return 'reports';
+  return path.replace(/^\//, '') || 'root';
+}
+
+/**
+ * دالة apiCall المعدلة مع استخدام store
+ */
+export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
+  let url = apiBase + endpoint;
+  if (method === 'GET' || method === 'DELETE') {
+    const sep = url.includes('?') ? '&' : '?';
+    url += `${sep}initData=${encodeURIComponent(initData)}`;
+  }
+
+  const storeKey = getStoreKey(endpoint);
+
+  // تحقق من الكاش لطلبات GET
+  if (method === 'GET') {
+    const cached = storeGet(storeKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+
+  const options = { method, headers: { 'Content-Type': 'application/json' } };
+  if (method !== 'GET' && method !== 'DELETE') {
+    options.body = JSON.stringify({ ...body, initData });
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    options.signal = controller.signal;
+
+    const res = await fetch(url, options);
+    clearTimeout(timeout);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
+
+    // تخزين نتيجة GET في المتجر
+    if (method === 'GET') {
+      storeSet(storeKey, json);
+    }
+
+    // بعد أي كتابة ناجحة، إبطال الكيان الأساسي وتوابعه
+    if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+      const entity = getEntityFromEndpoint(endpoint);
+      invalidate(entity);
+    }
+
+    return json;
+  } catch (err) {
+    if (retries > 0 && err.name !== 'AbortError') {
+      return apiCall(endpoint, method, body, retries - 1);
+    }
+    throw err;
+  }
+}
+
+/**
+ * دوال مساعدة للفواتير - تستخدم store
+ */
+export function getUnitOptionsForItem(itemId, selectedUnitId = null) {
+  const items = storeGet('items') || [];
+  const units = storeGet('units') || [];
+
+  const item = items.find(i => i.id == itemId);
+  if (!item) return '<option value="">اختر مادة</option>';
+
+  const baseUnit = units.find(u => u.id == item.base_unit_id) || {};
+  const baseName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
+  let opts = `<option value="" data-factor="1" ${!selectedUnitId ? 'selected' : ''}>${baseName} (أساسية)</option>`;
+
+  (item.item_units || []).forEach(iu => {
+    const u = units.find(unit => unit.id == iu.unit_id) || {};
+    const name = u.name || u.abbreviation || 'وحدة';
+    opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}" ${iu.unit_id == selectedUnitId ? 'selected' : ''}>${name} (${iu.conversion_factor}x ${baseName})</option>`;
+  });
+  return opts;
+}
+
 export function generateLineRowHtml(lineData = null, isSale) {
+  const items = storeGet('items') || [];
   const selectedItemId = lineData ? lineData.item_id : '';
   const qty = lineData ? lineData.quantity : '';
   const price = lineData ? lineData.unit_price : '';
   const total = lineData ? lineData.total : '';
   const unitId = lineData ? lineData.unit_id : '';
-  
-  const itemOptions = itemsCache.map(i => `<option value="${i.id}" ${i.id == selectedItemId ? 'selected' : ''}>${i.name}</option>`).join('');
-  
+
+  const itemOptions = items.map(i => `<option value="${i.id}" ${i.id == selectedItemId ? 'selected' : ''}>${i.name}</option>`).join('');
+
   return `
     <div class="line-row">
       <div class="form-group" style="grid-column:1/-1">
@@ -179,18 +217,4 @@ export function generateLineRowHtml(lineData = null, isSale) {
       <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;" value="${total}"></div>
       <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
     </div>`;
-}
-
-export function getUnitOptionsForItem(itemId, selectedUnitId = null) {
-  const item = itemsCache.find(i => i.id == itemId);
-  if (!item) return '<option value="">اختر مادة</option>';
-  const baseUnit = item.base_unit || {};
-  const baseName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
-  let opts = `<option value="" data-factor="1" ${!selectedUnitId ? 'selected' : ''}>${baseName} (أساسية)</option>`;
-  (item.item_units || []).forEach(iu => {
-    const u = iu.unit || {};
-    const name = u.name || u.abbreviation || 'وحدة';
-    opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}" ${iu.unit_id == selectedUnitId ? 'selected' : ''}>${name} (${iu.conversion_factor}x ${baseName})</option>`;
-  });
-  return opts;
 }

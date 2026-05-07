@@ -1,15 +1,18 @@
+// public/js/invoices.js
+// إدارة الفواتير: عرض، إنشاء، تعديل، حذف، طباعة، إرسال
+
 import {
-  apiCall, itemsCache, setItemsCache, customersCache, suppliersCache,
-  unitsCache, invoicesCache, setInvoicesCache, formatNumber, formatDate,
-  debounce, ICONS, initData,
+  apiCall, formatNumber, formatDate, debounce, ICONS, initData,
   generateLineRowHtml, getUnitOptionsForItem
 } from './core.js';
+import { get as storeGet } from './store.js';
 import { showToast, openModal, confirmDialog, closeActiveModal } from './modal.js';
 import { currentTab, navigateTo } from './navigation.js';
 
 // ========== تعديل فاتورة موجودة ==========
 export async function editInvoice(invoiceId) {
-  const invoice = invoicesCache.find(inv => inv.id === invoiceId);
+  const invoices = storeGet('invoices') || [];
+  const invoice = invoices.find(inv => inv.id === invoiceId);
   if (!invoice) {
     showToast('الفاتورة غير موجودة', 'error');
     return;
@@ -20,35 +23,35 @@ export async function editInvoice(invoiceId) {
 // ========== إنشاء/تعديل فاتورة (بيع / شراء) ==========
 export async function showInvoiceModal(type, options = {}) {
   try {
-    // تأكد من وجود البيانات
-    if (!customersCache.length) {
-      const fresh = await apiCall('/customers', 'GET');
-      customersCache.length = 0; customersCache.push(...fresh);
+    // التأكد من وجود البيانات في المتجر
+    let customers = storeGet('customers');
+    let suppliers = storeGet('suppliers');
+    let items = storeGet('items');
+    let units = storeGet('units');
+
+    if (!customers) {
+      customers = await apiCall('/customers', 'GET');
     }
-    if (!suppliersCache.length) {
-      const fresh = await apiCall('/suppliers', 'GET');
-      suppliersCache.length = 0; suppliersCache.push(...fresh);
+    if (!suppliers) {
+      suppliers = await apiCall('/suppliers', 'GET');
     }
-    if (!itemsCache.length) {
-      const fresh = await apiCall('/items', 'GET');
-      setItemsCache(fresh);
+    if (!items) {
+      items = await apiCall('/items', 'GET');
     }
-    if (!unitsCache.length) {
-      const fresh = await apiCall('/definitions?type=unit', 'GET');
-      unitsCache.length = 0; unitsCache.push(...fresh);
+    if (!units) {
+      units = await apiCall('/definitions?type=unit', 'GET');
     }
 
     const isSale = type === 'sale';
     const entLabel = isSale ? 'العميل' : 'المورد';
     const entOpts = isSale
-      ? `<option value="cash">عميل نقدي</option>${customersCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}`
-      : `<option value="cash">مورد نقدي</option>${suppliersCache.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}`;
+      ? `<option value="cash">عميل نقدي</option>${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}`
+      : `<option value="cash">مورد نقدي</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}`;
 
     const mode = options.mode || 'create';
     const invData = options.invoiceData || {};
     const invLines = invData.invoice_lines || [];
 
-    // بناء صفوف البنود
     let linesHtml = '';
     if (mode === 'edit' && invLines.length) {
       invLines.forEach(line => {
@@ -97,7 +100,6 @@ export async function showInvoiceModal(type, options = {}) {
     const paidInput = container.querySelector('#inv-paid');
     let paidManuallyEdited = false;
 
-    // وضع علامة إذا قام المستخدم بتغيير المدفوع يدوياً
     paidInput.addEventListener('input', () => {
       paidManuallyEdited = true;
     });
@@ -107,7 +109,6 @@ export async function showInvoiceModal(type, options = {}) {
       container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
       container.querySelector('#inv-grand-total').textContent = formatNumber(total);
 
-      // في وضع الإنشاء، املأ المدفوع تلقائياً بالإجمالي ما لم يعدّله المستخدم يدوياً
       if (mode === 'create' && !paidManuallyEdited) {
         paidInput.value = total.toFixed(2);
       }
@@ -124,11 +125,12 @@ export async function showInvoiceModal(type, options = {}) {
 
     function getUnitOptions(item) {
       if (!item) return '<option value="">اختر مادة</option>';
-      const baseUnit = unitsCache.find(u => u.id == item.base_unit_id) || {};
+      const unitsList = storeGet('units') || [];
+      const baseUnit = unitsList.find(u => u.id == item.base_unit_id) || {};
       const baseName = baseUnit.name || 'قطعة';
       let opts = `<option value="" data-factor="1">${baseName} (أساسية)</option>`;
       (item.item_units || []).forEach(iu => {
-        const unit = unitsCache.find(u => u.id == iu.unit_id) || {};
+        const unit = unitsList.find(u => u.id == iu.unit_id) || {};
         opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}">${unit.name || unit.abbreviation || 'وحدة'} (×${iu.conversion_factor})</option>`;
       });
       return opts;
@@ -141,7 +143,8 @@ export async function showInvoiceModal(type, options = {}) {
         if (unitSelectEl) { unitSelectEl.innerHTML = '<option value="">اختر مادة</option>'; unitSelectEl.style.display = 'none'; }
         return;
       }
-      const item = itemsCache.find(i => i.id == itemId);
+      const itemsList = storeGet('items') || [];
+      const item = itemsList.find(i => i.id == itemId);
       if (item) {
         const basePrice = isSale ? (item.selling_price || 0) : (item.purchase_price || 0);
         priceEl.value = basePrice;
@@ -172,7 +175,8 @@ export async function showInvoiceModal(type, options = {}) {
       const unitSel = row.querySelector('.unit-select');
       const priceEl = row.querySelector('.price-input');
       if (!sel || !unitSel || !priceEl) return;
-      const item = itemsCache.find(i => i.id == sel.value);
+      const itemsList = storeGet('items') || [];
+      const item = itemsList.find(i => i.id == sel.value);
       if (!item) return;
       const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
       const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
@@ -180,7 +184,6 @@ export async function showInvoiceModal(type, options = {}) {
       calcRow(row);
     }
 
-    // تجهيز الصفوف الحالية
     container.querySelectorAll('.line-row').forEach(row => {
       const sel = row.querySelector('.item-select');
       const price = row.querySelector('.price-input');
@@ -201,13 +204,13 @@ export async function showInvoiceModal(type, options = {}) {
       unitSel?.addEventListener('change', () => handleUnitChange(row));
     });
 
-    // إضافة بند جديد
     container.querySelector('#btn-add-line').addEventListener('click', () => {
       const linesContainer = container.querySelector('#inv-lines');
+      const itemsList = storeGet('items') || [];
       const nl = document.createElement('div');
       nl.className = 'line-row';
       nl.innerHTML = `
-        <div class="form-group" style="grid-column:1/-1"><select class="select item-select"><option value="">اختر مادة</option>${itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select></div>
+        <div class="form-group" style="grid-column:1/-1"><select class="select item-select"><option value="">اختر مادة</option>${itemsList.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select></div>
         <div class="form-group"><select class="select unit-select" style="display:none;"><option value="">الوحدة</option></select></div>
         <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية"></div>
         <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر"></div>
@@ -227,14 +230,12 @@ export async function showInvoiceModal(type, options = {}) {
       });
     });
 
-    // في وضع الإنشاء، عند الفتح، قد لا يكون هناك بنود، لذا المدفوع = 0، وسيتم ملؤه عند إضافة بند أول
     if (mode === 'create') {
-      paidManuallyEdited = false; // لم يعدّله أحد بعد
+      paidManuallyEdited = false;
     }
 
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
-    // حفظ الفاتورة
     modal.element.querySelector('#inv-save').onclick = async () => {
       const btn = container.querySelector('#inv-save');
       if (btn.disabled) return;
@@ -266,8 +267,9 @@ export async function showInvoiceModal(type, options = {}) {
 
       // التحقق من المخزون (للبيع)
       if (isSale) {
+        const itemsList = storeGet('items') || [];
         for (const line of lines) {
-          const item = itemsCache.find(i => i.id == line.item_id);
+          const item = itemsList.find(i => i.id == line.item_id);
           if (item) {
             const deductedQty = line.quantity * (line.conversion_factor || 1);
             if ((item.available || 0) < deductedQty) {
@@ -305,8 +307,8 @@ export async function showInvoiceModal(type, options = {}) {
           await apiCall('/invoices', 'POST', payload);
         }
 
-        const freshItems = await apiCall('/items', 'GET');
-        setItemsCache(freshItems);
+        // إعادة تحميل المواد لتحديث الكميات المتاحة
+        await apiCall('/items', 'GET');
 
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
@@ -361,9 +363,9 @@ export async function loadInvoices() {
     });
     document.getElementById('invoice-search').addEventListener('input', debounce(renderFilteredInvoices, 200));
 
-    if (!invoicesCache.length) {
-      const fresh = await apiCall('/invoices', 'GET');
-      setInvoicesCache(fresh);
+    // تحميل الفواتير إذا لم تكن موجودة
+    if (!storeGet('invoices')) {
+      await apiCall('/invoices', 'GET');
     }
     renderFilteredInvoices();
   } catch (err) { showToast(err.message, 'error'); }
@@ -371,9 +373,10 @@ export async function loadInvoices() {
 
 // ========== عرض الفواتير بعد التصفية ==========
 export function renderFilteredInvoices() {
+  const invoices = storeGet('invoices') || [];
   const filt = document.querySelector('.filter-pill.active')?.dataset.filter || 'all';
   const q = (document.getElementById('invoice-search')?.value || '').trim().toLowerCase();
-  let data = invoicesCache;
+  let data = invoices;
   if (filt !== 'all') data = data.filter(inv => inv.type === filt);
   if (q) data = data.filter(inv =>
     (inv.reference || '').includes(q) ||
@@ -419,12 +422,12 @@ export function renderFilteredInvoices() {
 
   container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = invoicesCache.find(i => i.id === id);
+    const inv = (storeGet('invoices') || []).find(i => i.id === id);
     if (inv) showInvoiceDetail(inv);
   }));
   container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
     const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = invoicesCache.find(i => i.id === id);
+    const inv = (storeGet('invoices') || []).find(i => i.id === id);
     if (inv) printInvoiceWithFormat(inv);
   }));
   container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
@@ -479,8 +482,9 @@ export async function sendInvoiceViaTelegram(invoiceId) {
 
 // ========== عرض تفاصيل الفاتورة ==========
 export function showInvoiceDetail(invoice) {
+  const itemsList = storeGet('items') || [];
   const lines = invoice.invoice_lines?.map(l => {
-    const item = itemsCache.find(i => i.id === l.item_id);
+    const item = itemsList.find(i => i.id === l.item_id);
     const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
     const factor = l.conversion_factor || 1;
     const baseQty = l.quantity * factor;
@@ -582,7 +586,7 @@ function printInvoiceWithFormat(invoice) {
   };
 }
 
-// ========== دالة الطباعة العامة ==========
+// ========== دالة الطباعة ==========
 function printInvoice(invoice, options = {}) {
   if (!invoice) {
     showToast('لا توجد بيانات للطباعة', 'error');
@@ -827,7 +831,7 @@ function printInvoice(invoice, options = {}) {
   <script>
     window.onload = function() {
       setTimeout(function() {
-        // لا طباعة تلقائية في A4، ننتظر المستخدم
+        // لا طباعة تلقائية في A4
       }, 100);
     };
   <\/script>

@@ -1,13 +1,20 @@
+// public/js/items.js
+// إدارة المواد: عرض، إضافة، تعديل، حذف
+
 import { 
-  apiCall, itemsCache, setItemsCache, unitsCache, categoriesCache, 
-  formatNumber, formatDate, debounce, ICONS 
+  apiCall, formatNumber, formatDate, debounce, ICONS,
+  getUnitOptionsForItem
 } from './core.js';
+import { get as storeGet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
-// ========== عرض المواد المصفى ==========
+/**
+ * عرض المواد بعد التصفية حسب البحث
+ */
 export function renderFilteredItems() {
+  const items = storeGet('items') || [];
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
-  const filtered = itemsCache.filter(i => (i.name || '').toLowerCase().includes(q));
+  const filtered = items.filter(i => (i.name || '').toLowerCase().includes(q));
   const container = document.getElementById('items-list');
   
   if (!filtered.length) {
@@ -40,7 +47,9 @@ export function renderFilteredItems() {
   container.innerHTML = html;
 }
 
-// ========== تحميل قائمة المواد ==========
+/**
+ * تحميل قائمة المواد (واجهة كاملة)
+ */
 export async function loadItems() {
   try {
     document.getElementById('tab-content').innerHTML = `
@@ -62,26 +71,26 @@ export async function loadItems() {
     document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
     document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
     
-    // جلب أحدث البيانات من الخادم لتحديث المتوفر مباشرة
-    const fresh = await apiCall('/items', 'GET');
-    setItemsCache(fresh);
-    
+    // جلب أحدث البيانات من الخادم (لتحديث المتجر تلقائياً)
+    await apiCall('/items', 'GET');
     renderFilteredItems();
   } catch (err) {
     showToast(err.message, 'error');
   }
 }
 
-// ========== عرض تفاصيل المادة ==========
+/**
+ * عرض تفاصيل مادة في نافذة منبثقة
+ */
 export function showItemDetail(itemId) {
-  const item = itemsCache.find(i => i.id === itemId);
+  const items = storeGet('items') || [];
+  const item = items.find(i => i.id === itemId);
   if (!item) return;
 
   const baseUnit = item.base_unit || {};
   const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
   const itemUnits = item.item_units || [];
 
-  // بناء جزء الوحدات
   let unitsHtml = '';
   if (itemUnits.length > 0) {
     unitsHtml = `
@@ -167,9 +176,13 @@ export function showItemDetail(itemId) {
   };
 }
 
-// ========== إضافة مادة جديدة ==========
-export function showAddItemModal() {
-  const catOpts = categoriesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+/**
+ * إضافة مادة جديدة (نموذج كامل مع وحدات)
+ */
+function showAddItemModal() {
+  const categories = storeGet('categories') || [];
+  const units = storeGet('units') || [];
+  const catOpts = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
   const body = `
     <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
@@ -177,7 +190,6 @@ export function showAddItemModal() {
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
 
-    <!-- الوحدة الأساسية -->
     <div class="form-group">
       <label class="form-label">الوحدة الأساسية</label>
       <div style="display:flex;gap:8px;align-items:center;">
@@ -186,7 +198,6 @@ export function showAddItemModal() {
       </div>
     </div>
 
-    <!-- الوحدات الفرعية (مخفية حتى الضغط على +) -->
     <div id="extra-units" style="display:none;">
       <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);margin-bottom:12px;">
         <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
@@ -207,7 +218,6 @@ export function showAddItemModal() {
       </div>
     </div>
 
-    <!-- الكمية الافتتاحية باختيار الوحدة -->
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
       <label class="form-label">الكمية الافتتاحية</label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
@@ -231,7 +241,6 @@ export function showAddItemModal() {
   const extraUnitsDiv = modal.element.querySelector('#extra-units');
   const toggleBtn = modal.element.querySelector('#btn-toggle-units');
 
-  // إظهار/إخفاء الوحدات الفرعية
   toggleBtn.onclick = () => {
     const isHidden = extraUnitsDiv.style.display === 'none';
     extraUnitsDiv.style.display = isHidden ? 'block' : 'none';
@@ -239,7 +248,6 @@ export function showAddItemModal() {
     toggleBtn.title = isHidden ? 'إخفاء الوحدات الفرعية' : 'إضافة وحدات فرعية';
   };
 
-  // تحديث أسماء الوحدات في الوصف التوضيحي
   const updateUnitLabels = () => {
     const baseName = baseNameInput.value.trim() || 'الوحدة الأساسية';
     modal.element.querySelectorAll('.base-unit-name').forEach(el => el.textContent = baseName);
@@ -264,7 +272,6 @@ export function showAddItemModal() {
   modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateUnitLabels);
   modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateUnitLabels);
 
-  // تحويل الكمية الافتتاحية تلقائياً
   const qtyInput = modal.element.querySelector('#fm-quantity');
   const qtyUnitSel = modal.element.querySelector('#fm-qty-unit');
   const qtyConvertedDiv = modal.element.querySelector('#qty-converted');
@@ -297,12 +304,15 @@ export function showAddItemModal() {
     const select = modal.element.querySelector('#fm-category_id');
     const name = input.value.trim();
     if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
-    if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
+    const cats = storeGet('categories') || [];
+    if (cats.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
     try {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      categoriesCache.push({ id: newId, name });
+      // تحديث القائمة محلياً دون انتظار جلب جديد
+      const updatedCats = [...(storeGet('categories') || []), { id: newId, name }];
+      import('./store.js').then(m => m.set('categories', updatedCats));
       const o = document.createElement('option');
       o.value = newId; o.textContent = name;
       select.appendChild(o);
@@ -317,11 +327,16 @@ export function showAddItemModal() {
   // دالة مساعدة: الحصول على معرف وحدة أو إنشاؤها
   async function getOrCreateUnit(name) {
     if (!name) return null;
-    const existing = unitsCache.find(u => u.name.toLowerCase() === name.toLowerCase());
+    let units = storeGet('units') || [];
+    const existing = units.find(u => u.name.toLowerCase() === name.toLowerCase());
     if (existing) return existing.id;
     const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: name });
     const newId = res?.id || res?.data?.id;
-    if (newId) unitsCache.push({ id: newId, name, abbreviation: name });
+    if (newId) {
+      // تحديث المخزن محلياً
+      units = [...(storeGet('units') || []), { id: newId, name, abbreviation: name }];
+      import('./store.js').then(m => m.set('units', units));
+    }
     return newId;
   }
 
@@ -335,7 +350,6 @@ export function showAddItemModal() {
       const baseUnitName = baseNameInput.value.trim();
       if (!baseUnitName) throw new Error('اسم الوحدة الأساسية مطلوب');
 
-      // إنشاء/الحصول على الوحدات
       const baseUnitId = await getOrCreateUnit(baseUnitName);
       if (!baseUnitId) throw new Error('فشل إنشاء الوحدة الأساسية');
 
@@ -358,7 +372,6 @@ export function showAddItemModal() {
       if (unit2Id && u2Factor > 0) itemUnits.push({ unit_id: unit2Id, conversion_factor: u2Factor });
       if (unit3Id && u3Factor > 0) itemUnits.push({ unit_id: unit3Id, conversion_factor: u3Factor });
 
-      // حساب الكمية بالوحدة الأساسية حسب اختيار المستخدم
       const qtyEntered = parseFloat(qtyInput.value) || 0;
       const qtyUnit = qtyUnitSel.value;
       let quantity = qtyEntered;
@@ -377,7 +390,8 @@ export function showAddItemModal() {
       };
 
       if (!values.name) throw new Error('اسم المادة مطلوب');
-      if (itemsCache.some(i => i.name.toLowerCase() === values.name.toLowerCase())) throw new Error('توجد مادة بنفس الاسم');
+      const currentItems = storeGet('items') || [];
+      if (currentItems.some(i => i.name.toLowerCase() === values.name.toLowerCase())) throw new Error('توجد مادة بنفس الاسم');
 
       await apiCall('/items', 'POST', values);
       modal.close();
@@ -391,12 +405,16 @@ export function showAddItemModal() {
   };
 }
 
-// ========== تعديل مادة ==========
-export function showEditItemModal(itemId) {
-  const it = itemsCache.find(i => i.id === itemId);
+/**
+ * تعديل مادة موجودة (نموذج مشابه للإضافة مع قيم ابتدائية)
+ */
+function showEditItemModal(itemId) {
+  const items = storeGet('items') || [];
+  const categories = storeGet('categories') || [];
+  const it = items.find(i => i.id === itemId);
   if (!it) return;
 
-  const catOpts = categoriesCache.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
+  const catOpts = categories.map(c => `<option value="${c.id}" ${c.id === it.category_id ? 'selected' : ''}>${c.name}</option>`).join('');
   const baseUnitName = it.base_unit?.name || it.base_unit?.abbreviation || 'قطعة';
   const iu = it.item_units || [];
   const iu1 = iu[0] || {};
@@ -460,6 +478,7 @@ export function showEditItemModal(itemId) {
     footerHTML: `<button class="btn btn-secondary" id="fm-cancel">إلغاء</button><button class="btn btn-primary" id="fm-save">${ICONS.check} حفظ</button>`
   });
 
+  // إعدادات مشابهة للإضافة ولكن مع getOrCreateUnit والتصنيف السريع
   const baseNameInput = modal.element.querySelector('#fm-base_unit_name');
   const extraUnitsDiv = modal.element.querySelector('#extra-units');
   const toggleBtn = modal.element.querySelector('#btn-toggle-units');
@@ -521,18 +540,19 @@ export function showEditItemModal(itemId) {
   modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateQty);
   modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateQty);
 
-  // إضافة تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
     const name = input.value.trim();
     if (!name) return showToast('أدخل اسم التصنيف أولاً', 'warning');
-    if (categoriesCache.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
+    const cats = storeGet('categories') || [];
+    if (cats.some(x => x.name.toLowerCase() === name.toLowerCase())) return showToast('التصنيف موجود مسبقاً', 'warning');
     try {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      categoriesCache.push({ id: newId, name });
+      const updatedCats = [...(storeGet('categories') || []), { id: newId, name }];
+      import('./store.js').then(m => m.set('categories', updatedCats));
       const o = document.createElement('option');
       o.value = newId; o.textContent = name;
       select.appendChild(o);
@@ -546,11 +566,15 @@ export function showEditItemModal(itemId) {
 
   async function getOrCreateUnit(name) {
     if (!name) return null;
-    const existing = unitsCache.find(u => u.name.toLowerCase() === name.toLowerCase());
+    let units = storeGet('units') || [];
+    const existing = units.find(u => u.name.toLowerCase() === name.toLowerCase());
     if (existing) return existing.id;
     const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: name });
     const newId = res?.id || res?.data?.id;
-    if (newId) unitsCache.push({ id: newId, name, abbreviation: name });
+    if (newId) {
+      units = [...(storeGet('units') || []), { id: newId, name, abbreviation: name }];
+      import('./store.js').then(m => m.set('units', units));
+    }
     return newId;
   }
 
@@ -615,5 +639,5 @@ export function showEditItemModal(itemId) {
   };
 }
 
-// تعريض دالة showItemDetail للنداء من الـ HTML
+// تعريض دالة showItemDetail للاستخدام من الـ HTML
 window.showItemDetail = showItemDetail;
