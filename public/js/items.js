@@ -3,7 +3,7 @@
 
 import { 
   apiCall, formatNumber, formatDate, debounce, ICONS,
-  getUnitOptionsForItem
+  getUnitOptionsForItem, renderSkeleton
 } from './core.js';
 import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
@@ -51,30 +51,34 @@ export function renderFilteredItems() {
  * تحميل قائمة المواد (واجهة كاملة)
  */
 export async function loadItems() {
-  try {
-    document.getElementById('tab-content').innerHTML = `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title">المواد</h3>
-            <span class="card-subtitle">إدارة المخزون والمنتجات</span>
-          </div>
-          <button class="btn btn-primary btn-sm" id="btn-add-item">${ICONS.plus} إضافة</button>
+  const container = document.getElementById('tab-content');
+  
+  // عرض رأس البطاقة + هيكل تحميل
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">المواد</h3>
+          <span class="card-subtitle">إدارة المخزون والمنتجات</span>
         </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <input type="text" class="input" id="items-search" placeholder="البحث في المواد...">
-        </div>
+        <button class="btn btn-primary btn-sm" id="btn-add-item">${ICONS.plus} إضافة</button>
       </div>
-      <div id="items-list"></div>
-    `;
-    
-    document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
-    document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
-    
+      <div class="form-group" style="margin-bottom:0;">
+        <input type="text" class="input" id="items-search" placeholder="البحث في المواد...">
+      </div>
+    </div>
+    ${renderSkeleton('table')}
+  `;
+  
+  document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
+  document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
+  
+  try {
     // جلب أحدث البيانات من الخادم (لتحديث المتجر تلقائياً)
     await apiCall('/items', 'GET');
     renderFilteredItems();
   } catch (err) {
+    document.getElementById('items-list').innerHTML = `<div class="empty-state"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>عذراً، حدث خطأ</h3><p>${err.message}</p></div>`;
     showToast(err.message, 'error');
   }
 }
@@ -309,7 +313,6 @@ function showAddItemModal() {
       const res = await apiCall(`/definitions?type=category`, 'POST', { type: 'category', name });
       const newId = res?.id || res?.data?.id;
       if (!newId) throw new Error('خطأ في الاستجابة');
-      // تحديث القائمة محلياً
       storeSet('categories', [...cats, { id: newId, name }]);
       const o = document.createElement('option');
       o.value = newId; o.textContent = name;
@@ -322,7 +325,6 @@ function showAddItemModal() {
 
   modal.element.querySelector('#fm-cancel').onclick = () => modal.close();
 
-  // دالة مساعدة: الحصول على معرف وحدة أو إنشاؤها
   async function getOrCreateUnit(name) {
     if (!name) return null;
     let units = storeGet('units') || [];
@@ -331,7 +333,6 @@ function showAddItemModal() {
     const res = await apiCall('/definitions?type=unit', 'POST', { type: 'unit', name, abbreviation: name });
     const newId = res?.id || res?.data?.id;
     if (newId) {
-      // تحديث المخزن محلياً
       storeSet('units', [...units, { id: newId, name, abbreviation: name }]);
     }
     return newId;
@@ -536,7 +537,6 @@ function showEditItemModal(itemId) {
   modal.element.querySelector('#fm-unit2-factor').addEventListener('input', updateQty);
   modal.element.querySelector('#fm-unit3-factor').addEventListener('input', updateQty);
 
-  // إضافة تصنيف سريع
   modal.element.querySelector('#btn-quick-cat').onclick = async () => {
     const input = modal.element.querySelector('#fm-new-category');
     const select = modal.element.querySelector('#fm-category_id');
