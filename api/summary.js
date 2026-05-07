@@ -22,7 +22,6 @@ module.exports = async (req, res) => {
     const totalPurchases = invoices?.filter(inv => inv.type === 'purchase')
       .reduce((s, inv) => s + parseFloat(inv.total || 0), 0) || 0;
 
-    // تكلفة المبيعات من cost_amount
     const saleInvoices = invoices?.filter(inv => inv.type === 'sale') || [];
     let costOfSales = 0;
     if (saleInvoices.length > 0) {
@@ -196,9 +195,7 @@ module.exports = async (req, res) => {
         labels: months,
         sales: months.map(m => monthly[m].sales),
         purchases: months.map(m => monthly[m].purchases),
-        net_profit: months.map(m => {
-          return monthly[m].sales - monthly[m].purchases - monthly[m].expenses;
-        }),
+        net_profit: months.map(m => monthly[m].sales - monthly[m].purchases - monthly[m].expenses),
         payments_in: months.map(m => monthly[m].payments_in),
         payments_out: months.map(m => monthly[m].payments_out),
         expenses: months.map(m => monthly[m].expenses)

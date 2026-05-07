@@ -1,6 +1,4 @@
 // public/js/core.js
-// الأساسيات: أيقونات، دوال مساعدة، نظام التخزين المركزي، و apiCall
-
 import { get as storeGet, set as storeSet, invalidate } from './store.js';
 
 export const tg = window.Telegram.WebApp;
@@ -59,7 +57,6 @@ export function debounce(fn, ms = 300) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
-// دوال scroll lock
 let scrollLockPos = 0;
 export function lockScroll() {
   scrollLockPos = window.scrollY || document.documentElement.scrollTop;
@@ -76,14 +73,10 @@ export function unlockScroll() {
   window.scrollTo(0, scrollLockPos);
 }
 
-/**
- * استخراج مفتاح تخزين موحد من مسار الطلب
- */
 function getStoreKey(endpoint) {
   const [path, queryString] = endpoint.split('?');
   const params = new URLSearchParams(queryString || '');
   params.delete('initData');
-
   if (path === '/definitions') {
     const type = params.get('type');
     return type ? `definitions_${type}` : 'definitions';
@@ -97,12 +90,13 @@ function getStoreKey(endpoint) {
     const suffix = extra.length ? `_${extra.join('_')}` : '';
     return type ? `reports_${type}${suffix}` : 'reports';
   }
+  // التعامل مع payments?voucher=1
+  if (path === '/payments' && params.get('voucher') === '1') {
+    return 'vouchers';
+  }
   return path.replace(/^\//, '') || 'root';
 }
 
-/**
- * استخراج اسم الكيان الأساسي (من أجل إبطال التبعيات)
- */
 function getEntityFromEndpoint(endpoint) {
   const path = endpoint.split('?')[0];
   if (path === '/definitions') {
@@ -112,12 +106,10 @@ function getEntityFromEndpoint(endpoint) {
     return 'definitions';
   }
   if (path === '/reports') return 'reports';
+  if (path === '/payments' && (endpoint.includes('voucher=1'))) return 'vouchers';
   return path.replace(/^\//, '') || 'root';
 }
 
-/**
- * دالة apiCall المعدلة مع استخدام store وتحسين رسائل الخطأ
- */
 export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) {
   let url = apiBase + endpoint;
   if (method === 'GET' || method === 'DELETE') {
@@ -163,7 +155,6 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
     if (retries > 0 && err.name !== 'AbortError') {
       return apiCall(endpoint, method, body, retries - 1);
     }
-    // تحسين رسالة الخطأ لتكون عربية
     let message = 'حدث خطأ أثناء الاتصال بالخادم';
     if (err.message) {
       if (err.message === 'Unauthorized') message = 'غير مصرح لك بالوصول';
@@ -175,20 +166,15 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
   }
 }
 
-/**
- * دوال مساعدة للفواتير - تستخدم store
- */
+// دوال مساعدة للفواتير
 export function getUnitOptionsForItem(itemId, selectedUnitId = null) {
   const items = storeGet('items') || [];
   const units = storeGet('units') || [];
-
   const item = items.find(i => i.id == itemId);
   if (!item) return '<option value="">اختر مادة</option>';
-
   const baseUnit = units.find(u => u.id == item.base_unit_id) || {};
   const baseName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
   let opts = `<option value="" data-factor="1" ${!selectedUnitId ? 'selected' : ''}>${baseName} (أساسية)</option>`;
-
   (item.item_units || []).forEach(iu => {
     const u = units.find(unit => unit.id == iu.unit_id) || {};
     const name = u.name || u.abbreviation || 'وحدة';
@@ -204,7 +190,6 @@ export function generateLineRowHtml(lineData = null, isSale) {
   const price = lineData ? lineData.unit_price : '';
   const total = lineData ? lineData.total : '';
   const unitId = lineData ? lineData.unit_id : '';
-
   const itemOptions = items.map(i => `<option value="${i.id}" ${i.id == selectedItemId ? 'selected' : ''}>${i.name}</option>`).join('');
 
   return `
@@ -224,9 +209,6 @@ export function generateLineRowHtml(lineData = null, isSale) {
     </div>`;
 }
 
-/**
- * توليد هيكل تحميل (skeleton) لقسم معين
- */
 export function renderSkeleton(type = 'cards') {
   let html = '';
   switch (type) {

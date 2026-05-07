@@ -58,7 +58,6 @@ module.exports = async (req, res) => {
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
 
       const trimmedName = name.trim();
-      // منع تكرار الاسم
       const { data: existing } = await supabase
         .from('items')
         .select('id')

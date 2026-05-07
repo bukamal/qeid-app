@@ -66,7 +66,7 @@ module.exports = async (req, res) => {
     const timeStr = formatTimeEn(now);
     const dateStr = formatDateEn(invoice.date);
 
-    // إنشاء HTML للفاتورة (نفس المحتوى السابق تماماً)
+    // إنشاء HTML للفاتورة
     const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>

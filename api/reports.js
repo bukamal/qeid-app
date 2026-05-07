@@ -33,6 +33,7 @@ module.exports = async (req, res) => {
       const totalSupplierBalance = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
       const { data: expensesData } = await supabase.from('expenses').select('amount').eq('user_id', userId);
       const totalGeneralExpenses = expensesData?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
+
       const totalAssets = cashBalance + totalCustomerBalance;
       const totalLiabilities = totalSupplierBalance;
       const equity = totalAssets - totalLiabilities - totalGeneralExpenses;
