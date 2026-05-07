@@ -20,7 +20,7 @@ export async function editInvoice(invoiceId) {
 // ========== إنشاء/تعديل فاتورة (بيع / شراء) ==========
 export async function showInvoiceModal(type, options = {}) {
   try {
-    // تأكد من وجود البيانات المطلوبة
+    // تأكد من وجود البيانات
     if (!customersCache.length) {
       const fresh = await apiCall('/customers', 'GET');
       customersCache.length = 0; customersCache.push(...fresh);
@@ -48,7 +48,6 @@ export async function showInvoiceModal(type, options = {}) {
     const invData = options.invoiceData || {};
     const invLines = invData.invoice_lines || [];
 
-    // بناء الصفوف الأولية
     let linesHtml = '';
     if (mode === 'edit' && invLines.length) {
       invLines.forEach(line => {
@@ -62,7 +61,6 @@ export async function showInvoiceModal(type, options = {}) {
         }, isSale);
       });
     } else {
-      // صف واحد فارغ
       linesHtml = generateLineRowHtml(null, isSale);
     }
 
@@ -92,14 +90,12 @@ export async function showInvoiceModal(type, options = {}) {
 
     const container = modal.element;
 
-    // تحديث الإجمالي الكلي
     const updateGrandTotal = () => {
       let total = 0;
       container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
       container.querySelector('#inv-grand-total').textContent = formatNumber(total);
     };
 
-    // التحقق من تكرار المادة
     function isDup(itemId, currentRow) {
       if (!itemId) return false;
       let found = false;
@@ -109,7 +105,6 @@ export async function showInvoiceModal(type, options = {}) {
       return found;
     }
 
-    // خيارات الوحدات لمادة محددة
     function getUnitOptions(item) {
       if (!item) return '<option value="">اختر مادة</option>';
       const baseUnit = unitsCache.find(u => u.id == item.base_unit_id) || {};
@@ -122,7 +117,6 @@ export async function showInvoiceModal(type, options = {}) {
       return opts;
     }
 
-    // ملء السعر تلقائياً عند اختيار مادة
     function autoFill(selectEl, priceEl, unitSelectEl) {
       const itemId = selectEl.value;
       if (!itemId) {
@@ -149,7 +143,6 @@ export async function showInvoiceModal(type, options = {}) {
       }
     }
 
-    // حساب إجمالي الصف
     function calcRow(row) {
       const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
       const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
@@ -157,7 +150,6 @@ export async function showInvoiceModal(type, options = {}) {
       updateGrandTotal();
     }
 
-    // تغيير الوحدة يغير السعر
     function handleUnitChange(row) {
       const sel = row.querySelector('.item-select');
       const unitSel = row.querySelector('.unit-select');
@@ -171,7 +163,6 @@ export async function showInvoiceModal(type, options = {}) {
       calcRow(row);
     }
 
-    // تجهيز الصفوف الأولية
     container.querySelectorAll('.line-row').forEach(row => {
       const sel = row.querySelector('.item-select');
       const price = row.querySelector('.price-input');
@@ -192,7 +183,6 @@ export async function showInvoiceModal(type, options = {}) {
       unitSel?.addEventListener('change', () => handleUnitChange(row));
     });
 
-    // إضافة بند جديد
     container.querySelector('#btn-add-line').addEventListener('click', () => {
       const linesContainer = container.querySelector('#inv-lines');
       const nl = document.createElement('div');
@@ -218,10 +208,9 @@ export async function showInvoiceModal(type, options = {}) {
       });
     });
 
-    // إلغاء
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
-    // حفظ الفاتورة
+    // ========== حفظ الفاتورة ==========
     modal.element.querySelector('#inv-save').onclick = async () => {
       const btn = container.querySelector('#inv-save');
       if (btn.disabled) return;
@@ -251,7 +240,6 @@ export async function showInvoiceModal(type, options = {}) {
       btn.disabled = true;
       btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
-      // التحقق من المخزون (للبيع)
       if (isSale) {
         for (const line of lines) {
           const item = itemsCache.find(i => i.id == line.item_id);
@@ -291,21 +279,19 @@ export async function showInvoiceModal(type, options = {}) {
           await apiCall('/invoices', 'POST', payload);
         }
 
-        // تحديث بيانات المواد في الذاكرة المؤقتة
         const freshItems = await apiCall('/items', 'GET');
         setItemsCache(freshItems);
 
         modal.close();
         showToast('تم حفظ الفاتورة بنجاح', 'success');
 
-        // العودة للتبويب السابق مع تحديث المواد إذا لزم الأمر
+        // ===== السلوك المُصحَّح =====
         if (currentTab === 'items') {
           const { loadItems } = await import('./items.js');
           await loadItems();
-        } else if (currentTab === 'invoices') {
-          await loadInvoices();
         } else {
-          navigateTo(currentTab);
+          // الانتقال إلى قائمة الفواتير وليس إعادة فتح نموذج الفاتورة
+          navigateTo('invoices');
         }
       } catch (e) {
         showToast(e.message, 'error');
@@ -315,7 +301,6 @@ export async function showInvoiceModal(type, options = {}) {
     };
 
     if (mode === 'edit') {
-      // ضبط الكيان
       const entitySelect = container.querySelector('#inv-entity');
       if (invData.customer_id) entitySelect.value = invData.customer_id;
       else if (invData.supplier_id) entitySelect.value = invData.supplier_id;
@@ -358,6 +343,7 @@ export async function loadInvoices() {
     renderFilteredInvoices();
   } catch (err) { showToast(err.message, 'error'); }
 }
+
 
 // ========== عرض الفواتير بعد التصفية ==========
 export function renderFilteredInvoices() {
