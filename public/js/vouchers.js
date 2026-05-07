@@ -1,10 +1,8 @@
 // public/js/vouchers.js
 import { apiCall, formatNumber, formatDate, ICONS } from './core.js';
 import { showToast, confirmDialog, openModal } from './modal.js';
+import { invalidate } from './store.js'; // <-- تمت إضافته لحل مشكلة عدم تحديث الفواتير
 
-/**
- * تحميل قائمة السندات وعرضها
- */
 export async function loadVouchers() {
   try {
     const vouchers = await apiCall('/payments?voucher=1', 'GET');
@@ -26,7 +24,7 @@ export async function loadVouchers() {
         const entityName = v.customer?.name || v.supplier?.name || '';
         const bgColor = v.type === 'receipt' ? 'var(--success)' : v.type === 'payment' ? 'var(--danger)' : 'var(--warning)';
         const sign = v.type === 'receipt' ? '+' : '-';
-        
+
         html += `
           <div class="card" style="border-right:3px solid ${bgColor}; margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -49,7 +47,6 @@ export async function loadVouchers() {
 
     document.getElementById('tab-content').innerHTML = html;
 
-    // ربط الأحداث
     document.getElementById('btn-add-voucher')?.addEventListener('click', showAddVoucherModal);
     document.querySelectorAll('[data-delete-voucher]').forEach(btn => {
       btn.addEventListener('click', () => deleteVoucher(btn.dataset.deleteVoucher));
@@ -60,11 +57,7 @@ export async function loadVouchers() {
   }
 }
 
-/**
- * عرض نافذة إضافة سند جديد
- */
 async function showAddVoucherModal() {
-  // جلب العملاء والموردين
   let customers = [];
   let suppliers = [];
   try {
@@ -140,7 +133,6 @@ async function showAddVoucherModal() {
   const custGroup = modal.element.querySelector('#v-cust-group');
   const suppGroup = modal.element.querySelector('#v-supp-group');
 
-  // التحكم في ظهور حقول العميل والمورد
   typeSel.addEventListener('change', () => {
     const val = typeSel.value;
     custGroup.style.display = val === 'receipt' ? 'block' : 'none';
@@ -163,7 +155,7 @@ async function showAddVoucherModal() {
       customer_id: type === 'receipt' ? (modal.element.querySelector('#v-customer').value || null) : null,
       supplier_id: type === 'payment' ? (modal.element.querySelector('#v-supplier').value || null) : null,
       invoice_id: modal.element.querySelector('#v-invoice').value || null,
-      voucher: true  // معيار هام للتمييز في api/payments.js
+      voucher: true
     };
 
     try {
@@ -177,13 +169,14 @@ async function showAddVoucherModal() {
   };
 }
 
-/**
- * حذف سند مع تأكيد
- */
 async function deleteVoucher(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا السند؟ سيتم عكس أي تأثير على الأرصدة.')) return;
   try {
     await apiCall(`/payments?voucher=1&id=${id}`, 'DELETE');
+    // إبطال المفاتيح المرتبطة لتحديث الفواتير والعملاء والموردين فوراً
+    invalidate('invoices');
+    invalidate('customers');
+    invalidate('suppliers');
     showToast('تم الحذف بنجاح', 'success');
     loadVouchers();
   } catch (e) {
@@ -191,9 +184,6 @@ async function deleteVoucher(id) {
   }
 }
 
-/**
- * مكون حالة فارغة
- */
 function emptyState(title, subtitle) {
   return `<div class="empty-state">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
