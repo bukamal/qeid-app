@@ -1,11 +1,10 @@
 // public/js/store.js
-// نظام إدارة حالة مركزي للتخزين المؤقت مع تبعيات ذكية
+// نظام إدارة حالة مركزي للتخزين المؤقت مع تبعيات ذكية ونظام اشتراك
 
 const store = {
   data: {},
-  listeners: {},
+  listeners: {},  // { key: [callback1, callback2, ...] }
   
-  // خريطة التبعيات: عند إبطال مفتاح، يتم إبطال المفاتيح التابعة له تلقائياً
   dependencies: {
     customers:        ['invoices'],
     suppliers:        ['invoices'],
@@ -18,17 +17,20 @@ const store = {
     summary:          [],
     reports:          [],
     accounts:         ['reports'],
+    vouchers:         ['invoices', 'customers', 'suppliers', 'payments', 'expenses'],
     definitions_category: ['items', 'invoices'],
     definitions_unit: ['items', 'invoices']
   }
 };
 
 /**
- * إعلام جميع المستمعين المسجلين على مفتاح معين
+ * إعلام المستمعين المسجلين على مفتاح بأن البيانات أبطلت
  */
-function notify(key, data) {
+function notifyListeners(key) {
   if (store.listeners[key]) {
-    store.listeners[key].forEach(cb => cb(data));
+    store.listeners[key].forEach(cb => {
+      try { cb(); } catch (e) { console.error('Listener error:', e); }
+    });
   }
 }
 
@@ -44,11 +46,11 @@ export function get(key) {
  */
 export function set(key, data) {
   store.data[key] = data;
-  notify(key, data);
+  // إعلام المستمعين بأن بيانات جديدة وصلت (اختياري لفائدة أخرى)
 }
 
 /**
- * الاشتراك في تغييرات مفتاح معين
+ * الاشتراك في تغييرات مفتاح معين (استدعاء عند الإبطال)
  * يعيد دالة unsubscribe لإلغاء الاشتراك
  */
 export function subscribe(key, callback) {
@@ -66,26 +68,27 @@ export function subscribe(key, callback) {
 }
 
 /**
- * إبطال مفتاح واحد (داخلياً)
+ * إبطال مفتاح واحد داخلياً
  */
 function invalidateKey(key) {
   if (!key) return;
   
-  // إزالة المفتاح نفسه
+  // إزالة البيانات المخزنة
   delete store.data[key];
-  notify(key, undefined);
+  // إعلام المشتركين بأن هذا المفتاح أبطل
+  notifyListeners(key);
   
-  // إزالة أي مفاتيح تبدأ بـ "key/" أو "key_"
+  // إزالة أي مفاتيح تبدأ بـ key/ أو key_
   Object.keys(store.data).forEach(k => {
     if (k.startsWith(key + '/') || k.startsWith(key + '_')) {
       delete store.data[k];
-      notify(k, undefined);
+      notifyListeners(k);
     }
   });
 }
 
 /**
- * إبطال مفتاح وكافة تبعياته المباشرة (مع منع التكرار)
+ * إبطال مفتاح وكافة تبعياته المباشرة
  */
 export function invalidate(key) {
   if (!key) return;
@@ -93,9 +96,7 @@ export function invalidate(key) {
   // إبطال المفتاح الأساسي
   invalidateKey(key);
   
-  // إبطال التبعيات (المستوى الأول فقط، لكن التبعيات نفسها قد تشمل تبعياتها
-  // ولكن نظراً لأن الخريطة الحالية لا تحتاج تكراراً عميقاً، نكتفي بمستوى واحد.
-  // مع ذلك نضمن عدم تكرار المفاتيح)
+  // إبطال التبعيات
   const deps = store.dependencies[key] || [];
   const visited = new Set([key]);
   
@@ -108,9 +109,12 @@ export function invalidate(key) {
 }
 
 /**
- * مسح كامل المتجر (نادر الاستخدام)
+ * مسح كامل المتجر
  */
 export function clearAll() {
-  Object.keys(store.data).forEach(k => delete store.data[k]);
+  Object.keys(store.data).forEach(k => {
+    delete store.data[k];
+    notifyListeners(k);
+  });
   store.listeners = {};
 }

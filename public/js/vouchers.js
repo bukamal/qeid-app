@@ -1,7 +1,8 @@
 // public/js/vouchers.js
 import { apiCall, formatNumber, formatDate, ICONS } from './core.js';
 import { showToast, confirmDialog, openModal } from './modal.js';
-import { invalidate } from './store.js'; // <-- تمت إضافته لحل مشكلة عدم تحديث الفواتير
+import { invalidate, subscribe } from './store.js';
+import { currentTab } from './navigation.js';
 
 export async function loadVouchers() {
   try {
@@ -24,7 +25,7 @@ export async function loadVouchers() {
         const entityName = v.customer?.name || v.supplier?.name || '';
         const bgColor = v.type === 'receipt' ? 'var(--success)' : v.type === 'payment' ? 'var(--danger)' : 'var(--warning)';
         const sign = v.type === 'receipt' ? '+' : '-';
-
+        
         html += `
           <div class="card" style="border-right:3px solid ${bgColor}; margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -47,11 +48,25 @@ export async function loadVouchers() {
 
     document.getElementById('tab-content').innerHTML = html;
 
+    // ربط الأحداث
     document.getElementById('btn-add-voucher')?.addEventListener('click', showAddVoucherModal);
     document.querySelectorAll('[data-delete-voucher]').forEach(btn => {
       btn.addEventListener('click', () => deleteVoucher(btn.dataset.deleteVoucher));
     });
 
+    // الاشتراك في إبطال البيانات لتحديث القائمة تلقائياً إذا كانت مفتوحة
+    subscribe('vouchers', () => {
+      if (currentTab === 'vouchers') loadVouchers();
+    });
+    subscribe('invoices', () => {
+      if (currentTab === 'vouchers') loadVouchers();
+    });
+    subscribe('customers', () => {
+      if (currentTab === 'vouchers') loadVouchers();
+    });
+    subscribe('suppliers', () => {
+      if (currentTab === 'vouchers') loadVouchers();
+    });
   } catch (err) {
     showToast(err.message, 'error');
   }

@@ -1,13 +1,15 @@
 // public/js/sections.js
-// إدارة الأقسام العامة: العملاء، الموردين، التصنيفات، الوحدات
-
 import {
   apiCall, formatNumber, ICONS
 } from './core.js';
 import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
+import { currentTab } from './navigation.js';
+import { subscribe } from './store.js';
 
-// ========== تعريف الأقسام العامة ==========
+/**
+ * تعريف خيارات كل قسم عام
+ */
 export function getSectionOptions(key) {
   switch (key) {
     case '/customers':
@@ -79,7 +81,9 @@ export function getSectionOptions(key) {
   }
 }
 
-// ========== بناء عنصر القسم العام ==========
+/**
+ * بناء بطاقة عرض لعنصر في القسم العام
+ */
 export function buildGenericItemHtml(item, opts) {
   const info = opts.extraFields
     .map(f => {
@@ -105,7 +109,9 @@ export function buildGenericItemHtml(item, opts) {
     </div>`;
 }
 
-// ========== تحميل القسم العام (عملاء، موردين، تصنيفات) ==========
+/**
+ * تحميل وعرض أي قسم عام (عملاء، موردين، تصنيفات)
+ */
 export async function loadGenericSection(options) {
   try {
     const data = await apiCall(options.apiBase, 'GET');
@@ -131,13 +137,29 @@ export async function loadGenericSection(options) {
     }
 
     document.getElementById('tab-content').innerHTML = html;
+
+    // الاشتراك في إبطال المفتاح الخاص بهذا القسم لتحديث الواجهة تلقائياً
+    if (options.cacheKey) {
+      subscribe(options.cacheKey, () => {
+        // نتحقق من أن التبويب الحالي لا يزال هذا القسم
+        const tabMap = {
+          customers: 'customers',
+          suppliers: 'suppliers',
+          categories: 'categories'
+        };
+        if (currentTab === tabMap[options.cacheKey]) {
+          loadGenericSection(options);
+        }
+      });
+    }
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== الوحدات ==========
+/**
+ * القسم الخاص بالوحدات (يبقى مستقلاً لكن بدون اشتراك لأنه لم يعد مطلوباً ربما)
+ */
 export async function loadUnitsSection() {
   try {
-    // جلب الوحدات والمواد
     await Promise.all([
       apiCall('/definitions?type=unit', 'GET'),
       apiCall('/items', 'GET')
@@ -270,7 +292,6 @@ export async function deleteUnit(unitId) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== دالة الحالة الفارغة ==========
 function emptyState(title, subtitle) {
   return `<div class="empty-state">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -281,7 +302,9 @@ function emptyState(title, subtitle) {
   </div>`;
 }
 
-// ========== مستمعات النقر على الأزرار العامة (add/edit/delete) ==========
+/**
+ * مستمعات الأحداث العامة لأزرار الإضافة والحذف والتعديل
+ */
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
