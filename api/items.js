@@ -16,12 +16,11 @@ module.exports = async (req, res) => {
 
     // ==================== GET ====================
     if (req.method === 'GET') {
-      const itemId = req.query.id;          // لطلب مادة واحدة
-      const detail = req.query.detail === '1'; // للحصول على البيانات التفصيلية الكاملة
+      const itemId = req.query.id;          // طلب مادة واحدة
+      const detail = req.query.detail === '1'; // تفاصيل موسعة
 
-      // 🟢 طلب تفاصيل مادة واحدة (مع تحديث حي)
+      // 🟢 طلب مادة محددة (مع دعم التفاصيل الحية)
       if (itemId) {
-        // 1. جلب بيانات المادة نفسها مع العلاقات
         const { data: item, error: itemError } = await supabase
           .from('items')
           .select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`)
@@ -33,13 +32,13 @@ module.exports = async (req, res) => {
           return res.status(404).json({ error: 'المادة غير موجودة' });
         }
 
-        // إذا لم يُطلب تفاصيل، نرجع البيانات الأساسية فقط
+        // إذا لم يُطلب تفاصيل إضافية، نرجع البيانات الأساسية فقط
         if (!detail) {
           return res.json(item);
         }
 
-        // --- تفاصيل إضافية تُحسب حية ---
-        // 2. آخر سعر شراء فعلي من فاتورة شراء
+        // --- تفاصيل إضافية تحسب مباشرة من قاعدة البيانات ---
+        // آخر سعر شراء فعلي
         const { data: lastPurchase } = await supabase
           .from('invoice_lines')
           .select('unit_price, invoice:invoices!inner(date, type)')
@@ -50,7 +49,7 @@ module.exports = async (req, res) => {
           .limit(1)
           .maybeSingle();
 
-        // 3. الكميات المشتراة والمباعة (كل الحركات)
+        // إجمالي الكميات المشتراة والمباعة
         const { data: movements } = await supabase
           .from('invoice_lines')
           .select('quantity_in_base, invoice:invoices!inner(type)')
@@ -59,12 +58,12 @@ module.exports = async (req, res) => {
 
         const purchaseQty = movements
           ?.filter(l => l.invoice?.type === 'purchase')
-          .reduce((s, l) => s + (parseFloat(l.quantity_in_base) || 0), 0) || 0;
+          .reduce((s, l) => s + parseFloat(l.quantity_in_base || 0), 0) || 0;
         const saleQty = movements
           ?.filter(l => l.invoice?.type === 'sale')
-          .reduce((s, l) => s + (parseFloat(l.quantity_in_base) || 0), 0) || 0;
+          .reduce((s, l) => s + parseFloat(l.quantity_in_base || 0), 0) || 0;
 
-        // 4. آخر 5 حركات (لإظهار سجل سريع)
+        // آخر 5 حركات
         const { data: lastMovements } = await supabase
           .from('invoice_lines')
           .select('quantity, unit_price, total, invoice:invoices!inner(id, date, type, reference)')
@@ -73,7 +72,7 @@ module.exports = async (req, res) => {
           .order('invoice.date', { ascending: false })
           .limit(5);
 
-        // 5. بناء الكائن النهائي
+        // بناء الكائن المخصب
         const enriched = {
           ...item,
           available: parseFloat(item.quantity) || 0,
@@ -134,9 +133,7 @@ module.exports = async (req, res) => {
       return res.json(enrichedItems);
     }
 
-    // --- POST, PUT, DELETE (تبقى كما هي تماماً، لم تتغير) ---
-    // (نفس الكود الموجود مسبقاً من السؤال)
-
+    // ==================== POST ====================
     if (req.method === 'POST') {
       const { name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
@@ -181,6 +178,7 @@ module.exports = async (req, res) => {
       return res.json(fullData || data);
     }
 
+    // ==================== PUT ====================
     if (req.method === 'PUT') {
       const { id, name, category_id, item_type, purchase_price, selling_price, quantity, base_unit_id, item_units } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
@@ -229,6 +227,7 @@ module.exports = async (req, res) => {
       return res.json(fullData || data);
     }
 
+    // ==================== DELETE ====================
     if (req.method === 'DELETE') {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'معرف المادة مطلوب' });
