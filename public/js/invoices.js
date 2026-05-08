@@ -22,24 +22,15 @@ export async function editInvoice(invoiceId) {
 // ========== إنشاء/تعديل فاتورة (بيع / شراء) ==========
 export async function showInvoiceModal(type, options = {}) {
   try {
-    // التأكد من وجود البيانات في المتجر
     let customers = storeGet('customers');
     let suppliers = storeGet('suppliers');
     let items = storeGet('items');
     let units = storeGet('units');
 
-    if (!customers) {
-      customers = await apiCall('/customers', 'GET');
-    }
-    if (!suppliers) {
-      suppliers = await apiCall('/suppliers', 'GET');
-    }
-    if (!items) {
-      items = await apiCall('/items', 'GET');
-    }
-    if (!units) {
-      units = await apiCall('/definitions?type=unit', 'GET');
-    }
+    if (!customers) customers = await apiCall('/customers', 'GET');
+    if (!suppliers) suppliers = await apiCall('/suppliers', 'GET');
+    if (!items) items = await apiCall('/items', 'GET');
+    if (!units) units = await apiCall('/definitions?type=unit', 'GET');
 
     const isSale = type === 'sale';
     const entLabel = isSale ? 'العميل' : 'المورد';
@@ -99,15 +90,12 @@ export async function showInvoiceModal(type, options = {}) {
     const paidInput = container.querySelector('#inv-paid');
     let paidManuallyEdited = false;
 
-    paidInput.addEventListener('input', () => {
-      paidManuallyEdited = true;
-    });
+    paidInput.addEventListener('input', () => { paidManuallyEdited = true; });
 
     const updateGrandTotal = () => {
       let total = 0;
       container.querySelectorAll('.total-input').forEach(inp => total += parseFloat(inp.value) || 0);
       container.querySelector('#inv-grand-total').textContent = formatNumber(total);
-
       if (mode === 'create' && !paidManuallyEdited) {
         paidInput.value = total.toFixed(2);
       }
@@ -130,7 +118,8 @@ export async function showInvoiceModal(type, options = {}) {
       let opts = `<option value="" data-factor="1">${baseName} (أساسية)</option>`;
       (item.item_units || []).forEach(iu => {
         const unit = unitsList.find(u => u.id == iu.unit_id) || {};
-        opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}">${unit.name || unit.abbreviation || 'وحدة'} (×${iu.conversion_factor})</option>`;
+        const name = unit.name || unit.abbreviation || 'وحدة';
+        opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}">${name} (×${iu.conversion_factor})</option>`;
       });
       return opts;
     }
@@ -169,6 +158,7 @@ export async function showInvoiceModal(type, options = {}) {
       updateGrandTotal();
     }
 
+    // دالة تحديث السعر عند تغيير الوحدة – مع منع السعر الأقل من الأساسي
     function handleUnitChange(row) {
       const sel = row.querySelector('.item-select');
       const unitSel = row.querySelector('.unit-select');
@@ -179,7 +169,17 @@ export async function showInvoiceModal(type, options = {}) {
       if (!item) return;
       const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
       const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
-      priceEl.value = (basePrice * factor).toFixed(2);
+      const newPrice = basePrice * factor;
+      priceEl.value = newPrice.toFixed(2);
+
+      // إذا كان السعر الجديد أقل من سعر الوحدة الأساسية (في حالة الوحدة الأكبر) نحذر
+      if (factor > 1 && newPrice < basePrice) {
+        showToast(`يبدو أن السعر المُحتسب للوحدة أقل من المتوقع. تأكد من صحة البيانات.`, 'warning');
+      }
+
+      // تعطيل التعديل اليدوي ما لم يؤكد المستخدم (حماية من الخطأ)
+      priceEl.title = `السعر للوحدة المختارة (${unitSel.selectedOptions[0]?.textContent || '?'}) . يمكنك تعديله يدوياً عند الحاجة`;
+
       calcRow(row);
     }
 
@@ -229,9 +229,7 @@ export async function showInvoiceModal(type, options = {}) {
       });
     });
 
-    if (mode === 'create') {
-      paidManuallyEdited = false;
-    }
+    if (mode === 'create') paidManuallyEdited = false;
 
     modal.element.querySelector('#inv-cancel').onclick = () => modal.close();
 
@@ -264,7 +262,6 @@ export async function showInvoiceModal(type, options = {}) {
       btn.disabled = true;
       btn.innerHTML = '<span class="loader-inline"></span> جاري الحفظ...';
 
-      // التحقق من المخزون (للبيع)
       if (isSale) {
         const itemsList = storeGet('items') || [];
         for (const line of lines) {
@@ -322,7 +319,6 @@ export async function showInvoiceModal(type, options = {}) {
       }
     };
 
-    // تعيين الكيان الافتراضي في وضع التعديل
     if (mode === 'edit') {
       const entitySelect = container.querySelector('#inv-entity');
       if (invData.customer_id) entitySelect.value = invData.customer_id;
@@ -359,13 +355,11 @@ export async function loadInvoices() {
     });
     document.getElementById('invoice-search').addEventListener('input', debounce(renderFilteredInvoices, 200));
 
-    // تحميل الفواتير إذا لم تكن موجودة
     if (!storeGet('invoices')) {
       await apiCall('/invoices', 'GET');
     }
     renderFilteredInvoices();
 
-    // الاشتراكات لتحديث القائمة تلقائياً عند تغير البيانات
     subscribe('invoices', () => {
       if (currentTab === 'invoices') loadInvoices();
     });
@@ -539,7 +533,7 @@ export function showInvoiceDetail(invoice) {
   };
 }
 
-// ========== اختيار تنسيق الطباعة ==========
+// اختيار تنسيق الطباعة
 function printInvoiceWithFormat(invoice) {
   const formatModal = openModal({
     title: 'اختيار تنسيق الطباعة',
@@ -593,7 +587,7 @@ function printInvoiceWithFormat(invoice) {
   };
 }
 
-// ========== دالة الطباعة ==========
+// دالة الطباعة
 function printInvoice(invoice, options = {}) {
   if (!invoice) {
     showToast('لا توجد بيانات للطباعة', 'error');
@@ -629,7 +623,6 @@ function printInvoice(invoice, options = {}) {
   const entity = invoice.customer || invoice.supplier;
   const entityLabel = invoice.type === 'sale' ? 'العميل' : 'المورد';
 
-  // تنسيق حراري 80mm
   const thermalHTML = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -702,7 +695,6 @@ function printInvoice(invoice, options = {}) {
 </body>
 </html>`;
 
-  // تنسيق A4 رسمي
   const a4HTML = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -834,20 +826,12 @@ function printInvoice(invoice, options = {}) {
       ✕ إغلاق / Close
     </button>
   </div>
-
-  <script>
-    window.onload = function() {
-      setTimeout(function() {
-        // لا طباعة تلقائية في A4
-      }, 100);
-    };
-  <\/script>
+  <script> window.onload = function() { setTimeout(function() {}, 100); }; </script>
 </body>
 </html>`;
 
   const htmlContent = format === 'a4' ? a4HTML : thermalHTML;
 
-  // معاينة
   if (preview) {
     const previewModal = openModal({
       title: `معاينة الفاتورة - ${format === 'a4' ? 'A4' : 'حرارية 80mm'}`,
@@ -873,11 +857,9 @@ function printInvoice(invoice, options = {}) {
     return;
   }
 
-  // طباعة مباشرة
   executePrint(htmlContent);
 }
 
-// ========== تنفيذ الطباعة ==========
 function executePrint(htmlContent) {
   let printWindow = null;
   try {
@@ -895,7 +877,6 @@ function executePrint(htmlContent) {
     return;
   }
 
-  // fallback للجوال
   showToast('📄 جاري تحضير الطباعة...', 'info');
   let iframe = document.getElementById('print-iframe');
   if (!iframe) {
@@ -924,7 +905,6 @@ function executePrint(htmlContent) {
   }, 800);
 }
 
-// تعريض الدوال المطلوبة على window
 window.printInvoice = printInvoice;
 window.editInvoice = editInvoice;
 window.deleteInvoice = deleteInvoice;
