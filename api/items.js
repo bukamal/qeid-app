@@ -15,6 +15,7 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
+      // جلب المواد مع علاقاتها
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`)
@@ -22,31 +23,59 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
+      // جلب كل سطور الفواتير المرتبطة بمستخدم
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
-        .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type)')
+        .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type, date)')
         .eq('invoice.user_id', userId)
         .not('item_id', 'is', null);
       if (linesError) throw linesError;
 
-      const qtyMap = {};
+      // تجميع الإحصائيات لكل مادة
+      const statsMap = {};
       for (const line of invoiceLines) {
         const { item_id, quantity_in_base, quantity, invoice } = line;
         if (!item_id) continue;
         const qtyBase = parseFloat(quantity_in_base ?? quantity ?? 0);
-        if (!qtyMap[item_id]) qtyMap[item_id] = { purchase: 0, sale: 0 };
-        if (invoice.type === 'purchase') qtyMap[item_id].purchase += qtyBase;
-        else if (invoice.type === 'sale') qtyMap[item_id].sale += qtyBase;
+        if (!statsMap[item_id]) {
+          statsMap[item_id] = {
+            purchase_qty: 0,
+            sale_qty: 0,
+            purchase_count: 0,
+            sale_count: 0,
+            last_purchase_date: null,
+            last_sale_date: null
+          };
+        }
+        const stats = statsMap[item_id];
+        if (invoice.type === 'purchase') {
+          stats.purchase_qty += qtyBase;
+          stats.purchase_count += 1;
+          if (!stats.last_purchase_date || invoice.date > stats.last_purchase_date) {
+            stats.last_purchase_date = invoice.date;
+          }
+        } else if (invoice.type === 'sale') {
+          stats.sale_qty += qtyBase;
+          stats.sale_count += 1;
+          if (!stats.last_sale_date || invoice.date > stats.last_sale_date) {
+            stats.last_sale_date = invoice.date;
+          }
+        }
       }
 
+      // إضافة الإحصائيات للمواد
       const enrichedItems = items.map(item => {
-        const q = qtyMap[item.id] || { purchase: 0, sale: 0 };
+        const s = statsMap[item.id] || {};
         const available = parseFloat(item.quantity) || 0;
         const totalValue = available * (parseFloat(item.average_cost) || 0);
         return {
           ...item,
-          purchase_qty: q.purchase,
-          sale_qty: q.sale,
+          purchase_qty: s.purchase_qty || 0,
+          sale_qty: s.sale_qty || 0,
+          purchase_count: s.purchase_count || 0,
+          sale_count: s.sale_count || 0,
+          last_purchase_date: s.last_purchase_date || null,
+          last_sale_date: s.last_sale_date || null,
           available,
           total_value: totalValue
         };

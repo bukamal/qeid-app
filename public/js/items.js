@@ -75,7 +75,6 @@ export async function loadItems() {
   }
 }
 
-// public/js/items.js - تعديل دالة showItemDetail
 export function showItemDetail(itemId) {
   const items = storeGet('items') || [];
   const item = items.find(i => i.id === itemId);
@@ -109,15 +108,12 @@ export function showItemDetail(itemId) {
     unitsHtml += `</div></div>`;
   }
 
-  // القيم الحالية
   const available = item.available ?? 0;
   const costValue = available * (parseFloat(item.average_cost) || 0);
   const sellingValue = available * (parseFloat(item.selling_price) || 0);
-
   const costDisplay = item.average_cost > 0 ? formatNumber(costValue) : 'غير محددة';
   const sellDisplay = item.selling_price > 0 ? formatNumber(sellingValue) : 'غير محددة';
 
-  // إحصائيات إضافية
   const purchaseQty = item.purchase_qty ?? 0;
   const saleQty = item.sale_qty ?? 0;
   const avgCost = parseFloat(item.average_cost) || 0;
@@ -152,13 +148,11 @@ export function showItemDetail(itemId) {
           <div class="stat-label">سعر البيع</div>
           <div class="stat-value" style="font-size:16px;">${formatNumber(sellingPrice)} / ${baseUnitName}</div>
         </div>
-        <!-- بطاقة قيمة المخزون بالتكلفة - بلون مميز -->
         <div class="stat-card" style="margin:0;padding:12px; background: var(--primary-light); border: 2px solid var(--primary);">
           <div class="stat-label" style="color: var(--primary-dark);">💰 قيمة المخزون (بالتكلفة)</div>
           <div class="stat-value" style="font-size:18px; color: var(--primary);">${costDisplay}</div>
           <div style="font-size:11px; color: var(--text-muted);">المتوسط المرجح لجميع المشتريات</div>
         </div>
-        <!-- بطاقة قيمة المخزون بسعر البيع -->
         <div class="stat-card" style="margin:0;padding:12px; background: var(--success-light);">
           <div class="stat-label">💵 قيمة المخزون (بسعر البيع)</div>
           <div class="stat-value" style="font-size:16px;">${sellDisplay}</div>
@@ -173,33 +167,17 @@ export function showItemDetail(itemId) {
           ملخص حركات المادة
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div>
-            <span style="color:var(--text-muted);">عدد مرات الشراء:</span>
-            <strong>${item.purchase_count || 'غير معروف'}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted);">عدد مرات البيع:</span>
-            <strong>${item.sale_count || 'غير معروف'}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted);">إجمالي الكمية المشتراة:</span>
-            <strong>${purchaseQty} ${baseUnitName}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted);">إجمالي الكمية المباعة:</span>
-            <strong>${saleQty} ${baseUnitName}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted);">متوسط سعر الشراء (المسجل):</span>
-            <strong>${formatNumber(purchasePrice)}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted);">متوسط سعر البيع (المسجل):</span>
-            <strong>${formatNumber(sellingPrice)}</strong>
-          </div>
+          <div><span style="color:var(--text-muted);">عدد مرات الشراء:</span> <strong>${item.purchase_count ?? 0}</strong></div>
+          <div><span style="color:var(--text-muted);">عدد مرات البيع:</span> <strong>${item.sale_count ?? 0}</strong></div>
+          <div><span style="color:var(--text-muted);">آخر شراء:</span> <strong>${item.last_purchase_date ? formatDate(item.last_purchase_date) : 'لا يوجد'}</strong></div>
+          <div><span style="color:var(--text-muted);">آخر بيع:</span> <strong>${item.last_sale_date ? formatDate(item.last_sale_date) : 'لا يوجد'}</strong></div>
+          <div><span style="color:var(--text-muted);">إجمالي الكمية المشتراة:</span> <strong>${purchaseQty} ${baseUnitName}</strong></div>
+          <div><span style="color:var(--text-muted);">إجمالي الكمية المباعة:</span> <strong>${saleQty} ${baseUnitName}</strong></div>
+          <div><span style="color:var(--text-muted);">متوسط سعر الشراء (المسجل):</span> <strong>${formatNumber(purchasePrice)}</strong></div>
+          <div><span style="color:var(--text-muted);">متوسط سعر البيع (المسجل):</span> <strong>${formatNumber(sellingPrice)}</strong></div>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">
-          * الإحصائيات أعلاه تعتمد على الأسعار المسجلة في إعدادات المادة وقد لا تعكس متوسط الفواتير الفعلي.
+          * الإحصائيات أعلاه تعتمد على الفواتير المسجلة وقد تختلف عن الواقع في حال وجود أرصدة افتتاحية.
         </div>
       </div>
 
