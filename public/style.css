@@ -11,7 +11,7 @@
   --text-muted: #94a3b8;
   --primary: #4f46e5;
   --primary-light: #e0e7ff;
-  --primary-dark: #4338ca;
+  --primary-dark: #3730a3;
   --success: #059669;
   --success-light: #d1fae5;
   --danger: #dc2626;
@@ -263,6 +263,7 @@ body.dark .bottom-nav { background: rgba(30, 41, 59, 0.9); }
 .btn-secondary:hover { background: var(--border); border-color: var(--border-strong); }
 .btn-danger { background: linear-gradient(135deg, var(--danger), #b91c1c); color: white; }
 .btn-success { background: linear-gradient(135deg, var(--success), #047857); color: white; }
+.btn-warning { background: linear-gradient(135deg, var(--warning), #b45309); color: white; }
 .btn-ghost { background: transparent; color: var(--text-secondary); }
 .btn-ghost:hover { background: var(--surface-hover); }
 .btn-sm { padding: 6px 14px; font-size: 13px; }
@@ -354,8 +355,8 @@ body.dark .bottom-nav { background: rgba(30, 41, 59, 0.9); }
 }
 .modal-close:hover { background: var(--danger-light); color: var(--danger); }
 .modal-body { padding: 20px 24px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; flex: 1; }
-.modal-footer { padding: 16px 24px 24px; display: flex; gap: 10px; border-top: 1px solid var(--border); background: var(--surface); }
-.modal-footer .btn { flex: 1; }
+.modal-footer { padding: 16px 24px 24px; display: flex; gap: 10px; border-top: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
+.modal-footer .btn { flex: 1; min-width: 80px; }
 
 .invoice-lines { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .line-row {
@@ -535,3 +536,18 @@ body.dark .bottom-nav { background: rgba(30, 41, 59, 0.9); }
   display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* تحسينات إضافية لتفاصيل المادة والسندات */
+.stat-card[style*="background: var(--primary-light)"] {
+  border-color: var(--primary) !important;
+}
+.format-option {
+  transition: all 0.2s ease;
+}
+.format-option:hover {
+  border-color: var(--primary) !important;
+  background: var(--primary-light) !important;
+}
+#voucher-warning {
+  animation: fadeIn 0.3s ease;
+}
