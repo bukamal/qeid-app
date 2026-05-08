@@ -1,3 +1,4 @@
+// api/reports.js
 const { createClient } = require('@supabase/supabase-js');
 const { setCorsHeaders, getUserId } = require('../lib/auth');
 
@@ -33,7 +34,6 @@ module.exports = async (req, res) => {
       const totalSupplierBalance = suppliers?.reduce((s, s2) => s + parseFloat(s2.balance), 0) || 0;
       const { data: expensesData } = await supabase.from('expenses').select('amount').eq('user_id', userId);
       const totalGeneralExpenses = expensesData?.reduce((s, ex) => s + parseFloat(ex.amount), 0) || 0;
-
       const totalAssets = cashBalance + totalCustomerBalance;
       const totalLiabilities = totalSupplierBalance;
       const equity = totalAssets - totalLiabilities - totalGeneralExpenses;
@@ -233,25 +233,66 @@ module.exports = async (req, res) => {
     }
 
     if (reportType === 'monthly_summary') {
-      const { data: invoices } = await supabase.from('invoices').select('type, total, date').eq('user_id', userId);
+      const { data: invoices } = await supabase.from('invoices').select('id, type, total, date').eq('user_id', userId);
       const { data: payments } = await supabase.from('payments').select('amount, payment_date, customer_id, supplier_id').eq('user_id', userId);
       const { data: expenses } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
+
+      // تجميع تكلفة المبيعات من cost_amount
+      const saleInvoices = invoices?.filter(inv => inv.type === 'sale') || [];
+      let costByInvoice = {};
+      if (saleInvoices.length > 0) {
+        const saleIds = saleInvoices.map(inv => inv.id);
+        const { data: saleLines } = await supabase
+          .from('invoice_lines')
+          .select('invoice_id, cost_amount')
+          .in('invoice_id', saleIds);
+        saleLines?.forEach(line => {
+          costByInvoice[line.invoice_id] = (costByInvoice[line.invoice_id] || 0) + (parseFloat(line.cost_amount) || 0);
+        });
+      }
+
       const monthly = {};
       const months = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        months.push(key); monthly[key] = { sales: 0, purchases: 0, payments_in: 0, payments_out: 0, expenses: 0 };
+        months.push(key); monthly[key] = { sales: 0, purchases: 0, cost_of_sales: 0, payments_in: 0, payments_out: 0, expenses: 0 };
       }
-      invoices?.forEach(inv => { if (!inv.date) return; const key = inv.date.substring(0,7); if (monthly[key]) { if (inv.type === 'sale') monthly[key].sales += parseFloat(inv.total||0); else if (inv.type === 'purchase') monthly[key].purchases += parseFloat(inv.total||0); } });
-      payments?.forEach(p => { if (!p.payment_date) return; const key = p.payment_date.substring(0,7); if (monthly[key]) { if (p.customer_id) monthly[key].payments_in += parseFloat(p.amount||0); if (p.supplier_id) monthly[key].payments_out += parseFloat(p.amount||0); } });
-      expenses?.forEach(ex => { if (!ex.expense_date) return; const key = ex.expense_date.substring(0,7); if (monthly[key]) monthly[key].expenses += parseFloat(ex.amount||0); });
-      const labels = months;
+
+      invoices?.forEach(inv => {
+        if (!inv.date) return;
+        const key = inv.date.substring(0,7);
+        if (monthly[key]) {
+          if (inv.type === 'sale') {
+            monthly[key].sales += parseFloat(inv.total||0);
+            monthly[key].cost_of_sales += costByInvoice[inv.id] || 0;
+          } else if (inv.type === 'purchase') {
+            monthly[key].purchases += parseFloat(inv.total||0);
+          }
+        }
+      });
+
+      payments?.forEach(p => {
+        if (!p.payment_date) return;
+        const key = p.payment_date.substring(0,7);
+        if (monthly[key]) {
+          if (p.customer_id) monthly[key].payments_in += parseFloat(p.amount||0);
+          if (p.supplier_id) monthly[key].payments_out += parseFloat(p.amount||0);
+        }
+      });
+
+      expenses?.forEach(ex => {
+        if (!ex.expense_date) return;
+        const key = ex.expense_date.substring(0,7);
+        if (monthly[key]) monthly[key].expenses += parseFloat(ex.amount||0);
+      });
+
       return res.json({
-        labels,
+        labels: months,
         sales: months.map(m => monthly[m].sales),
         purchases: months.map(m => monthly[m].purchases),
-        net_profit: months.map(m => monthly[m].sales - monthly[m].purchases - monthly[m].expenses),
+        // صافي الربح الشهري المحسَّن = المبيعات - تكلفة المبيعات - المصاريف
+        net_profit: months.map(m => monthly[m].sales - monthly[m].cost_of_sales - monthly[m].expenses),
         payments_in: months.map(m => monthly[m].payments_in),
         payments_out: months.map(m => monthly[m].payments_out),
         expenses: months.map(m => monthly[m].expenses)

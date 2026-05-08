@@ -89,9 +89,10 @@ module.exports = async (req, res) => {
     });
     const dailyCashBalance = (todayReceived + todayCashSales) - (todayPaid + todayCashPurchases);
 
-    const { data: allInvoices } = await supabase
+    // --- بيانات شهرية محسّنة باستخدام تكلفة المبيعات الفعلية ---
+    const { data: allInvoicesForMonthly } = await supabase
       .from('invoices')
-      .select('type, total, date')
+      .select('id, type, total, date')
       .eq('user_id', userId);
 
     const { data: allPayments } = await supabase
@@ -104,21 +105,38 @@ module.exports = async (req, res) => {
       .select('amount, expense_date')
       .eq('user_id', userId);
 
+    // للحصول على تكلفة المبيعات الشهرية
+    const saleIdsForMonthly = allInvoicesForMonthly?.filter(inv => inv.type === 'sale').map(inv => inv.id) || [];
+    let costByInvoice = {};
+    if (saleIdsForMonthly.length > 0) {
+      const { data: allSaleLines } = await supabase
+        .from('invoice_lines')
+        .select('invoice_id, cost_amount')
+        .in('invoice_id', saleIdsForMonthly);
+      allSaleLines?.forEach(line => {
+        costByInvoice[line.invoice_id] = (costByInvoice[line.invoice_id] || 0) + (parseFloat(line.cost_amount) || 0);
+      });
+    }
+
     const monthly = {};
     const months = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(); d.setMonth(d.getMonth() - i);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       months.push(key);
-      monthly[key] = { sales: 0, purchases: 0, payments_in: 0, payments_out: 0, expenses: 0 };
+      monthly[key] = { sales: 0, purchases: 0, cost_of_sales: 0, payments_in: 0, payments_out: 0, expenses: 0 };
     }
 
-    allInvoices?.forEach(inv => {
+    allInvoicesForMonthly?.forEach(inv => {
       if (!inv.date) return;
       const key = inv.date.substring(0, 7);
       if (monthly[key]) {
-        if (inv.type === 'sale') monthly[key].sales += parseFloat(inv.total || 0);
-        else if (inv.type === 'purchase') monthly[key].purchases += parseFloat(inv.total || 0);
+        if (inv.type === 'sale') {
+          monthly[key].sales += parseFloat(inv.total || 0);
+          monthly[key].cost_of_sales += costByInvoice[inv.id] || 0;
+        } else if (inv.type === 'purchase') {
+          monthly[key].purchases += parseFloat(inv.total || 0);
+        }
       }
     });
 
@@ -137,31 +155,10 @@ module.exports = async (req, res) => {
       if (monthly[key]) monthly[key].expenses += parseFloat(ex.amount || 0);
     });
 
-    const { data: dailyInvoices } = await supabase
-      .from('invoices')
-      .select('id, type, total, date')
-      .eq('user_id', userId)
-      .order('date', { ascending: true });
-
-    const costByInvoice = {};
-    if (saleInvoices.length > 0) {
-      const saleIds = saleInvoices.map(inv => inv.id);
-      const { data: saleLinesWithCost } = await supabase
-        .from('invoice_lines')
-        .select('invoice_id, cost_amount')
-        .in('invoice_id', saleIds);
-      saleLinesWithCost?.forEach(line => {
-        costByInvoice[line.invoice_id] = (costByInvoice[line.invoice_id] || 0) + (parseFloat(line.cost_amount) || 0);
-      });
-    }
-
-    const { data: dailyExpensesForChart } = await supabase
-      .from('expenses')
-      .select('amount, expense_date')
-      .eq('user_id', userId);
-
+    // --- الأرباح اليومية ---
     const dailyProfitMap = {};
-    dailyInvoices?.forEach(inv => {
+    // نعيد استخدام بيانات الفواتير
+    allInvoicesForMonthly?.forEach(inv => {
       if (!inv.date) return;
       const day = inv.date;
       if (!dailyProfitMap[day]) dailyProfitMap[day] = 0;
@@ -171,7 +168,7 @@ module.exports = async (req, res) => {
       }
     });
 
-    dailyExpensesForChart?.forEach(ex => {
+    allExpenses?.forEach(ex => {
       if (!ex.expense_date) return;
       const day = ex.expense_date;
       if (!dailyProfitMap[day]) dailyProfitMap[day] = 0;
@@ -195,7 +192,10 @@ module.exports = async (req, res) => {
         labels: months,
         sales: months.map(m => monthly[m].sales),
         purchases: months.map(m => monthly[m].purchases),
-        net_profit: months.map(m => monthly[m].sales - monthly[m].purchases - monthly[m].expenses),
+        // صافي الربح الشهري = المبيعات - تكلفة المبيعات الفعلية - المصاريف
+        net_profit: months.map(m => {
+          return monthly[m].sales - monthly[m].cost_of_sales - monthly[m].expenses;
+        }),
         payments_in: months.map(m => monthly[m].payments_in),
         payments_out: months.map(m => monthly[m].payments_out),
         expenses: months.map(m => monthly[m].expenses)

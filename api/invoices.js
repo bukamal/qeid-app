@@ -42,11 +42,16 @@ async function reversePurchaseFromItem(itemId, userId, qtyPurchased, unitCost, s
   const oldQty = parseFloat(item.quantity) || 0;
   const oldAvgCost = parseFloat(item.average_cost) || 0;
 
+  // فحص إضافي: لا يمكن عكس شراء كمية أكبر من الموجودة
+  if (qtyPurchased > oldQty) {
+    throw new Error(`لا يمكن عكس شراء ${qtyPurchased} وحدة من المادة ${itemId} لأن المخزون الحالي هو ${oldQty}`);
+  }
+
   const totalOldCost = oldQty * oldAvgCost;
   const totalRevCost = qtyPurchased * unitCost;
   const newQty = oldQty - qtyPurchased;
   const newTotalCost = totalOldCost - totalRevCost;
-  const newAvgCost = newQty !== 0 ? newTotalCost / newQty : 0;
+  const newAvgCost = newQty !== 0 ? Math.max(0, newTotalCost / newQty) : 0;
 
   const { error: updateError } = await supabase
     .from('items')
@@ -159,6 +164,34 @@ async function buildLineData(line, invoiceId = null) {
   return obj;
 }
 
+// ========== فحص المخزون قبل البيع (للاستخدام في POST/PUT) ==========
+async function checkStockAvailability(lines, userId, supabase) {
+  const itemIds = [...new Set(lines.filter(l => l.item_id).map(l => l.item_id))];
+  if (itemIds.length === 0) return;
+
+  const { data: items, error } = await supabase
+    .from('items')
+    .select('id, quantity')
+    .in('id', itemIds)
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  const stockMap = {};
+  items.forEach(it => { stockMap[it.id] = parseFloat(it.quantity) || 0; });
+
+  for (const line of lines) {
+    if (!line.item_id) continue;
+    const factor = parseFloat(line.conversion_factor) || 1;
+    const qtyInBase = (parseFloat(line.quantity) || 0) * factor;
+    const available = stockMap[line.item_id] || 0;
+    if (qtyInBase > available) {
+      const item = items.find(i => i.id == line.item_id);
+      const itemName = item ? ` (${item.id})` : '';
+      throw new Error(`المخزون غير كافٍ للمادة ${line.item_id}${itemName}. المتاح: ${available}, المطلوب: ${qtyInBase}`);
+    }
+  }
+}
+
 // ========== المدخل الرئيسي ==========
 module.exports = async (req, res) => {
   setCorsHeaders(res);
@@ -190,6 +223,11 @@ module.exports = async (req, res) => {
       let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!type || !['sale', 'purchase'].includes(type)) return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
       if (!lines || !Array.isArray(lines) || lines.length === 0) return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
+
+      // فحص المخزون للبيع قبل أي إجراء
+      if (type === 'sale') {
+        await checkStockAvailability(lines, userId, supabase);
+      }
 
       const cust = parseInt(customer_id) && customer_id !== 'cash' ? parseInt(customer_id) : null;
       const supp = parseInt(supplier_id) && supplier_id !== 'cash' ? parseInt(supplier_id) : null;
@@ -233,19 +271,11 @@ module.exports = async (req, res) => {
           if (type === 'purchase') {
             const unitCost = line.unit_price / (line.conversion_factor || (await resolveConversionFactor(line.item_id, line.unit_id, 1)));
             await applyPurchaseToItem(line.item_id, userId, baseQty, unitCost, supabase);
-            const { error: updError } = await supabase
-              .from('invoice_lines')
-              .update({ unit_cost: unitCost })
-              .eq('id', line.id);
-            if (updError) throw updError;
+            await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', line.id);
             processedLines.push({ ...line, unit_cost: unitCost });
           } else if (type === 'sale') {
             const costAmount = await applySaleToItem(line.item_id, userId, baseQty, supabase);
-            const { error: updError } = await supabase
-              .from('invoice_lines')
-              .update({ cost_amount: costAmount })
-              .eq('id', line.id);
-            if (updError) throw updError;
+            await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', line.id);
             processedLines.push({ ...line, cost_amount: costAmount });
           }
         } else {
@@ -294,6 +324,14 @@ module.exports = async (req, res) => {
         .single();
       if (fetchError || !oldInvoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
+      const newType = type || oldInvoice.type;
+
+      // فحص المخزون للبيع الجديد قبل أي تغيير
+      if (newType === 'sale') {
+        await checkStockAvailability(lines || [], userId, supabase);
+      }
+
+      // عكس تأثير الفاتورة القديمة على المخزون
       for (const oldLine of oldInvoice.invoice_lines) {
         if (oldLine.item_id) {
           const baseQty = oldLine.quantity_in_base || (oldLine.quantity * (await resolveConversionFactor(oldLine.item_id, oldLine.unit_id, oldLine.conversion_factor)));
@@ -314,7 +352,6 @@ module.exports = async (req, res) => {
 
       await supabase.from('invoice_lines').delete().eq('invoice_id', id);
 
-      const newType = type || oldInvoice.type;
       const newCust = parseInt(customer_id) && customer_id !== 'cash' ? parseInt(customer_id) : null;
       const newSupp = parseInt(supplier_id) && supplier_id !== 'cash' ? parseInt(supplier_id) : null;
 
