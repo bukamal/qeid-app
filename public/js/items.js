@@ -108,6 +108,15 @@ export function showItemDetail(itemId) {
     unitsHtml += `</div></div>`;
   }
 
+  // حساب قيمة المخزون بالتكلفة (المتوسط المرجح)
+  const available = item.available ?? 0;
+  const costValue = available * (parseFloat(item.average_cost) || 0);
+  // حساب قيمة المخزون بسعر البيع (تقديري)
+  const sellingValue = available * (parseFloat(item.selling_price) || 0);
+
+  const costDisplay = item.average_cost > 0 ? formatNumber(costValue) : 'غير محددة (لم تحدد تكلفة شراء بعد)';
+  const sellDisplay = item.selling_price > 0 ? formatNumber(sellingValue) : 'غير محددة (لم يحدد سعر بيع)';
+
   const modal = openModal({
     title: item.name,
     bodyHTML: `
@@ -122,19 +131,29 @@ export function showItemDetail(itemId) {
         </div>
         <div class="stat-card" style="margin:0;padding:12px;border-color:var(--primary);">
           <div class="stat-label">المتوفرة</div>
-          <div class="stat-value text-primary" style="font-size:20px;">${item.available ?? 0} ${baseUnitName}</div>
+          <div class="stat-value text-primary" style="font-size:20px;">${available} ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
-          <div class="stat-label">القيمة الإجمالية</div>
-          <div class="stat-value" style="font-size:16px;">${formatNumber(item.total_value ?? 0)}</div>
+          <div class="stat-label">سعر الشراء (المتوسط)</div>
+          <div class="stat-value" style="font-size:16px;">${formatNumber(item.average_cost || 0)} / ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
-          <div class="stat-label">سعر الشراء</div>
-          <div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price)} / ${baseUnitName}</div>
+          <div class="stat-label">سعر الشراء المسجل</div>
+          <div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price || 0)} / ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
           <div class="stat-label">سعر البيع</div>
-          <div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price)} / ${baseUnitName}</div>
+          <div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price || 0)} / ${baseUnitName}</div>
+        </div>
+        <div class="stat-card" style="margin:0;padding:12px; background: var(--warning-light);">
+          <div class="stat-label">💰 قيمة المخزون (بالتكلفة)</div>
+          <div class="stat-value" style="font-size:16px;">${costDisplay}</div>
+          <div style="font-size:11px; color: var(--text-muted);">المتوسط المرجح لجميع المشتريات</div>
+        </div>
+        <div class="stat-card" style="margin:0;padding:12px; background: var(--success-light);">
+          <div class="stat-label">💵 قيمة المخزون (بسعر البيع)</div>
+          <div class="stat-value" style="font-size:16px;">${sellDisplay}</div>
+          <div style="font-size:11px; color: var(--text-muted);">تقديرية لو تم بيع المخزون</div>
         </div>
       </div>
       ${unitsHtml}
