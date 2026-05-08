@@ -551,3 +551,29 @@ body.dark .bottom-nav { background: rgba(30, 41, 59, 0.9); }
 #voucher-warning {
   animation: fadeIn 0.3s ease;
 }
+
+/* ========== تنبيه المخزون المنخفض ========== */
+#low-stock-alert {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+#low-stock-alert:hover {
+  background: var(--danger-light);
+  border-color: var(--danger);
+}
+
+/* ========== بطاقات المواد (نمط البطاقات) ========== */
+.item-rich-card {
+  position: relative;
+  transition: all 0.2s ease;
+}
+.item-rich-card:hover .item-delete-btn {
+  opacity: 1 !important;
+}
+.item-delete-btn {
+  transition: opacity 0.2s, background 0.2s;
+}
+.item-delete-btn:hover {
+  background: var(--danger-light) !important;
+  color: var(--danger) !important;
+}

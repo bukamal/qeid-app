@@ -6,13 +6,75 @@ import {
 import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
+// ========== حالة الفلترة حسب المخزون المنخفض ==========
+let filterLowStock = false;
+const LOW_STOCK_THRESHOLD = 5;
+
+// ========== دالة مساعدة لحساب توزيع الكمية على الوحدات الفرعية ==========
+function computeSubUnitQuantities(available, baseUnitName, itemUnits) {
+  if (!itemUnits || itemUnits.length === 0 || available <= 0) return '';
+  // فرز الوحدات تنازليًا حسب معامل التحويل (الأكبر أولاً)
+  const sorted = [...itemUnits].sort((a,b) => (b.conversion_factor||1) - (a.conversion_factor||1));
+  let remaining = available;
+  const parts = [];
+  sorted.forEach(iu => {
+    const factor = parseFloat(iu.conversion_factor) || 1;
+    if (factor <= 0) return;
+    const count = Math.floor(remaining / factor);
+    if (count > 0) {
+      const unitName = iu.unit?.name || iu.unit?.abbreviation || 'وحدة';
+      parts.push(`${unitName}: ${count}`);
+      remaining -= count * factor;
+    }
+  });
+  // الباقي بالوحدة الأساسية
+  if (remaining > 0) {
+    parts.push(`${baseUnitName}: ${remaining}`);
+  }
+  return parts.join('، ');
+}
+
+// ========== عرض المواد بشكل بطاقات غنية ==========
 export function renderFilteredItems() {
   const container = document.getElementById('items-list');
   if (!container) return;
   
   const items = storeGet('items') || [];
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
-  const filtered = items.filter(i => (i.name || '').toLowerCase().includes(q));
+  
+  // الحصول على قيم الفلاتر
+  const categoryFilter = document.getElementById('filter-category')?.value || 'all';
+  const typeFilter = document.getElementById('filter-type')?.value || 'all';
+  
+  let filtered = items.filter(i => (i.name || '').toLowerCase().includes(q));
+  
+  if (categoryFilter !== 'all') {
+    filtered = filtered.filter(i => i.category_id == categoryFilter);
+  }
+  if (typeFilter !== 'all') {
+    filtered = filtered.filter(i => i.item_type === typeFilter);
+  }
+  
+  // فلتر المخزون المنخفض (عند تفعيله)
+  if (filterLowStock) {
+    filtered = filtered.filter(i => (i.available ?? 0) < LOW_STOCK_THRESHOLD);
+  }
+  
+  // تحديث شريط التنبيه
+  const lowStockCount = items.filter(i => (i.available ?? 0) < LOW_STOCK_THRESHOLD).length;
+  const alertBar = document.getElementById('low-stock-alert');
+  if (alertBar) {
+    if (lowStockCount > 0) {
+      alertBar.style.display = 'flex';
+      alertBar.innerHTML = `<span>⚠️ يوجد <strong>${lowStockCount}</strong> مواد منخفضة المخزون (أقل من ${LOW_STOCK_THRESHOLD})</span> <span style="cursor:pointer;text-decoration:underline;">${filterLowStock ? 'إظهار الكل' : 'عرضها'}</span>`;
+      alertBar.onclick = () => {
+        filterLowStock = !filterLowStock;
+        renderFilteredItems();
+      };
+    } else {
+      alertBar.style.display = 'none';
+    }
+  }
   
   if (!filtered.length) {
     return container.innerHTML = `<div class="empty-state">
@@ -24,28 +86,103 @@ export function renderFilteredItems() {
     </div>`;
   }
 
-  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الوحدة الأساسية</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
+  let html = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
   
   filtered.forEach(item => {
     const baseUnitName = item.base_unit?.name || item.base_unit?.abbreviation || 'قطعة';
     const available = item.available ?? 0;
-    html += `<tr onclick="window.showItemDetail(${item.id})" style="cursor:pointer;">
-      <td>
-        <div style="font-weight:700;">${item.name}</div>
-        <div style="color:var(--text-muted);font-size:12px;">${item.category?.name || 'بدون تصنيف'}</div>
-      </td>
-      <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${baseUnitName}</span></td>
-      <td style="font-weight:700;color:${available <= 0 ? 'var(--danger)' : 'var(--success)'}">${available}</td>
-      <td style="font-weight:700;">${formatNumber(item.total_value ?? 0)}</td>
-    </tr>`;
+    const stockStatus = available <= 0 ? 'نفذ' : available < LOW_STOCK_THRESHOLD ? 'منخفض' : 'متوفر';
+    const stockColor = available <= 0 ? 'var(--danger)' : available < LOW_STOCK_THRESHOLD ? 'var(--warning)' : 'var(--success)';
+    const hasSubUnits = (item.item_units || []).length > 0;
+    const categoryName = item.category?.name || 'بدون تصنيف';
+    const sellingPrice = item.selling_price || 0;
+    const costPrice = parseFloat(item.average_cost) || 0;
+    const profitMargin = sellingPrice - costPrice;
+    const subUnitsText = computeSubUnitQuantities(available, baseUnitName, item.item_units || []);
+
+    html += `
+      <div class="card card-hover item-rich-card" data-id="${item.id}" style="cursor:pointer; padding: 16px; position: relative;">
+        <button class="item-delete-btn" data-id="${item.id}" title="حذف المادة" style="position:absolute; top:10px; left:10px; background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:4px; border-radius:6px; opacity:0; transition:all 0.2s;">
+          ${ICONS.trash}
+        </button>
+        
+        <div onclick="window.showItemDetail(${item.id})" style="height:100%;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+            <div style="flex:1;">
+              <div style="font-weight:800; font-size:16px; margin-bottom:2px; color:var(--text);">
+                ${item.name}
+              </div>
+              <div style="font-size:12px; color:var(--text-muted);">${categoryName}</div>
+            </div>
+            ${hasSubUnits ? `<span style="background:var(--primary-light); color:var(--primary); padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600;">📦 وحدة</span>` : ''}
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <div style="color:${stockColor}; font-weight:700; font-size:14px; display:flex; align-items:center; gap:6px;">
+                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${stockColor};"></span>
+                ${available} ${baseUnitName}
+              </div>
+              <div style="font-size:11px; color:${stockColor}; margin-top:2px;">${stockStatus}</div>
+              ${subUnitsText ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${subUnitsText}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:800; color:var(--primary);">${formatNumber(sellingPrice)}</div>
+              <div style="font-size:11px; color:var(--text-muted);">سعر البيع</div>
+            </div>
+          </div>
+          
+          <div style="border-top:1px solid var(--border); padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:12px;">
+              <span style="color:var(--text-muted);">التكلفة:</span> 
+              <span style="font-weight:600;">${formatNumber(costPrice)}</span>
+            </div>
+            <div style="font-size:12px;">
+              <span style="color:var(--text-muted);">الربح/قطعة:</span> 
+              <span style="font-weight:600; color:${profitMargin >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatNumber(profitMargin)}</span>
+            </div>
+          </div>
+          
+          <div style="margin-top:4px; font-size:12px; color:var(--text-muted); text-align:left;">
+            <span>قيمة المخزون (بالتكلفة):</span>
+            <span style="font-weight:700; color:var(--text-secondary);">${formatNumber(item.total_value ?? 0)}</span>
+          </div>
+        </div>
+      </div>`;
   });
   
-  html += '</tbody></table></div>';
+  html += '</div>';
   container.innerHTML = html;
+
+  // ربط أزرار الحذف السريع
+  container.querySelectorAll('.item-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.id;
+      const item = items.find(i => i.id == itemId);
+      if (!item) return;
+      if (await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name}</strong>؟`)) {
+        try {
+          await apiCall(`/items?id=${itemId}`, 'DELETE');
+          showToast('تم الحذف بنجاح', 'success');
+          loadItems();
+        } catch (e) {
+          showToast(e.message, 'error');
+        }
+      }
+    });
+  });
 }
 
+// ========== تحميل المواد وعرض شريط الفلترة والتنبيهات ==========
 export async function loadItems() {
   const container = document.getElementById('tab-content');
+  
+  let categories = storeGet('categories');
+  if (!categories) {
+    try { categories = await apiCall('/definitions?type=category', 'GET'); } catch (e) {}
+  }
+  const catOptions = (categories || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   
   container.innerHTML = `
     <div class="card">
@@ -56,17 +193,35 @@ export async function loadItems() {
         </div>
         <button class="btn btn-primary btn-sm" id="btn-add-item">${ICONS.plus} إضافة</button>
       </div>
+      <div id="low-stock-alert" style="display:none; background:var(--danger-light); border:1px solid var(--danger); border-radius:10px; padding:10px 14px; margin-bottom:12px; align-items:center; justify-content:space-between; font-size:14px; color:var(--danger); cursor:pointer;"></div>
       <div class="form-group" style="margin-bottom:0;">
         <input type="text" class="input" id="items-search" placeholder="البحث في المواد...">
       </div>
+      <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+        <select class="select" id="filter-category" style="width:auto; min-width:120px;">
+          <option value="all">كل التصنيفات</option>
+          ${catOptions}
+        </select>
+        <select class="select" id="filter-type" style="width:auto; min-width:120px;">
+          <option value="all">كل الأنواع</option>
+          <option value="مخزون">مخزون</option>
+          <option value="منتج نهائي">منتج نهائي</option>
+          <option value="خدمة">خدمة</option>
+        </select>
+      </div>
     </div>
     <div id="items-list">
-      ${renderSkeleton('table')}
+      ${renderSkeleton('cards')}
     </div>
   `;
   
   document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
   document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
+  document.getElementById('filter-category').addEventListener('change', renderFilteredItems);
+  document.getElementById('filter-type').addEventListener('change', renderFilteredItems);
+  
+  // إعادة تعيين فلتر المخزون المنخفض عند تحميل الصفحة
+  filterLowStock = false;
   
   try {
     await apiCall('/items', 'GET');
@@ -77,6 +232,7 @@ export async function loadItems() {
   }
 }
 
+// ========== تفاصيل المادة (بدون تغيير) ==========
 export function showItemDetail(itemId) {
   const items = storeGet('items') || [];
   const item = items.find(i => i.id === itemId);
@@ -216,7 +372,6 @@ export function showItemDetail(itemId) {
     }, 220);
   };
 
-  // زر بيع: يفتح فاتورة بيع مع إدراج المادة تلقائيًا
   modal.element.querySelector('#sell-item-btn').onclick = () => {
     modal.close();
     setTimeout(() => {
@@ -224,7 +379,6 @@ export function showItemDetail(itemId) {
     }, 220);
   };
 
-  // زر شراء: يفتح فاتورة شراء مع إدراج المادة تلقائيًا
   modal.element.querySelector('#buy-item-btn').onclick = () => {
     modal.close();
     setTimeout(() => {
@@ -233,6 +387,7 @@ export function showItemDetail(itemId) {
   };
 }
 
+// ========== دوال إضافة وتعديل المواد (بدون تغيير) ==========
 async function showAddItemModal() {
   let categories = storeGet('categories');
   if (!categories) {
