@@ -25,22 +25,23 @@ export function renderFilteredItems() {
     </div>`;
   }
 
-  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الوحدة الأساسية</th><th>متوفر</th><th>القيمة</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الوحدة الأساسية</th><th>متوفر</th><th>القيمة</th><th>سعر البيع</th></tr></thead><tbody>';
 
   filtered.forEach(item => {
     const baseUnitName = item.base_unit?.name || item.base_unit?.abbreviation || 'قطعة';
     const available = item.available ?? 0;
     const safeId = item.id;
-    if (!safeId) return; // تخطي المواد بدون معرف
+    if (safeId == null) return;
 
     html += `<tr onclick="window.showItemDetail(${safeId})" style="cursor:pointer;">
       <td>
         <div style="font-weight:700;">${item.name || 'بدون اسم'}</div>
         <div style="color:var(--text-muted);font-size:12px;">${item.category?.name || 'بدون تصنيف'}</div>
-      </td>
+      </div>
       <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${baseUnitName}</span></td>
-      <td style="font-weight:700;color:${available <= 0 ? 'var(--danger)' : 'var(--success)'}">${available}</td>
-      <td style="font-weight:700;">${formatNumber(item.total_value ?? 0)}</td>
+      <td style="font-weight:700;color:${available <= 0 ? 'var(--danger)' : 'var(--success)'}">${available}</div>
+      <td style="font-weight:700;">${formatNumber(item.total_value ?? 0)}</div>
+      <td style="font-weight:700;color:var(--primary);">${formatNumber(item.selling_price ?? 0)}</div>
     </tr>`;
   });
 
@@ -90,7 +91,7 @@ export async function loadItems() {
 
 // ========== تفاصيل المادة (بيانات حية من الخادم) ==========
 export async function showItemDetail(itemId) {
-  if (itemId === undefined || itemId === null || isNaN(itemId)) {
+  if (itemId == null || isNaN(itemId)) {
     showToast('معرف المادة غير صالح', 'error');
     return;
   }
@@ -118,7 +119,6 @@ export async function showItemDetail(itemId) {
 }
 
 function renderItemDetailModal(item) {
-  // تأكد من وجود معرف
   const itemId = item.id;
   if (!itemId) {
     showToast('لا يمكن عرض المادة: معرف مفقود', 'error');
@@ -150,11 +150,21 @@ function renderItemDetailModal(item) {
     itemUnits.forEach(iu => {
       const unit = iu.unit || {};
       const unitName = unit.name || unit.abbreviation || `وحدة فرعية`;
+      const factor = parseFloat(iu.conversion_factor) || 1;
+      // حساب السعر التقديري للوحدة الفرعية
+      const unitSellPrice = sellPrice * factor;
+      const unitCostPrice = avgCost * factor;
       unitsHtml += `
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
-            <span style="color:var(--primary);font-weight:800;">وحدة فرعية:</span>
-            <span style="font-weight:700;"> ${unitName}</span>
-            <span style="color:var(--text-muted);"> (1 ${unitName} = ${iu.conversion_factor} ${baseUnitName})</span>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="color:var(--primary);font-weight:800;">وحدة فرعية:</span>
+              <span style="font-weight:700;"> ${unitName}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+              1 ${unitName} = ${factor} ${baseUnitName}
+              ${sellPrice > 0 ? ` · سعر بيع تقديري: ${formatNumber(unitSellPrice)}` : ''}
+              ${avgCost > 0 ? ` · تكلفة تقديرية: ${formatNumber(unitCostPrice)}` : ''}
+            </div>
           </div>`;
     });
     unitsHtml += `</div></div>`;
@@ -181,12 +191,19 @@ function renderItemDetailModal(item) {
       const inv = mov.invoice || {};
       const typeLabel = inv.type === 'sale' ? 'بيع' : 'شراء';
       const date = formatDate(inv.date);
+      const factor = parseFloat(mov.conversion_factor) || 1;
+      const qty = mov.quantity;
+      const unitPrice = parseFloat(mov.unit_price) || 0;
+      // عرض السعر الفرعي إذا كانت وحدة فرعية
+      const displayUnitPrice = factor > 1 ? (unitPrice * factor).toFixed(2) : unitPrice.toFixed(2);
+      const unitLabel = mov.unit?.abbreviation || mov.unit?.name || baseUnitName;
+      
       return `<tr>
-        <td>${date}</td>
-        <td>${typeLabel} ${inv.reference || ''}</td>
-        <td>${mov.quantity}</td>
-        <td>${formatNumber(mov.unit_price)}</td>
-        <td style="font-weight:700;">${formatNumber(mov.total)}</td>
+        <td>${date}</div>
+        <td>${typeLabel} ${inv.reference || ''}</div>
+        <td>${qty} ${unitLabel}${factor > 1 ? ` <span style="color:var(--text-muted);font-size:11px;">(= ${(qty * factor).toFixed(2)} ${baseUnitName})</span>` : ''}</div>
+        <td>${formatNumber(displayUnitPrice)}</div>
+        <td style="font-weight:700;">${formatNumber(mov.total)}</div>
       </tr>`;
     }).join('');
 
@@ -223,7 +240,6 @@ function renderItemDetailModal(item) {
     `
   });
 
-  // --- ربط الأحداث ---
   modal.element.querySelector('#edit-item-btn').onclick = () => {
     modal.close();
     setTimeout(() => showEditItemModal(itemId), 220);
@@ -247,17 +263,17 @@ function renderItemDetailModal(item) {
   modal.element.querySelector('#sell-item-btn').onclick = async () => {
     modal.close();
     const { showInvoiceModal } = await import('./invoices.js');
-    showInvoiceModal('sale');
+    showInvoiceModal('sale', { prefillItemId: itemId });
   };
 
   modal.element.querySelector('#buy-item-btn').onclick = async () => {
     modal.close();
     const { showInvoiceModal } = await import('./invoices.js');
-    showInvoiceModal('purchase');
+    showInvoiceModal('purchase', { prefillItemId: itemId });
   };
 }
 
-// ========== إضافة مادة جديدة (بدون تغيير عن النسخة السابقة) ==========
+// ========== إضافة مادة جديدة ==========
 async function showAddItemModal() {
   let categories = storeGet('categories');
   if (!categories) {
@@ -271,13 +287,13 @@ async function showAddItemModal() {
   const catOpts = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
   const body = `
-    <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
+    <div class="form-group"><label class="form-label">اسم المادة *</label><input class="input" id="fm-name" type="text" placeholder="مثال: حبر طابعة"></div>
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون">مخزون</option><option value="منتج نهائي">منتج نهائي</option><option value="خدمة">خدمة</option></select></div>
 
     <div class="form-group">
-      <label class="form-label">الوحدة الأساسية</label>
+      <label class="form-label">الوحدة الأساسية *</label>
       <div style="display:flex;gap:8px;align-items:center;">
         <input class="input" id="fm-base_unit_name" type="text" placeholder="مثال: قطعة" value="قطعة" style="flex:1;">
         <button class="btn btn-secondary" id="btn-toggle-units" type="button" style="width:auto;padding:8px 14px;" title="إضافة وحدات فرعية">${ICONS.plus}</button>
@@ -289,7 +305,7 @@ async function showAddItemModal() {
         <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
         <div style="display:flex;gap:8px;align-items:flex-end;">
           <div style="flex:1;"><input class="input" id="fm-unit2-name" type="text" placeholder="اسم الوحدة مثال: كرتونة"></div>
-          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" style="width:100%;"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل *</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" style="width:100%;"></div>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">وحدة فرعية 1</span> = <strong class="factor-display">؟</strong> <span class="base-unit-name">قطعة</span></div>
       </div>
@@ -298,7 +314,7 @@ async function showAddItemModal() {
         <label class="form-label">الوحدة الفرعية 2 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
         <div style="display:flex;gap:8px;align-items:flex-end;">
           <div style="flex:1;"><input class="input" id="fm-unit3-name" type="text" placeholder="اسم الوحدة مثال: طرد"></div>
-          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" style="width:100%;"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل *</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" style="width:100%;"></div>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">وحدة فرعية 2</span> = <strong class="factor-display">؟</strong> <span class="base-unit-name">قطعة</span></div>
       </div>
@@ -440,10 +456,12 @@ async function showAddItemModal() {
 
       let unit2Id = null, unit3Id = null;
       if (u2Name) {
+        if (!u2Factor || u2Factor <= 0) throw new Error('عامل التحويل للوحدة الفرعية 1 يجب أن يكون أكبر من صفر');
         unit2Id = await getOrCreateUnit(u2Name);
         if (!unit2Id) throw new Error('فشل إنشاء الوحدة الفرعية 1');
       }
       if (u3Name) {
+        if (!u3Factor || u3Factor <= 0) throw new Error('عامل التحويل للوحدة الفرعية 2 يجب أن يكون أكبر من صفر');
         unit3Id = await getOrCreateUnit(u3Name);
         if (!unit3Id) throw new Error('فشل إنشاء الوحدة الفرعية 2');
       }
@@ -518,13 +536,13 @@ async function showEditItemModal(itemId) {
   const hasExtraUnits = !!(u1Name || u2Name);
 
   const body = `
-    <div class="form-group"><label class="form-label">اسم المادة</label><input class="input" id="fm-name" type="text" value="${it.name || ''}"></div>
+    <div class="form-group"><label class="form-label">اسم المادة *</label><input class="input" id="fm-name" type="text" value="${it.name || ''}"></div>
     <div class="form-group"><label class="form-label">التصنيف</label><select class="select" id="fm-category_id"><option value="">بدون تصنيف</option>${catOpts}</select></div>
     <div class="form-group"><label class="form-label" style="font-size:12px;color:var(--text-muted);">أو أضف تصنيف جديد</label><div style="display:flex;gap:8px;"><input class="input" id="fm-new-category" type="text" placeholder="اسم التصنيف..." style="flex:1;"><button class="btn btn-secondary" id="btn-quick-cat" type="button" style="width:auto;padding:0 14px;">${ICONS.plus}</button></div></div>
     <div class="form-group"><label class="form-label">نوع المادة</label><select class="select" id="fm-item_type"><option value="مخزون" ${it.item_type === 'مخزون' ? 'selected' : ''}>مخزون</option><option value="منتج نهائي" ${it.item_type === 'منتج نهائي' ? 'selected' : ''}>منتج نهائي</option><option value="خدمة" ${it.item_type === 'خدمة' ? 'selected' : ''}>خدمة</option></select></div>
 
     <div class="form-group">
-      <label class="form-label">الوحدة الأساسية</label>
+      <label class="form-label">الوحدة الأساسية *</label>
       <div style="display:flex;gap:8px;align-items:center;">
         <input class="input" id="fm-base_unit_name" type="text" value="${baseUnitName}" style="flex:1;">
         <button class="btn btn-secondary" id="btn-toggle-units" type="button" style="width:auto;padding:8px 14px;" title="إضافة وحدات فرعية">${hasExtraUnits ? ICONS.x : ICONS.plus}</button>
@@ -536,7 +554,7 @@ async function showEditItemModal(itemId) {
         <label class="form-label">الوحدة الفرعية 1 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
         <div style="display:flex;gap:8px;align-items:flex-end;">
           <div style="flex:1;"><input class="input" id="fm-unit2-name" type="text" placeholder="اسم الوحدة مثال: كرتونة" value="${u1Name}"></div>
-          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" value="${u1Factor}" style="width:100%;"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل *</label><input class="input" id="fm-unit2-factor" type="number" step="any" min="1" placeholder="مثال: 12" value="${u1Factor}" style="width:100%;"></div>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">${u1Name || 'وحدة فرعية 1'}</span> = <strong class="factor-display">${u1Factor || '؟'}</strong> <span class="base-unit-name">${baseUnitName}</span></div>
       </div>
@@ -545,14 +563,14 @@ async function showEditItemModal(itemId) {
         <label class="form-label">الوحدة الفرعية 2 <span style="color:var(--text-muted);font-size:12px;">(تستند على الوحدة الأساسية)</span></label>
         <div style="display:flex;gap:8px;align-items:flex-end;">
           <div style="flex:1;"><input class="input" id="fm-unit3-name" type="text" placeholder="اسم الوحدة مثال: طرد" value="${u2Name}"></div>
-          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" value="${u2Factor}" style="width:100%;"></div>
+          <div style="width:120px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">عامل التحويل *</label><input class="input" id="fm-unit3-factor" type="number" step="any" min="1" placeholder="مثال: 10" value="${u2Factor}" style="width:100%;"></div>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">1 <span class="sub-unit-name">${u2Name || 'وحدة فرعية 2'}</span> = <strong class="factor-display">${u2Factor || '؟'}</strong> <span class="base-unit-name">${baseUnitName}</span></div>
       </div>
     </div>
 
     <div class="form-group" style="background:var(--bg);border-radius:12px;padding:12px;border:1px solid var(--border);">
-      <label class="form-label">الكمية الافتتاحية</label>
+      <label class="form-label">الكمية الحالية</label>
       <div style="display:flex;gap:8px;align-items:flex-end;">
         <div style="flex:1;"><input class="input" id="fm-quantity" type="number" step="any" value="${it.quantity || 0}"></div>
         <div style="width:150px;"><select class="select" id="fm-qty-unit"><option value="base">الوحدة الأساسية</option><option value="u2">الوحدة الفرعية 1</option><option value="u3">الوحدة الفرعية 2</option></select></div>
@@ -687,10 +705,12 @@ async function showEditItemModal(itemId) {
 
       let unit2Id = null, unit3Id = null;
       if (u2Name) {
+        if (!u2Factor || u2Factor <= 0) throw new Error('عامل التحويل للوحدة الفرعية 1 يجب أن يكون أكبر من صفر');
         unit2Id = await getOrCreateUnit(u2Name);
         if (!unit2Id) throw new Error('فشل إنشاء الوحدة الفرعية 1');
       }
       if (u3Name) {
+        if (!u3Factor || u3Factor <= 0) throw new Error('عامل التحويل للوحدة الفرعية 2 يجب أن يكون أكبر من صفر');
         unit3Id = await getOrCreateUnit(u3Name);
         if (!unit3Id) throw new Error('فشل إنشاء الوحدة الفرعية 2');
       }
@@ -715,6 +735,8 @@ async function showEditItemModal(itemId) {
         base_unit_id: baseUnitId,
         item_units: itemUnits
       };
+
+      if (!values.name) throw new Error('اسم المادة مطلوب');
 
       await apiCall('/items', 'PUT', { id: itemId, ...values });
       modal.close();
