@@ -1,12 +1,14 @@
-// api/reports.js
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const allowed = await rateLimitMiddleware(req, res, 'default');
+  if (!allowed) return;
 
   try {
     const initData = req.query.initData;
@@ -237,7 +239,6 @@ module.exports = async (req, res) => {
       const { data: payments } = await supabase.from('payments').select('amount, payment_date, customer_id, supplier_id').eq('user_id', userId);
       const { data: expenses } = await supabase.from('expenses').select('amount, expense_date').eq('user_id', userId);
 
-      // تجميع تكلفة المبيعات من cost_amount
       const saleInvoices = invoices?.filter(inv => inv.type === 'sale') || [];
       let costByInvoice = {};
       if (saleInvoices.length > 0) {
@@ -291,7 +292,6 @@ module.exports = async (req, res) => {
         labels: months,
         sales: months.map(m => monthly[m].sales),
         purchases: months.map(m => monthly[m].purchases),
-        // صافي الربح الشهري المحسَّن = المبيعات - تكلفة المبيعات - المصاريف
         net_profit: months.map(m => monthly[m].sales - monthly[m].cost_of_sales - monthly[m].expenses),
         payments_in: months.map(m => monthly[m].payments_in),
         payments_out: months.map(m => monthly[m].payments_out),

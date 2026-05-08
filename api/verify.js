@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, verifyTelegramData } = require('../lib/auth');
+const { setCorsHeaders, verifyTelegramData, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -7,6 +7,9 @@ module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const allowed = await rateLimitMiddleware(req, res, 'verify');
+  if (!allowed) return;
 
   try {
     const { initData } = req.body;

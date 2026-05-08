@@ -1,11 +1,15 @@
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // ✅ Rate Limiting
+  const allowed = await rateLimitMiddleware(req, res, 'default');
+  if (!allowed) return;
 
   try {
     const initData = req.query.initData;
@@ -89,7 +93,7 @@ module.exports = async (req, res) => {
     });
     const dailyCashBalance = (todayReceived + todayCashSales) - (todayPaid + todayCashPurchases);
 
-    // --- بيانات شهرية محسّنة باستخدام تكلفة المبيعات الفعلية ---
+    // --- تجميع الأرباح الشهرية باستخدام التكلفة الفعلية ---
     const { data: allInvoicesForMonthly } = await supabase
       .from('invoices')
       .select('id, type, total, date')
@@ -105,7 +109,7 @@ module.exports = async (req, res) => {
       .select('amount, expense_date')
       .eq('user_id', userId);
 
-    // للحصول على تكلفة المبيعات الشهرية
+    // حساب تكلفة المبيعات لكل فاتورة بيع على حدة
     const saleIdsForMonthly = allInvoicesForMonthly?.filter(inv => inv.type === 'sale').map(inv => inv.id) || [];
     let costByInvoice = {};
     if (saleIdsForMonthly.length > 0) {
@@ -157,7 +161,6 @@ module.exports = async (req, res) => {
 
     // --- الأرباح اليومية ---
     const dailyProfitMap = {};
-    // نعيد استخدام بيانات الفواتير
     allInvoicesForMonthly?.forEach(inv => {
       if (!inv.date) return;
       const day = inv.date;

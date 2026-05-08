@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -42,7 +42,6 @@ async function reversePurchaseFromItem(itemId, userId, qtyPurchased, unitCost, s
   const oldQty = parseFloat(item.quantity) || 0;
   const oldAvgCost = parseFloat(item.average_cost) || 0;
 
-  // فحص إضافي: لا يمكن عكس شراء كمية أكبر من الموجودة
   if (qtyPurchased > oldQty) {
     throw new Error(`لا يمكن عكس شراء ${qtyPurchased} وحدة من المادة ${itemId} لأن المخزون الحالي هو ${oldQty}`);
   }
@@ -164,7 +163,6 @@ async function buildLineData(line, invoiceId = null) {
   return obj;
 }
 
-// ========== فحص المخزون قبل البيع (للاستخدام في POST/PUT) ==========
 async function checkStockAvailability(lines, userId, supabase) {
   const itemIds = [...new Set(lines.filter(l => l.item_id).map(l => l.item_id))];
   if (itemIds.length === 0) return;
@@ -197,6 +195,10 @@ module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // ✅ Rate Limiting Check
+  const allowed = await rateLimitMiddleware(req, res, 'invoices');
+  if (!allowed) return;
+
   try {
     let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
     const userId = await getUserId(initData);
@@ -224,7 +226,6 @@ module.exports = async (req, res) => {
       if (!type || !['sale', 'purchase'].includes(type)) return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
       if (!lines || !Array.isArray(lines) || lines.length === 0) return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
 
-      // فحص المخزون للبيع قبل أي إجراء
       if (type === 'sale') {
         await checkStockAvailability(lines, userId, supabase);
       }
@@ -326,12 +327,10 @@ module.exports = async (req, res) => {
 
       const newType = type || oldInvoice.type;
 
-      // فحص المخزون للبيع الجديد قبل أي تغيير
       if (newType === 'sale') {
         await checkStockAvailability(lines || [], userId, supabase);
       }
 
-      // عكس تأثير الفاتورة القديمة على المخزون
       for (const oldLine of oldInvoice.invoice_lines) {
         if (oldLine.item_id) {
           const baseQty = oldLine.quantity_in_base || (oldLine.quantity * (await resolveConversionFactor(oldLine.item_id, oldLine.unit_id, oldLine.conversion_factor)));

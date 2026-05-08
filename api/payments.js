@@ -1,9 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// دوال الأرصدة
 async function updateCustomerBalance(customerId, userId, change) {
   const { data: cur } = await supabase.from('customers').select('balance').eq('id', customerId).eq('user_id', userId).single();
   if (cur) {
@@ -20,25 +19,22 @@ async function updateSupplierBalance(supplierId, userId, change) {
   }
 }
 
-// ======================================================================
-//  معالج رئيسي يدمج الدفعات العادية والسندات
-// ======================================================================
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const allowed = await rateLimitMiddleware(req, res, 'payments');
+  if (!allowed) return;
 
   try {
     let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
     const userId = await getUserId(initData);
     
-    // هل هو طلب سندات؟
     const isVoucherRequest = (req.method === 'GET' || req.method === 'DELETE')
       ? req.query.voucher === '1'
       : req.body?.voucher === true;
 
-    // ======================== الجزء الخاص بالسندات ============================
     if (isVoucherRequest) {
-      // ---------- GET vouchers ----------
       if (req.method === 'GET') {
         const { data, error } = await supabase
           .from('vouchers')
@@ -49,7 +45,6 @@ module.exports = async (req, res) => {
         return res.json(data);
       }
 
-      // ---------- POST voucher ----------
       if (req.method === 'POST') {
         const { type, date, amount, description, reference, customer_id, supplier_id, invoice_id } = req.body;
         if (!type || !['receipt', 'payment', 'expense'].includes(type))
@@ -113,7 +108,6 @@ module.exports = async (req, res) => {
         return res.json(voucher);
       }
 
-      // ---------- DELETE voucher ----------
       if (req.method === 'DELETE') {
         const voucherId = req.query.id;
         if (!voucherId) return res.status(400).json({ error: 'معرف السند مطلوب' });
@@ -159,7 +153,6 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // ======================== الجزء الخاص بالدفعات العادية ========================
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('payments')

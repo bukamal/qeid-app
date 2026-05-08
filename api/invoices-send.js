@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const https = require('https');
 const FormData = require('form-data');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -33,6 +33,10 @@ module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // ✅ Rate Limiting (أكثر صرامة للإرسال)
+  const allowed = await rateLimitMiddleware(req, res, 'invoices-send');
+  if (!allowed) return;
 
   try {
     const { invoiceId, initData } = req.body;
@@ -66,7 +70,7 @@ module.exports = async (req, res) => {
     const timeStr = formatTimeEn(now);
     const dateStr = formatDateEn(invoice.date);
 
-    // إنشاء HTML للفاتورة
+    // إنشاء HTML للفاتورة (نفس المحتوى السابق تماماً)
     const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>

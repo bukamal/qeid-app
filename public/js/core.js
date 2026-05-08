@@ -140,6 +140,14 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
 
     const res = await fetch(url, options);
     clearTimeout(timeout);
+    
+    // معالجة Rate Limit (429)
+    if (res.status === 429) {
+      const retryAfter = res.headers.get('Retry-After') || res.headers.get('X-RateLimit-Retry-After') || 5;
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `تم تجاوز الحد المسموح. حاول بعد ${retryAfter} ثانية.`);
+    }
+    
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
 
@@ -154,7 +162,7 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
 
     return json;
   } catch (err) {
-    if (retries > 0 && err.name !== 'AbortError') {
+    if (retries > 0 && err.name !== 'AbortError' && !err.message.includes('429')) {
       return apiCall(endpoint, method, body, retries - 1);
     }
     let message = 'حدث خطأ أثناء الاتصال بالخادم';

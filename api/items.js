@@ -1,11 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const allowed = await rateLimitMiddleware(req, res, 'items');
+  if (!allowed) return;
 
   try {
     let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
@@ -19,7 +22,6 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
-      // جلب حركات الفواتير لحساب إجمالي المشتريات والمبيعات للعرض
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
         .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type)')

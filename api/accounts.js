@@ -1,11 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, getUserId } = require('../lib/auth');
+const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const allowed = await rateLimitMiddleware(req, res, 'default');
+  if (!allowed) return;
 
   try {
     const initData = req.method === 'GET' ? req.query.initData : req.body?.initData;
