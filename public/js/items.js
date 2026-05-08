@@ -8,10 +8,12 @@ import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
 // ========== القائمة الرئيسية ==========
 export function renderFilteredItems() {
+  const container = document.getElementById('items-list');
+  if (!container) return;
+
   const items = storeGet('items') || [];
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
   const filtered = items.filter(i => (i.name || '').toLowerCase().includes(q));
-  const container = document.getElementById('items-list');
 
   if (!filtered.length) {
     return container.innerHTML = `<div class="empty-state">
@@ -28,9 +30,10 @@ export function renderFilteredItems() {
   filtered.forEach(item => {
     const baseUnitName = item.base_unit?.name || item.base_unit?.abbreviation || 'قطعة';
     const available = item.available ?? 0;
-    html += `<tr onclick="window.showItemDetail(${item.id})" style="cursor:pointer;">
+    const safeId = item.id ?? 0;
+    html += `<tr onclick="window.showItemDetail(${safeId})" style="cursor:pointer;">
       <td>
-        <div style="font-weight:700;">${item.name}</div>
+        <div style="font-weight:700;">${item.name || 'بدون اسم'}</div>
         <div style="color:var(--text-muted);font-size:12px;">${item.category?.name || 'بدون تصنيف'}</div>
       </td>
       <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${baseUnitName}</span></td>
@@ -45,6 +48,7 @@ export function renderFilteredItems() {
 
 export async function loadItems() {
   const container = document.getElementById('tab-content');
+  if (!container) return;
 
   container.innerHTML = `
     <div class="card">
@@ -64,20 +68,31 @@ export async function loadItems() {
     </div>
   `;
 
-  document.getElementById('btn-add-item').addEventListener('click', showAddItemModal);
-  document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
+  const addBtn = document.getElementById('btn-add-item');
+  if (addBtn) addBtn.addEventListener('click', showAddItemModal);
+
+  const searchInput = document.getElementById('items-search');
+  if (searchInput) searchInput.addEventListener('input', debounce(renderFilteredItems, 200));
 
   try {
     await apiCall('/items', 'GET');
     renderFilteredItems();
   } catch (err) {
-    document.getElementById('items-list').innerHTML = `<div class="empty-state"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>عذراً، حدث خطأ</h3><p>${err.message}</p></div>`;
+    const listEl = document.getElementById('items-list');
+    if (listEl) {
+      listEl.innerHTML = `<div class="empty-state"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>عذراً، حدث خطأ</h3><p>${err.message}</p></div>`;
+    }
     showToast(err.message, 'error');
   }
 }
 
-// ========== تفاصيل المادة (نسخة حية بدون ذاكرة مؤقتة) ==========
+// ========== تفاصيل المادة (بيانات حية من الخادم) ==========
 export async function showItemDetail(itemId) {
+  if (itemId === undefined || itemId === null) {
+    showToast('معرف المادة غير صالح', 'error');
+    return;
+  }
+
   // نافذة تحميل مؤقتة
   const loadingModal = openModal({
     title: 'جاري التحميل',
@@ -89,13 +104,8 @@ export async function showItemDetail(itemId) {
   });
 
   try {
-    // جلب البيانات الحية من الخادم
     const item = await apiCall(`/items?id=${itemId}&detail=1`, 'GET');
-
-    // إغلاق التحميل
     loadingModal.close();
-
-    // بناء النافذة الحقيقية
     renderItemDetailModal(item);
   } catch (err) {
     loadingModal.close();
@@ -103,11 +113,17 @@ export async function showItemDetail(itemId) {
   }
 }
 
-// دالة منفصلة لعرض النافذة بعد وصول البيانات
 function renderItemDetailModal(item) {
+  // قيم افتراضية آمنة
   const baseUnit = item.base_unit || {};
   const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
   const itemUnits = item.item_units || [];
+  const available = item.available || 0;
+  const avgCost = parseFloat(item.average_cost) || 0;
+  const sellPrice = parseFloat(item.selling_price) || 0;
+  const costValue = available * avgCost;
+  const sellingValue = available * sellPrice;
+  const expectedProfit = sellingValue - costValue;
 
   // --- نظام الوحدات ---
   let unitsHtml = '';
@@ -120,7 +136,7 @@ function renderItemDetailModal(item) {
             <span style="color:var(--success);font-weight:800;">الوحدة الأساسية:</span>
             <span style="font-weight:700;"> ${baseUnitName}</span>
           </div>`;
-
+    
     itemUnits.forEach(iu => {
       const unit = iu.unit || {};
       const unitName = unit.name || unit.abbreviation || `وحدة فرعية`;
@@ -135,25 +151,20 @@ function renderItemDetailModal(item) {
   }
 
   // --- البطاقات الإحصائية ---
-  const available = item.available || 0;
-  const costValue = available * (parseFloat(item.average_cost) || 0);
-  const sellingValue = available * (parseFloat(item.selling_price) || 0);
-  const expectedProfit = sellingValue - costValue;
-
   const statsHTML = `
     <div class="stats-grid" style="margin-bottom:16px;">
-      <div class="stat-card"><div class="stat-label">الكمية المشتراة</div><div class="stat-value" style="font-size:16px;">${item.purchase_qty} ${baseUnitName}</div></div>
-      <div class="stat-card"><div class="stat-label">الكمية المباعة</div><div class="stat-value" style="font-size:16px;">${item.sale_qty} ${baseUnitName}</div></div>
+      <div class="stat-card"><div class="stat-label">الكمية المشتراة</div><div class="stat-value" style="font-size:16px;">${item.purchase_qty ?? 0} ${baseUnitName}</div></div>
+      <div class="stat-card"><div class="stat-label">الكمية المباعة</div><div class="stat-value" style="font-size:16px;">${item.sale_qty ?? 0} ${baseUnitName}</div></div>
       <div class="stat-card" style="border-color:var(--primary);"><div class="stat-label">المتوفرة</div><div class="stat-value text-primary" style="font-size:20px;">${available} ${baseUnitName}</div></div>
-      <div class="stat-card"><div class="stat-label">متوسط التكلفة</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.average_cost)} / ${baseUnitName}</div></div>
+      <div class="stat-card"><div class="stat-label">متوسط التكلفة</div><div class="stat-value" style="font-size:16px;">${formatNumber(avgCost)} / ${baseUnitName}</div></div>
       <div class="stat-card"><div class="stat-label">آخر سعر شراء</div><div class="stat-value" style="font-size:16px;">${item.last_purchase_price ? formatNumber(item.last_purchase_price) + ' / ' + baseUnitName : 'غير متوفر'}</div></div>
-      <div class="stat-card"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price)} / ${baseUnitName}</div></div>
+      <div class="stat-card"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(sellPrice)} / ${baseUnitName}</div></div>
       <div class="stat-card" style="background: var(--warning-light);"><div class="stat-label">💰 قيمة المخزون (بالتكلفة)</div><div class="stat-value" style="font-size:16px;">${formatNumber(costValue)}</div></div>
       <div class="stat-card" style="background: var(--success-light);"><div class="stat-label">💵 قيمة المخزون (بسعر البيع)</div><div class="stat-value" style="font-size:16px;">${formatNumber(sellingValue)}</div></div>
       <div class="stat-card" style="background: ${expectedProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)'};"><div class="stat-label">📈 الربح المتوقع</div><div class="stat-value" style="font-size:16px;">${formatNumber(expectedProfit)}</div></div>
     </div>`;
 
-  // --- آخر 5 حركات (سجل سريع) ---
+  // --- آخر 5 حركات ---
   let movementsHtml = '';
   if (item.last_movements && item.last_movements.length > 0) {
     const rows = item.last_movements.map(mov => {
@@ -181,7 +192,7 @@ function renderItemDetailModal(item) {
       </div>`;
   }
 
-  // --- معلومات أخرى ---
+  // --- معلومات التصنيف والنوع ---
   const infoHTML = `
     <div style="margin-top:16px;">
       <div class="form-label">التصنيف</div>
@@ -190,9 +201,9 @@ function renderItemDetailModal(item) {
       <p style="margin-bottom:12px;">${item.item_type || 'مخزون'}</p>
     </div>`;
 
-  // --- بناء النافذة ---
+  // --- النافذة ---
   const modal = openModal({
-    title: item.name,
+    title: item.name || 'المادة',
     bodyHTML: statsHTML + unitsHtml + movementsHtml + infoHTML,
     footerHTML: `
       <button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button>
@@ -205,15 +216,15 @@ function renderItemDetailModal(item) {
   // --- ربط الأحداث ---
   modal.element.querySelector('#edit-item-btn').onclick = () => {
     modal.close();
-    setTimeout(() => showEditItemModal(itemId), 220);
+    setTimeout(() => showEditItemModal(item.id), 220);
   };
 
   modal.element.querySelector('#delete-item-btn').onclick = () => {
     modal.close();
     setTimeout(async () => {
-      if (await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name}</strong>؟`)) {
+      if (await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name || 'المادة'}</strong>؟`)) {
         try {
-          await apiCall(`/items?id=${itemId}`, 'DELETE');
+          await apiCall(`/items?id=${item.id}`, 'DELETE');
           showToast('تم الحذف بنجاح', 'success');
           loadItems();
         } catch (e) {
@@ -223,7 +234,6 @@ function renderItemDetailModal(item) {
     }, 220);
   };
 
-  // أزرار البيع والشراء السريعة
   modal.element.querySelector('#sell-item-btn').onclick = async () => {
     modal.close();
     const { showInvoiceModal } = await import('./invoices.js');
@@ -237,7 +247,7 @@ function renderItemDetailModal(item) {
   };
 }
 
-// ========== إضافة مادة جديدة (الكود الأصلي الكامل) ==========
+// ========== إضافة مادة جديدة ==========
 async function showAddItemModal() {
   let categories = storeGet('categories');
   if (!categories) {
@@ -451,7 +461,9 @@ async function showAddItemModal() {
 
       if (!values.name) throw new Error('اسم المادة مطلوب');
       const currentItems = storeGet('items') || [];
-      if (currentItems.some(i => i.name.toLowerCase() === values.name.toLowerCase())) throw new Error('توجد مادة بنفس الاسم');
+      if (currentItems.some(i => i.name.toLowerCase() === values.name.toLowerCase())) {
+        throw new Error('توجد مادة بنفس الاسم');
+      }
 
       await apiCall('/items', 'POST', values);
       modal.close();
@@ -465,7 +477,7 @@ async function showAddItemModal() {
   };
 }
 
-// ========== تعديل مادة (الكود الأصلي الكامل) ==========
+// ========== تعديل مادة ==========
 async function showEditItemModal(itemId) {
   const items = storeGet('items') || [];
   let categories = storeGet('categories');
