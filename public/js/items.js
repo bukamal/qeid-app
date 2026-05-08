@@ -7,10 +7,12 @@ import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
 export function renderFilteredItems() {
+  const container = document.getElementById('items-list');
+  if (!container) return;
+  
   const items = storeGet('items') || [];
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
   const filtered = items.filter(i => (i.name || '').toLowerCase().includes(q));
-  const container = document.getElementById('items-list');
   
   if (!filtered.length) {
     return container.innerHTML = `<div class="empty-state">

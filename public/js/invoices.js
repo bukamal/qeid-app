@@ -425,6 +425,9 @@ export async function loadInvoices() {
 
 // ========== عرض الفواتير بعد التصفية ==========
 export function renderFilteredInvoices() {
+  const container = document.getElementById('invoices-list');
+  if (!container) return;
+
   const invoices = storeGet('invoices') || [];
   const filt = document.querySelector('.filter-pill.active')?.dataset.filter || 'all';
   const q = (document.getElementById('invoice-search')?.value || '').trim().toLowerCase();
@@ -437,7 +440,6 @@ export function renderFilteredInvoices() {
     String(inv.total).includes(q)
   );
 
-  const container = document.getElementById('invoices-list');
   if (!data.length) return container.innerHTML = `<div class="empty-state"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>لا توجد فواتير مطابقة</h3><p>جرب تغيير معايير البحث</p></div>`;
 
   let html = '';
