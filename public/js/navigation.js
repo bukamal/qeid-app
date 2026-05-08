@@ -1,7 +1,6 @@
 // public/js/navigation.js
 import { ICONS, unlockScroll } from './core.js';
 
-// تتبع التبويب النشط
 export let currentTab = 'dashboard';
 
 export const tabsConfig = {
@@ -13,10 +12,9 @@ export const tabsConfig = {
   suppliers: { title: 'الموردين', subtitle: 'قائمة الموردين والذمم الدائنة', icon: ICONS.factory },
   categories: { title: 'التصنيفات', subtitle: 'تصنيفات المواد', icon: ICONS.tag },
   vouchers: { title: 'سندات', subtitle: 'سندات القبض والصرف والمصاريف', icon: ICONS.fileText },
-  payments: { title: 'الدفعات', subtitle: 'سجل المقبوضات والمدفوعات', icon: ICONS.wallet },
-  expenses: { title: 'المصاريف', subtitle: 'تتبع المصاريف التشغيلية', icon: ICONS.dollar },
   invoices: { title: 'الفواتير', subtitle: 'سجل الفواتير والحركات', icon: ICONS.fileText },
   reports: { title: 'التقارير', subtitle: 'التقارير المالية والإحصائيات', icon: ICONS.chart }
+  // تم إخفاء 'payments' و 'expenses' لتفادي الازدواجية مع السندات
 };
 
 export function setActiveTab(tabName) {
@@ -48,8 +46,6 @@ export function navigateTo(tabName) {
       case 'suppliers': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/suppliers')); break; }
       case 'categories': { const m = await import('./sections.js'); m.loadGenericSection(m.getSectionOptions('/definitions?type=category')); break; }
       case 'vouchers': { const m = await import('./vouchers.js'); m.loadVouchers(); break; }
-      case 'payments': { const m = await import('./payments.js'); m.loadPayments(); break; }
-      case 'expenses': { const m = await import('./expenses.js'); m.loadExpenses(); break; }
       case 'invoices': { const m = await import('./invoices.js'); m.loadInvoices(); break; }
       case 'reports': { const m = await import('./reports.js'); m.loadReports(); break; }
       case 'more': showMoreMenu(); break;
@@ -71,8 +67,10 @@ export function initNavigation() {
   const sidebarNav = document.getElementById('sidebar-nav');
   const sheetGrid = document.getElementById('sheet-grid');
 
-  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','vouchers','payments','expenses','invoices','reports'];
-  const moreTabs = ['purchase-invoice','customers','suppliers','categories','vouchers','payments','expenses','reports'];
+  // القائمة الرئيسية (الشريط الجانبي) بدون payments أو expenses
+  const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','vouchers','invoices','reports'];
+  // قائمة "المزيد" للجوال تحتوي فقط على ما هو غير ظاهر في الشريط السفلي
+  const moreTabs = ['purchase-invoice','customers','suppliers','categories','vouchers','reports'];
 
   mainTabs.forEach(key => {
     const cfg = tabsConfig[key];
