@@ -270,7 +270,7 @@ module.exports = async (req, res) => {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
           if (type === 'purchase') {
-            const unitCost = line.unit_price / (line.conversion_factor || (await resolveConversionFactor(line.item_id, line.unit_id, 1)));
+            const unitCost = parseFloat(line.unit_price) || 0;
             await applyPurchaseToItem(line.item_id, userId, baseQty, unitCost, supabase);
             await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', line.id);
             processedLines.push({ ...line, unit_cost: unitCost });
@@ -372,10 +372,10 @@ module.exports = async (req, res) => {
         if (newLine.item_id) {
           const baseQty = newLine.quantity_in_base || (newLine.quantity * (await resolveConversionFactor(newLine.item_id, newLine.unit_id, newLine.conversion_factor)));
           if (newType === 'purchase') {
-            const unitCost = newLine.unit_price / (newLine.conversion_factor || 1);
-            await applyPurchaseToItem(newLine.item_id, userId, baseQty, unitCost, supabase);
-            await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', newLine.id);
-            newLine.unit_cost = unitCost;
+          const unitCost = parseFloat(newLine.unit_price) || 0;
+          await applyPurchaseToItem(newLine.item_id, userId, baseQty, unitCost, supabase);
+          await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', newLine.id);
+          newLine.unit_cost = unitCost;
           } else if (newType === 'sale') {
             const costAmount = await applySaleToItem(newLine.item_id, userId, baseQty, supabase);
             await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', newLine.id);
