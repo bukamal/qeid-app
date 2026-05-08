@@ -41,7 +41,6 @@ export async function showInvoiceModal(type, options = {}) {
     const mode = options.mode || 'create';
     const invData = options.invoiceData || {};
     const invLines = invData.invoice_lines || [];
-    const prefillItemId = options.prefillItemId || null;
 
     let linesHtml = '';
     if (mode === 'edit' && invLines.length) {
@@ -55,16 +54,6 @@ export async function showInvoiceModal(type, options = {}) {
           conversion_factor: line.conversion_factor
         }, isSale);
       });
-    } else if (prefillItemId) {
-      // إذا كان هناك مادة مسبقة التحديد (من شاشة تفاصيل المادة)
-      linesHtml = generateLineRowHtml({
-        item_id: prefillItemId,
-        quantity: 1,
-        unit_price: '',
-        total: '',
-        unit_id: null,
-        conversion_factor: 1
-      }, isSale);
     } else {
       linesHtml = generateLineRowHtml(null, isSale);
     }
@@ -135,30 +124,28 @@ export async function showInvoiceModal(type, options = {}) {
       return opts;
     }
 
-    function autoFill(selectEl, priceEl, unitSelectEl, skipPrice = false) {
+    function autoFill(selectEl, priceEl, unitSelectEl) {
       const itemId = selectEl.value;
       if (!itemId) {
-        if (!skipPrice) priceEl.value = '';
+        priceEl.value = '';
         if (unitSelectEl) { unitSelectEl.innerHTML = '<option value="">اختر مادة</option>'; unitSelectEl.style.display = 'none'; }
         return;
       }
       const itemsList = storeGet('items') || [];
       const item = itemsList.find(i => i.id == itemId);
       if (item) {
-        if (!skipPrice) {
-          const basePrice = isSale ? (item.selling_price || 0) : (item.purchase_price || 0);
-          priceEl.value = basePrice;
-        }
+        const basePrice = isSale ? (item.selling_price || 0) : (item.purchase_price || 0);
+        priceEl.value = basePrice;
         if (unitSelectEl) {
           unitSelectEl.innerHTML = getUnitOptions(item);
           unitSelectEl.style.display = 'block';
-          unitSelectEl.dataset.basePrice = parseFloat(priceEl.value) || 0;
+          unitSelectEl.dataset.basePrice = basePrice;
         }
         const row = selectEl.closest('.line-row');
         const qtyInput = row.querySelector('.qty-input');
         const totalInput = row.querySelector('.total-input');
         if (qtyInput && totalInput) {
-          totalInput.value = ((parseFloat(qtyInput.value) || 0) * (parseFloat(priceEl.value) || 0)).toFixed(2);
+          totalInput.value = ((parseFloat(qtyInput.value) || 0) * basePrice).toFixed(2);
         }
         updateGrandTotal();
       }
@@ -171,7 +158,7 @@ export async function showInvoiceModal(type, options = {}) {
       updateGrandTotal();
     }
 
-    // دالة تحديث السعر عند تغيير الوحدة
+    // دالة تحديث السعر عند تغيير الوحدة – مع منع السعر الأقل من الأساسي
     function handleUnitChange(row) {
       const sel = row.querySelector('.item-select');
       const unitSel = row.querySelector('.unit-select');
@@ -180,49 +167,27 @@ export async function showInvoiceModal(type, options = {}) {
       const itemsList = storeGet('items') || [];
       const item = itemsList.find(i => i.id == sel.value);
       if (!item) return;
-      
       const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
-      const basePrice = isSale ? (item.selling_price || 0) : (item.purchase_price || 0);
+      const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
       const newPrice = basePrice * factor;
-      
-      // تحديث السعر فقط إذا لم يكن المستخدم قد عدله يدوياً مؤخراً
-      // أو إذا كان السعر الحالي فارغاً/صفراً
-      const currentPrice = parseFloat(priceEl.value) || 0;
-      if (currentPrice === 0 || !priceEl.dataset.userEdited) {
-        priceEl.value = newPrice.toFixed(2);
+      priceEl.value = newPrice.toFixed(2);
+
+      // إذا كان السعر الجديد أقل من سعر الوحدة الأساسية (في حالة الوحدة الأكبر) نحذر
+      if (factor > 1 && newPrice < basePrice) {
+        showToast(`يبدو أن السعر المُحتسب للوحدة أقل من المتوقع. تأكد من صحة البيانات.`, 'warning');
       }
-      
-      priceEl.title = `السعر للوحدة المختارة (${unitSel.selectedOptions[0]?.textContent || '?'}) · السعر الأساسي: ${basePrice}`;
+
+      // تعطيل التعديل اليدوي ما لم يؤكد المستخدم (حماية من الخطأ)
+      priceEl.title = `السعر للوحدة المختارة (${unitSel.selectedOptions[0]?.textContent || '?'}) . يمكنك تعديله يدوياً عند الحاجة`;
 
       calcRow(row);
     }
 
-    // ربط الأحداث للصفوف الموجودة (وضع التعديل أو إضافة)
     container.querySelectorAll('.line-row').forEach(row => {
       const sel = row.querySelector('.item-select');
       const price = row.querySelector('.price-input');
       const unitSel = row.querySelector('.unit-select');
-      
-      // في وضع التعديل: لا نستدعي autoFill إذا كان السعر موجوداً
-      const hasExistingPrice = mode === 'edit' && price.value && parseFloat(price.value) > 0;
-      if (sel && price) {
-        if (!hasExistingPrice) {
-          autoFill(sel, price, unitSel);
-        } else {
-          // في وضع التعديل: نملأ قائمة الوحدات فقط ونحتفظ بالسعر
-          const itemsList = storeGet('items') || [];
-          const item = itemsList.find(i => i.id == sel.value);
-          if (item && unitSel) {
-            unitSel.innerHTML = getUnitOptions(item);
-            unitSel.style.display = 'block';
-            // نحسب السعر الأساسي من السعر الفرعي المعروض
-            const factor = parseFloat(unitSel.selectedOptions[0]?.dataset.factor || 1);
-            const basePrice = factor > 0 ? (parseFloat(price.value) / factor) : parseFloat(price.value);
-            unitSel.dataset.basePrice = basePrice.toFixed(2);
-          }
-        }
-      }
-      
+      if (sel && price) autoFill(sel, price, unitSel);
       sel?.addEventListener('change', function () {
         if (isDup(this.value, this.closest('.line-row'))) {
           showToast('المادة مضافة مسبقاً', 'warning');
@@ -234,10 +199,7 @@ export async function showInvoiceModal(type, options = {}) {
         autoFill(this, price, unitSel);
       });
       row.querySelector('.qty-input')?.addEventListener('input', () => calcRow(row));
-      row.querySelector('.price-input')?.addEventListener('input', () => {
-        price.dataset.userEdited = 'true';
-        calcRow(row);
-      });
+      row.querySelector('.price-input')?.addEventListener('input', () => calcRow(row));
       unitSel?.addEventListener('change', () => handleUnitChange(row));
     });
 
@@ -260,10 +222,7 @@ export async function showInvoiceModal(type, options = {}) {
         autoFill(this, newPrice, newUnit);
       });
       nl.querySelector('.qty-input').addEventListener('input', () => calcRow(nl));
-      nl.querySelector('.price-input').addEventListener('input', () => {
-        newPrice.dataset.userEdited = 'true';
-        calcRow(nl);
-      });
+      nl.querySelector('.price-input').addEventListener('input', () => calcRow(nl));
       newUnit?.addEventListener('change', () => handleUnitChange(nl));
       nl.querySelector('.line-remove').addEventListener('click', () => {
         if (linesContainer.querySelectorAll('.line-row').length > 1) { nl.remove(); updateGrandTotal(); }
@@ -293,19 +252,9 @@ export async function showInvoiceModal(type, options = {}) {
         const qty = parseFloat(row.querySelector('.qty-input')?.value) || 0;
         const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
         const total = parseFloat(row.querySelector('.total-input')?.value) || 0;
-        
-        // السعر المرسل هو سعر الوحدة الأساسية (price / factor)
         const basePrice = factor !== 0 ? price / factor : price;
-        
         if (itemId || qty > 0) {
-          lines.push({ 
-            item_id: itemId, 
-            unit_id: unitId || null, 
-            quantity: qty, 
-            unit_price: parseFloat(basePrice.toFixed(2)), 
-            conversion_factor: factor, 
-            total: total 
-          });
+          lines.push({ item_id: itemId, unit_id: unitId || null, quantity: qty, unit_price: parseFloat(basePrice.toFixed(2)), conversion_factor: factor, total: total });
         }
       }
       if (!lines.length) return showToast('أضف بنداً واحداً على الأقل', 'error');
@@ -541,13 +490,9 @@ export function showInvoiceDetail(invoice) {
     const factor = l.conversion_factor || 1;
     const baseQty = l.quantity * factor;
     const baseUnit = item?.base_unit?.name || 'قطعة';
-    // عرض السعر الفرعي (السعر المخزن هو الأساسي)
-    const displayUnitPrice = factor > 1 ? (l.unit_price * factor).toFixed(2) : l.unit_price;
-    
     let qtyDisplay = `${l.quantity} ${unitName}`;
     if (factor > 1) qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
-    
-    return `<tr><td style="font-weight:700;">${l.item?.name || '-'}</td><td>${qtyDisplay}</td><td>${formatNumber(displayUnitPrice)}</td><td style="font-weight:800;">${formatNumber(l.total)}</td></tr>`;
+    return `<tr><td style="font-weight:700;">${l.item?.name || '-'}</td><td>${qtyDisplay}</td><td>${formatNumber(l.unit_price)}</td><td style="font-weight:800;">${formatNumber(l.total)}</td></tr>`;
   }).join('') || '';
 
   const typeLabel = invoice.type === 'sale' ? 'مبيعات' : 'مشتريات';
@@ -560,9 +505,7 @@ export function showInvoiceDetail(invoice) {
       <div style="margin-bottom:16px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
           <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div><div style="font-weight:700;">${formatDate(invoice.date)}</div></div>
-          <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">الحالة</div><div><span style="background:${statusColor}20;color:${statusColor};padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${(invoice.balance || 0) <= 0 ? '✓ مدفوعة' : '⏳ غير مدفوعة'}</span></div></div>
           <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${invoice.type === 'sale' ? 'العميل' : 'المورد'}</div><div style="font-weight:700;">${entity}</div></div>
-          <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">الإجمالي</div><div style="font-weight:800;font-size:18px;color:var(--primary);">${formatNumber(invoice.total)}</div></div>
         </div>
         <div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${lines}</tbody></table></div>
         <div style="background:var(--bg);border-radius:12px;padding:16px;margin-top:16px;">
@@ -727,17 +670,14 @@ function printInvoice(invoice, options = {}) {
   <div class="line"></div>
   <table>
     <tr><th style="width:40%">الصنف</th><th style="width:15%">Qty</th><th style="width:22%">Price</th><th style="width:23%">Total</th></tr>
-    ${items.map(l => {
-      const factor = l.conversion_factor || 1;
-      const displayPrice = factor > 1 ? (l.unit_price * factor).toFixed(2) : l.unit_price;
-      return `
+    ${items.map(l => `
       <tr>
         <td class="name">${(l.item?.name || '-').substring(0, 15)}</td>
         <td class="num">${l.quantity} <span style="font-size:8px;color:#666">${l.unit?.abbreviation || l.unit?.name || ''}</span></td>
-        <td class="num">${parseFloat(displayPrice || 0).toFixed(2)}</td>
+        <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
         <td class="num bold">${parseFloat(l.total || 0).toFixed(2)}</td>
       </tr>
-    `}).join('')}
+    `).join('')}
   </table>
   <div class="line"></div>
   <div class="row total-row"><span>الإجمالي Total:</span><span class="grand-total">${formatCurrency(invoice.total || 0)}</span></div>
@@ -839,13 +779,10 @@ function printInvoice(invoice, options = {}) {
             <th style="width: 15%;">الكمية</th>
             <th style="width: 15%;">السعر</th>
             <th style="width: 15%;">المجموع</th>
-          </table>
+          </tr>
         </thead>
         <tbody>
-          ${items.map((l, idx) => {
-            const factor = l.conversion_factor || 1;
-            const displayUnitPrice = factor > 1 ? (l.unit_price * factor).toFixed(2) : l.unit_price;
-            return `
+          ${items.map((l, idx) => `
           <tr>
             <td>${idx + 1}</td>
             <td>
@@ -854,10 +791,10 @@ function printInvoice(invoice, options = {}) {
             </td>
             <td>${l.unit?.name || l.unit?.abbreviation || 'قطعة'}</td>
             <td class="num">${l.quantity}</td>
-            <td class="num">${parseFloat(displayUnitPrice || 0).toFixed(2)}</td>
+            <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
             <td class="num" style="font-weight: 900; color: #4f46e5;">${parseFloat(l.total || 0).toFixed(2)}</td>
           </tr>
-          `}).join('')}
+          `).join('')}
         </tbody>
       </table>
 

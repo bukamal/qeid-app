@@ -141,6 +141,7 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
     const res = await fetch(url, options);
     clearTimeout(timeout);
     
+    // معالجة Rate Limit (429)
     if (res.status === 429) {
       const retryAfter = res.headers.get('Retry-After') || res.headers.get('X-RateLimit-Retry-After') || 5;
       const errorData = await res.json().catch(() => ({}));
@@ -180,24 +181,13 @@ export function getUnitOptionsForItem(itemId, selectedUnitId = null) {
   const units = storeGet('units') || [];
   const item = items.find(i => i.id == itemId);
   if (!item) return '<option value="">اختر مادة</option>';
-  
   const baseUnit = units.find(u => u.id == item.base_unit_id) || {};
   const baseName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
-  
-  // تحديد الوحدة المختارة حاليًا للحصول على معاملها
-  let selectedFactor = 1;
-  if (selectedUnitId) {
-    const selectedIU = (item.item_units || []).find(iu => iu.unit_id == selectedUnitId);
-    if (selectedIU) selectedFactor = parseFloat(selectedIU.conversion_factor) || 1;
-  }
-  
   let opts = `<option value="" data-factor="1" ${!selectedUnitId ? 'selected' : ''}>${baseName} (أساسية)</option>`;
   (item.item_units || []).forEach(iu => {
     const u = units.find(unit => unit.id == iu.unit_id) || {};
     const name = u.name || u.abbreviation || 'وحدة';
-    const factor = parseFloat(iu.conversion_factor) || 1;
-    const isSelected = iu.unit_id == selectedUnitId ? 'selected' : '';
-    opts += `<option value="${iu.unit_id}" data-factor="${factor}" ${isSelected}>${name} (${factor}x ${baseName})</option>`;
+    opts += `<option value="${iu.unit_id}" data-factor="${iu.conversion_factor}" ${iu.unit_id == selectedUnitId ? 'selected' : ''}>${name} (${iu.conversion_factor}x ${baseName})</option>`;
   });
   return opts;
 }
@@ -209,14 +199,6 @@ export function generateLineRowHtml(lineData = null, isSale) {
   const price = lineData ? lineData.unit_price : '';
   const total = lineData ? lineData.total : '';
   const unitId = lineData ? lineData.unit_id : '';
-  const conversionFactor = lineData ? (lineData.conversion_factor || 1) : 1;
-  
-  // إذا كان هناك سعر مخزن (أساسي) ومعامل تحويل، نحسب السعر الفرعي للعرض
-  let displayPrice = price;
-  if (price && unitId && conversionFactor > 1) {
-    displayPrice = (parseFloat(price) * conversionFactor).toFixed(2);
-  }
-  
   const itemOptions = items.map(i => `<option value="${i.id}" ${i.id == selectedItemId ? 'selected' : ''}>${i.name}</option>`).join('');
 
   return `
@@ -230,7 +212,7 @@ export function generateLineRowHtml(lineData = null, isSale) {
         </select>
       </div>
       <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية" value="${qty}"></div>
-      <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر" value="${displayPrice}"></div>
+      <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر" value="${price}"></div>
       <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;" value="${total}"></div>
       <button class="line-remove" title="حذف البند">${ICONS.trash}</button>
     </div>`;

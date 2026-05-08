@@ -195,6 +195,7 @@ module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // ✅ Rate Limiting Check
   const allowed = await rateLimitMiddleware(req, res, 'invoices');
   if (!allowed) return;
 
@@ -269,8 +270,7 @@ module.exports = async (req, res) => {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
           if (type === 'purchase') {
-            // unit_price هو سعر الوحدة الأساسية (يأتي من الواجهة كـ price/factor)
-            const unitCost = line.unit_price;
+            const unitCost = line.unit_price / (line.conversion_factor || (await resolveConversionFactor(line.item_id, line.unit_id, 1)));
             await applyPurchaseToItem(line.item_id, userId, baseQty, unitCost, supabase);
             await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', line.id);
             processedLines.push({ ...line, unit_cost: unitCost });
@@ -335,7 +335,7 @@ module.exports = async (req, res) => {
         if (oldLine.item_id) {
           const baseQty = oldLine.quantity_in_base || (oldLine.quantity * (await resolveConversionFactor(oldLine.item_id, oldLine.unit_id, oldLine.conversion_factor)));
           if (oldInvoice.type === 'purchase') {
-            const unitCost = oldLine.unit_cost || oldLine.unit_price;
+            const unitCost = oldLine.unit_cost || (oldLine.unit_price / (oldLine.conversion_factor || 1));
             await reversePurchaseFromItem(oldLine.item_id, userId, baseQty, unitCost, supabase);
           } else if (oldInvoice.type === 'sale') {
             await reverseSaleFromItem(oldLine.item_id, userId, baseQty, supabase);
@@ -372,7 +372,7 @@ module.exports = async (req, res) => {
         if (newLine.item_id) {
           const baseQty = newLine.quantity_in_base || (newLine.quantity * (await resolveConversionFactor(newLine.item_id, newLine.unit_id, newLine.conversion_factor)));
           if (newType === 'purchase') {
-            const unitCost = newLine.unit_price;
+            const unitCost = newLine.unit_price / (newLine.conversion_factor || 1);
             await applyPurchaseToItem(newLine.item_id, userId, baseQty, unitCost, supabase);
             await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', newLine.id);
             newLine.unit_cost = unitCost;
@@ -460,7 +460,7 @@ module.exports = async (req, res) => {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
           if (invoice.type === 'purchase') {
-            const unitCost = line.unit_cost || line.unit_price;
+            const unitCost = line.unit_cost || (line.unit_price / (line.conversion_factor || 1));
             await reversePurchaseFromItem(line.item_id, userId, baseQty, unitCost, supabase);
           } else if (invoice.type === 'sale') {
             await reverseSaleFromItem(line.item_id, userId, baseQty, supabase);
