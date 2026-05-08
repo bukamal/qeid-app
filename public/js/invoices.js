@@ -110,7 +110,7 @@ export async function showInvoiceModal(type, options = {}) {
       return found;
     }
 
-    function getUnitOptions(item) {
+    function getUnitOptions(item, saleType) {
       if (!item) return '<option value="">اختر مادة</option>';
       const unitsList = storeGet('units') || [];
       const baseUnit = unitsList.find(u => u.id == item.base_unit_id) || {};
@@ -137,7 +137,7 @@ export async function showInvoiceModal(type, options = {}) {
         const basePrice = isSale ? (item.selling_price || 0) : (item.purchase_price || 0);
         priceEl.value = basePrice;
         if (unitSelectEl) {
-          unitSelectEl.innerHTML = getUnitOptions(item);
+          unitSelectEl.innerHTML = getUnitOptions(item, isSale);
           unitSelectEl.style.display = 'block';
           unitSelectEl.dataset.basePrice = basePrice;
         }
@@ -228,6 +228,57 @@ export async function showInvoiceModal(type, options = {}) {
         if (linesContainer.querySelectorAll('.line-row').length > 1) { nl.remove(); updateGrandTotal(); }
       });
     });
+
+    // ========== دعم إضافة مادة محددة مسبقاً (itemId) ==========
+    const preSelectedItemId = options.itemId;
+    if (preSelectedItemId) {
+      const linesContainer = container.querySelector('#inv-lines');
+      const itemsList = storeGet('items') || [];
+      const item = itemsList.find(i => i.id == preSelectedItemId);
+      if (item) {
+        const nl = document.createElement('div');
+        nl.className = 'line-row';
+        const basePrice = isSale ? (item.selling_price || 0) : (item.purchase_price || 0);
+        nl.innerHTML = `
+          <div class="form-group" style="grid-column:1/-1">
+            <select class="select item-select">
+              <option value="${item.id}" selected>${item.name}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <select class="select unit-select">
+              ${getUnitOptions(item, isSale)}
+            </select>
+          </div>
+          <div class="form-group"><input type="number" step="any" class="input qty-input" placeholder="الكمية" value="1"></div>
+          <div class="form-group"><input type="number" step="0.01" class="input price-input" placeholder="السعر" value="${basePrice}"></div>
+          <div class="form-group"><input type="number" step="0.01" class="input total-input" placeholder="الإجمالي" readonly style="background:var(--bg);font-weight:700;" value="${basePrice}"></div>
+          <button class="line-remove">${ICONS.trash}</button>`;
+        linesContainer.appendChild(nl);
+
+        const newSel = nl.querySelector('.item-select');
+        const newPrice = nl.querySelector('.price-input');
+        const newUnit = nl.querySelector('.unit-select');
+        if (newUnit) newUnit.dataset.basePrice = basePrice;
+        newSel.addEventListener('change', function () { });
+        nl.querySelector('.qty-input').addEventListener('input', () => calcRow(nl));
+        nl.querySelector('.price-input').addEventListener('input', () => calcRow(nl));
+        newUnit?.addEventListener('change', () => {
+          const factor = parseFloat(newUnit.selectedOptions[0]?.dataset.factor || 1);
+          const basePrice = parseFloat(newUnit.dataset.basePrice || 0);
+          newPrice.value = (basePrice * factor).toFixed(2);
+          calcRow(nl);
+        });
+        nl.querySelector('.line-remove').addEventListener('click', () => {
+          if (linesContainer.querySelectorAll('.line-row').length > 1) {
+            nl.remove();
+            updateGrandTotal();
+          }
+        });
+        updateGrandTotal();
+      }
+    }
+    // ========== نهاية دعم itemId ==========
 
     if (mode === 'create') paidManuallyEdited = false;
 

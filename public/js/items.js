@@ -75,6 +75,7 @@ export async function loadItems() {
   }
 }
 
+// public/js/items.js - تعديل دالة showItemDetail
 export function showItemDetail(itemId) {
   const items = storeGet('items') || [];
   const item = items.find(i => i.id === itemId);
@@ -108,14 +109,20 @@ export function showItemDetail(itemId) {
     unitsHtml += `</div></div>`;
   }
 
-  // حساب قيمة المخزون بالتكلفة (المتوسط المرجح)
+  // القيم الحالية
   const available = item.available ?? 0;
   const costValue = available * (parseFloat(item.average_cost) || 0);
-  // حساب قيمة المخزون بسعر البيع (تقديري)
   const sellingValue = available * (parseFloat(item.selling_price) || 0);
 
-  const costDisplay = item.average_cost > 0 ? formatNumber(costValue) : 'غير محددة (لم تحدد تكلفة شراء بعد)';
-  const sellDisplay = item.selling_price > 0 ? formatNumber(sellingValue) : 'غير محددة (لم يحدد سعر بيع)';
+  const costDisplay = item.average_cost > 0 ? formatNumber(costValue) : 'غير محددة';
+  const sellDisplay = item.selling_price > 0 ? formatNumber(sellingValue) : 'غير محددة';
+
+  // إحصائيات إضافية
+  const purchaseQty = item.purchase_qty ?? 0;
+  const saleQty = item.sale_qty ?? 0;
+  const avgCost = parseFloat(item.average_cost) || 0;
+  const purchasePrice = parseFloat(item.purchase_price) || 0;
+  const sellingPrice = parseFloat(item.selling_price) || 0;
 
   const modal = openModal({
     title: item.name,
@@ -123,11 +130,11 @@ export function showItemDetail(itemId) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
         <div class="stat-card" style="margin:0;padding:12px;">
           <div class="stat-label">الكمية المشتراة</div>
-          <div class="stat-value" style="font-size:16px;">${item.purchase_qty ?? 0} ${baseUnitName}</div>
+          <div class="stat-value" style="font-size:16px;">${purchaseQty} ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
           <div class="stat-label">الكمية المباعة</div>
-          <div class="stat-value" style="font-size:16px;">${item.sale_qty ?? 0} ${baseUnitName}</div>
+          <div class="stat-value" style="font-size:16px;">${saleQty} ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;border-color:var(--primary);">
           <div class="stat-label">المتوفرة</div>
@@ -135,27 +142,67 @@ export function showItemDetail(itemId) {
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
           <div class="stat-label">سعر الشراء (المتوسط)</div>
-          <div class="stat-value" style="font-size:16px;">${formatNumber(item.average_cost || 0)} / ${baseUnitName}</div>
+          <div class="stat-value" style="font-size:16px;">${formatNumber(avgCost)} / ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
           <div class="stat-label">سعر الشراء المسجل</div>
-          <div class="stat-value" style="font-size:16px;">${formatNumber(item.purchase_price || 0)} / ${baseUnitName}</div>
+          <div class="stat-value" style="font-size:16px;">${formatNumber(purchasePrice)} / ${baseUnitName}</div>
         </div>
         <div class="stat-card" style="margin:0;padding:12px;">
           <div class="stat-label">سعر البيع</div>
-          <div class="stat-value" style="font-size:16px;">${formatNumber(item.selling_price || 0)} / ${baseUnitName}</div>
+          <div class="stat-value" style="font-size:16px;">${formatNumber(sellingPrice)} / ${baseUnitName}</div>
         </div>
-        <div class="stat-card" style="margin:0;padding:12px; background: var(--warning-light);">
-          <div class="stat-label">💰 قيمة المخزون (بالتكلفة)</div>
-          <div class="stat-value" style="font-size:16px;">${costDisplay}</div>
+        <!-- بطاقة قيمة المخزون بالتكلفة - بلون مميز -->
+        <div class="stat-card" style="margin:0;padding:12px; background: var(--primary-light); border: 2px solid var(--primary);">
+          <div class="stat-label" style="color: var(--primary-dark);">💰 قيمة المخزون (بالتكلفة)</div>
+          <div class="stat-value" style="font-size:18px; color: var(--primary);">${costDisplay}</div>
           <div style="font-size:11px; color: var(--text-muted);">المتوسط المرجح لجميع المشتريات</div>
         </div>
+        <!-- بطاقة قيمة المخزون بسعر البيع -->
         <div class="stat-card" style="margin:0;padding:12px; background: var(--success-light);">
           <div class="stat-label">💵 قيمة المخزون (بسعر البيع)</div>
           <div class="stat-value" style="font-size:16px;">${sellDisplay}</div>
           <div style="font-size:11px; color: var(--text-muted);">تقديرية لو تم بيع المخزون</div>
         </div>
       </div>
+
+      <!-- ملخص حركات المادة -->
+      <div style="background:var(--bg);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid var(--border);">
+        <h4 style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+          <span style="background:var(--primary);color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;">📋</span>
+          ملخص حركات المادة
+        </h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <span style="color:var(--text-muted);">عدد مرات الشراء:</span>
+            <strong>${item.purchase_count || 'غير معروف'}</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);">عدد مرات البيع:</span>
+            <strong>${item.sale_count || 'غير معروف'}</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);">إجمالي الكمية المشتراة:</span>
+            <strong>${purchaseQty} ${baseUnitName}</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);">إجمالي الكمية المباعة:</span>
+            <strong>${saleQty} ${baseUnitName}</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);">متوسط سعر الشراء (المسجل):</span>
+            <strong>${formatNumber(purchasePrice)}</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted);">متوسط سعر البيع (المسجل):</span>
+            <strong>${formatNumber(sellingPrice)}</strong>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+          * الإحصائيات أعلاه تعتمد على الأسعار المسجلة في إعدادات المادة وقد لا تعكس متوسط الفواتير الفعلي.
+        </div>
+      </div>
+
       ${unitsHtml}
       <div class="form-label">التصنيف</div>
       <p style="margin-bottom:12px;">${item.category?.name || 'بدون تصنيف'}</p>
@@ -165,6 +212,8 @@ export function showItemDetail(itemId) {
     footerHTML: `
       <button class="btn btn-secondary" id="edit-item-btn">${ICONS.edit} تعديل</button>
       <button class="btn btn-danger" id="delete-item-btn">${ICONS.trash} حذف</button>
+      <button class="btn btn-success" id="sell-item-btn">${ICONS.cart} بيع</button>
+      <button class="btn btn-warning" id="buy-item-btn">${ICONS.download} شراء</button>
     `
   });
 
@@ -184,6 +233,22 @@ export function showItemDetail(itemId) {
           showToast(e.message, 'error');
         }
       }
+    }, 220);
+  };
+
+  // زر بيع: يفتح فاتورة بيع مع إدراج المادة تلقائيًا
+  modal.element.querySelector('#sell-item-btn').onclick = () => {
+    modal.close();
+    setTimeout(() => {
+      import('./invoices.js').then(m => m.showInvoiceModal('sale', { itemId: itemId }));
+    }, 220);
+  };
+
+  // زر شراء: يفتح فاتورة شراء مع إدراج المادة تلقائيًا
+  modal.element.querySelector('#buy-item-btn').onclick = () => {
+    modal.close();
+    setTimeout(() => {
+      import('./invoices.js').then(m => m.showInvoiceModal('purchase', { itemId: itemId }));
     }, 220);
   };
 }
