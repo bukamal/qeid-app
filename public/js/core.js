@@ -54,7 +54,11 @@ export function formatDate(dateStr) {
 }
 
 export function debounce(fn, ms = 300) {
-  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), ms);
+  };
 }
 
 let scrollLockPos = 0;
@@ -65,6 +69,7 @@ export function lockScroll() {
   document.body.style.width = '100%';
   document.body.classList.add('scroll-locked');
 }
+
 export function unlockScroll() {
   document.body.style.position = '';
   document.body.style.top = '';
@@ -140,13 +145,13 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
 
     const res = await fetch(url, options);
     clearTimeout(timeout);
-    
+
     if (res.status === 429) {
       const retryAfter = res.headers.get('Retry-After') || res.headers.get('X-RateLimit-Retry-After') || 5;
       const errorData = await res.json().catch(() => ({}));
       throw new Error(errorData.error || `تم تجاوز الحد المسموح. حاول بعد ${retryAfter} ثانية.`);
     }
-    
+
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `خطأ ${res.status}`);
 
@@ -165,14 +170,14 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
       console.log(`Request to ${endpoint} was aborted.`);
       return null;
     }
-    
+
     if (retries > 0 && !err.message.includes('429')) {
       return apiCall(endpoint, method, body, retries - 1);
     }
     let message = 'حدث خطأ أثناء الاتصال بالخادم';
     if (err.message) {
       if (err.message === 'Unauthorized') message = 'غير مصرح لك بالوصول';
-      else if (err.message.includes('Failed to fetch') || err.name === 'TypeError') 
+      else if (err.message.includes('Failed to fetch') || err.name === 'TypeError')
         message = 'تعذر الاتصال بالخادم، تحقق من اتصالك';
       else message = err.message;
     }
@@ -284,3 +289,20 @@ export function renderSkeleton(type = 'cards') {
   }
   return `<div class="skeleton-container">${html}</div>`;
 }
+
+// ============================================================
+// دالة مساعدة لإضافة تأثيرات الظهور التدريجي
+// ============================================================
+export function animateEntry(selector, delay = 0) {
+  const elements = document.querySelectorAll(selector);
+  elements.forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    setTimeout(() => {
+      el.style.transition = 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)';
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    }, delay + (i * 80));
+  });
+}
+
