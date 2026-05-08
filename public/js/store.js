@@ -1,10 +1,7 @@
 // public/js/store.js
-// نظام إدارة حالة مركزي للتخزين المؤقت مع تبعيات ذكية ونظام اشتراك
-
 const store = {
   data: {},
-  listeners: {},  // { key: [callback1, callback2, ...] }
-  
+  listeners: {},
   dependencies: {
     customers:        ['invoices'],
     suppliers:        ['invoices'],
@@ -17,15 +14,10 @@ const store = {
     summary:          [],
     reports:          [],
     accounts:         ['reports'],
-    vouchers:         ['invoices', 'customers', 'suppliers', 'payments', 'expenses'],
-    definitions_category: ['items', 'invoices'],
-    definitions_unit: ['items', 'invoices']
+    vouchers:         ['invoices', 'customers', 'suppliers', 'payments', 'expenses']
   }
 };
 
-/**
- * إعلام المستمعين المسجلين على مفتاح بأن البيانات أبطلت
- */
 function notifyListeners(key) {
   if (store.listeners[key]) {
     store.listeners[key].forEach(cb => {
@@ -34,31 +26,19 @@ function notifyListeners(key) {
   }
 }
 
-/**
- * جلب البيانات الحالية من المتجر
- */
 export function get(key) {
   return store.data[key];
 }
 
-/**
- * تخزين بيانات جديدة وإعلام المستمعين
- */
 export function set(key, data) {
   store.data[key] = data;
-  // إعلام المستمعين بأن بيانات جديدة وصلت (اختياري لفائدة أخرى)
 }
 
-/**
- * الاشتراك في تغييرات مفتاح معين (استدعاء عند الإبطال)
- * يعيد دالة unsubscribe لإلغاء الاشتراك
- */
 export function subscribe(key, callback) {
   if (!store.listeners[key]) {
     store.listeners[key] = [];
   }
   store.listeners[key].push(callback);
-  
   return () => {
     const arr = store.listeners[key];
     if (arr) {
@@ -67,18 +47,10 @@ export function subscribe(key, callback) {
   };
 }
 
-/**
- * إبطال مفتاح واحد داخلياً
- */
 function invalidateKey(key) {
   if (!key) return;
-  
-  // إزالة البيانات المخزنة
   delete store.data[key];
-  // إعلام المشتركين بأن هذا المفتاح أبطل
   notifyListeners(key);
-  
-  // إزالة أي مفاتيح تبدأ بـ key/ أو key_
   Object.keys(store.data).forEach(k => {
     if (k.startsWith(key + '/') || k.startsWith(key + '_')) {
       delete store.data[k];
@@ -87,19 +59,11 @@ function invalidateKey(key) {
   });
 }
 
-/**
- * إبطال مفتاح وكافة تبعياته المباشرة
- */
 export function invalidate(key) {
   if (!key) return;
-  
-  // إبطال المفتاح الأساسي
   invalidateKey(key);
-  
-  // إبطال التبعيات
   const deps = store.dependencies[key] || [];
   const visited = new Set([key]);
-  
   deps.forEach(dep => {
     if (!visited.has(dep)) {
       visited.add(dep);
@@ -108,9 +72,6 @@ export function invalidate(key) {
   });
 }
 
-/**
- * مسح كامل المتجر
- */
 export function clearAll() {
   Object.keys(store.data).forEach(k => {
     delete store.data[k];

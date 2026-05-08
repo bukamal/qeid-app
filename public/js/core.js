@@ -77,9 +77,12 @@ function getStoreKey(endpoint) {
   const [path, queryString] = endpoint.split('?');
   const params = new URLSearchParams(queryString || '');
   params.delete('initData');
+
   if (path === '/definitions') {
     const type = params.get('type');
-    return type ? `definitions_${type}` : 'definitions';
+    if (type === 'category') return 'categories';
+    if (type === 'unit') return 'units';
+    return 'definitions';
   }
   if (path === '/reports') {
     const type = params.get('type');
@@ -90,7 +93,6 @@ function getStoreKey(endpoint) {
     const suffix = extra.length ? `_${extra.join('_')}` : '';
     return type ? `reports_${type}${suffix}` : 'reports';
   }
-  // التعامل مع payments?voucher=1
   if (path === '/payments' && params.get('voucher') === '1') {
     return 'vouchers';
   }
@@ -166,7 +168,6 @@ export async function apiCall(endpoint, method = 'GET', body = {}, retries = 1) 
   }
 }
 
-// دوال مساعدة للفواتير
 export function getUnitOptionsForItem(itemId, selectedUnitId = null) {
   const items = storeGet('items') || [];
   const units = storeGet('units') || [];

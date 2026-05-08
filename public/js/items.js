@@ -1,6 +1,4 @@
 // public/js/items.js
-// إدارة المواد: عرض، إضافة، تعديل، حذف
-
 import { 
   apiCall, formatNumber, formatDate, debounce, ICONS,
   getUnitOptionsForItem, renderSkeleton
@@ -8,9 +6,6 @@ import {
 import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 
-/**
- * عرض المواد بعد التصفية حسب البحث
- */
 export function renderFilteredItems() {
   const items = storeGet('items') || [];
   const q = (document.getElementById('items-search')?.value || '').trim().toLowerCase();
@@ -47,13 +42,9 @@ export function renderFilteredItems() {
   container.innerHTML = html;
 }
 
-/**
- * تحميل قائمة المواد (واجهة كاملة)
- */
 export async function loadItems() {
   const container = document.getElementById('tab-content');
   
-  // عرض رأس البطاقة + السكليتون داخل الحاوية id="items-list"
   container.innerHTML = `
     <div class="card">
       <div class="card-header">
@@ -76,7 +67,6 @@ export async function loadItems() {
   document.getElementById('items-search').addEventListener('input', debounce(renderFilteredItems, 200));
   
   try {
-    // جلب أحدث البيانات من الخادم (لتحديث المتجر تلقائياً)
     await apiCall('/items', 'GET');
     renderFilteredItems();
   } catch (err) {
@@ -85,9 +75,6 @@ export async function loadItems() {
   }
 }
 
-/**
- * عرض تفاصيل مادة في نافذة منبثقة
- */
 export function showItemDetail(itemId) {
   const items = storeGet('items') || [];
   const item = items.find(i => i.id === itemId);
@@ -182,11 +169,16 @@ export function showItemDetail(itemId) {
   };
 }
 
-/**
- * إضافة مادة جديدة (نموذج كامل مع وحدات)
- */
-function showAddItemModal() {
-  const categories = storeGet('categories') || [];
+async function showAddItemModal() {
+  let categories = storeGet('categories');
+  if (!categories) {
+    try {
+      categories = await apiCall('/definitions?type=category', 'GET');
+    } catch (e) {
+      showToast('فشل تحميل التصنيفات', 'error');
+      return;
+    }
+  }
   const catOpts = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
   const body = `
@@ -405,12 +397,17 @@ function showAddItemModal() {
   };
 }
 
-/**
- * تعديل مادة موجودة (نموذج مشابه للإضافة مع قيم ابتدائية)
- */
-function showEditItemModal(itemId) {
+async function showEditItemModal(itemId) {
   const items = storeGet('items') || [];
-  const categories = storeGet('categories') || [];
+  let categories = storeGet('categories');
+  if (!categories) {
+    try {
+      categories = await apiCall('/definitions?type=category', 'GET');
+    } catch (e) {
+      showToast('فشل تحميل التصنيفات', 'error');
+      return;
+    }
+  }
   const it = items.find(i => i.id === itemId);
   if (!it) return;
 
