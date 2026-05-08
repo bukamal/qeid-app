@@ -129,6 +129,22 @@ module.exports = async (req, res) => {
         supplierPayments?.forEach(p => { lines.push({ date: p.payment_date, description: `دفعة إلى ${p.supplier?.name || ''}`, debit: 0, credit: p.amount }); });
         const { data: cashInvoices } = await supabase.from('invoices').select('date, reference, total, type').eq('user_id', userId).is('customer_id', null).is('supplier_id', null).order('date', { ascending: true });
         cashInvoices?.forEach(inv => { if (inv.type === 'sale') lines.push({ date: inv.date, description: `فاتورة بيع نقدي ${inv.reference || ''}`, debit: inv.total, credit: 0 }); else if (inv.type === 'purchase') lines.push({ date: inv.date, description: `فاتورة شراء نقدي ${inv.reference || ''}`, debit: 0, credit: inv.total }); });
+
+        // إضافة حركات السندات
+        const { data: vouchers } = await supabase
+          .from('vouchers')
+          .select('type, amount, date, description, reference, customer_id, supplier_id, customer:customers(name), supplier:suppliers(name)')
+          .eq('user_id', userId)
+          .order('date', { ascending: true });
+        vouchers?.forEach(v => {
+          const entityName = v.customer?.name || v.supplier?.name || '';
+          const desc = `${v.type === 'receipt' ? 'سند قبض' : v.type === 'payment' ? 'سند صرف' : 'سند مصروف'} ${v.reference || ''} ${entityName ? '- ' + entityName : ''} - ${v.description || ''}`;
+          if (v.type === 'receipt') {
+            lines.push({ date: v.date, description: desc, debit: v.amount, credit: 0 });
+          } else {
+            lines.push({ date: v.date, description: desc, debit: 0, credit: v.amount });
+          }
+        });
       } else if (accountName === 'المبيعات') {
         const { data: sales } = await supabase.from('invoices').select('date, reference, total').eq('user_id', userId).eq('type', 'sale').order('date', { ascending: true });
         sales?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة بيع ${inv.reference || ''}`, debit: 0, credit: inv.total }); });
@@ -138,6 +154,17 @@ module.exports = async (req, res) => {
       } else if (accountName === 'مصاريف عامة') {
         const { data: expenses } = await supabase.from('expenses').select('amount, expense_date, description').eq('user_id', userId).order('expense_date', { ascending: true });
         expenses?.forEach(ex => { lines.push({ date: ex.expense_date, description: ex.description || 'مصروف', debit: ex.amount, credit: 0 }); });
+
+        // إضافة مصاريف السندات
+        const { data: seVouchers } = await supabase
+          .from('vouchers')
+          .select('amount, date, description, reference')
+          .eq('user_id', userId)
+          .eq('type', 'expense')
+          .order('date', { ascending: true });
+        seVouchers?.forEach(v => {
+          lines.push({ date: v.date, description: `سند مصروف ${v.reference || ''} - ${v.description || ''}`, debit: v.amount, credit: 0 });
+        });
       } else if (accountName === 'المخزون') {
         const { data: purchaseInvoices } = await supabase.from('invoices').select('id, date').eq('user_id', userId).eq('type', 'purchase').order('date', { ascending: true });
         if (purchaseInvoices && purchaseInvoices.length > 0) {
@@ -193,11 +220,35 @@ module.exports = async (req, res) => {
         custInvoices?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة ${inv.customer?.name || ''} ${inv.reference || ''}`, debit: inv.total, credit: 0 }); });
         const { data: custPayments } = await supabase.from('payments').select('amount, payment_date, notes, customer_id, customer:customers(name)').eq('user_id', userId).not('customer_id', 'is', null).order('payment_date', { ascending: true });
         custPayments?.forEach(p => { lines.push({ date: p.payment_date, description: `دفعة من ${p.customer?.name || ''}`, debit: 0, credit: p.amount }); });
+
+        // إضافة سندات القبض للعملاء
+        const { data: receiptVouchers } = await supabase
+          .from('vouchers')
+          .select('amount, date, description, reference, customer_id, customer:customers(name)')
+          .eq('user_id', userId)
+          .eq('type', 'receipt')
+          .not('customer_id', 'is', null)
+          .order('date', { ascending: true });
+        receiptVouchers?.forEach(v => {
+          lines.push({ date: v.date, description: `سند قبض ${v.reference || ''} من ${v.customer?.name || ''} - ${v.description || ''}`, debit: 0, credit: v.amount });
+        });
       } else if (accountName === 'ذمم دائنة - موردين' || accountName === 'ذمم دائنة') {
         const { data: suppInvoices } = await supabase.from('invoices').select('date, reference, total, supplier_id, supplier:suppliers(name)').eq('user_id', userId).eq('type', 'purchase').not('supplier_id', 'is', null).order('date', { ascending: true });
         suppInvoices?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة ${inv.supplier?.name || ''} ${inv.reference || ''}`, debit: 0, credit: inv.total }); });
         const { data: suppPayments } = await supabase.from('payments').select('amount, payment_date, notes, supplier_id, supplier:suppliers(name)').eq('user_id', userId).not('supplier_id', 'is', null).order('payment_date', { ascending: true });
         suppPayments?.forEach(p => { lines.push({ date: p.payment_date, description: `دفعة إلى ${p.supplier?.name || ''}`, debit: p.amount, credit: 0 }); });
+
+        // إضافة سندات الصرف للموردين
+        const { data: paymentVouchers } = await supabase
+          .from('vouchers')
+          .select('amount, date, description, reference, supplier_id, supplier:suppliers(name)')
+          .eq('user_id', userId)
+          .eq('type', 'payment')
+          .not('supplier_id', 'is', null)
+          .order('date', { ascending: true });
+        paymentVouchers?.forEach(v => {
+          lines.push({ date: v.date, description: `سند صرف ${v.reference || ''} إلى ${v.supplier?.name || ''} - ${v.description || ''}`, debit: v.amount, credit: 0 });
+        });
       }
 
       lines.sort((a, b) => a.date.localeCompare(b.date) || (a.description || '').localeCompare(b.description || ''));
@@ -211,9 +262,16 @@ module.exports = async (req, res) => {
       if (!customerId) return res.status(400).json({ error: 'customer_id مطلوب' });
       const { data: invoices } = await supabase.from('invoices').select('id, date, reference, total, type').eq('user_id', userId).eq('customer_id', customerId);
       const { data: payments } = await supabase.from('payments').select('amount, payment_date, notes').eq('user_id', userId).eq('customer_id', customerId);
+      const { data: vouchers } = await supabase
+        .from('vouchers')
+        .select('amount, date, description, reference')
+        .eq('user_id', userId)
+        .eq('customer_id', customerId)
+        .eq('type', 'receipt');
       let lines = [];
       invoices?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة ${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}`, debit: inv.type === 'sale' ? inv.total : 0, credit: inv.type === 'purchase' ? inv.total : 0, balance: 0 }); });
       payments?.forEach(p => { lines.push({ date: p.payment_date, description: `دفعة ${p.notes || ''}`, debit: 0, credit: p.amount, balance: 0 }); });
+      vouchers?.forEach(v => { lines.push({ date: v.date, description: `سند قبض ${v.reference || ''} ${v.description || ''}`, debit: 0, credit: v.amount, balance: 0 }); });
       lines.sort((a, b) => a.date.localeCompare(b.date));
       let running = 0;
       lines.forEach(l => { running += l.debit - l.credit; l.balance = running; });
@@ -225,9 +283,16 @@ module.exports = async (req, res) => {
       if (!supplierId) return res.status(400).json({ error: 'supplier_id مطلوب' });
       const { data: invoices } = await supabase.from('invoices').select('id, date, reference, total, type').eq('user_id', userId).eq('supplier_id', supplierId);
       const { data: payments } = await supabase.from('payments').select('amount, payment_date, notes').eq('user_id', userId).eq('supplier_id', supplierId);
+      const { data: vouchers } = await supabase
+        .from('vouchers')
+        .select('amount, date, description, reference')
+        .eq('user_id', userId)
+        .eq('supplier_id', supplierId)
+        .eq('type', 'payment');
       let lines = [];
       invoices?.forEach(inv => { lines.push({ date: inv.date, description: `فاتورة ${inv.type === 'sale' ? 'بيع' : 'شراء'} ${inv.reference || ''}`, debit: inv.type === 'purchase' ? 0 : inv.total, credit: inv.type === 'purchase' ? inv.total : 0, balance: 0 }); });
       payments?.forEach(p => { lines.push({ date: p.payment_date, description: `دفعة ${p.notes || ''}`, debit: p.amount, credit: 0, balance: 0 }); });
+      vouchers?.forEach(v => { lines.push({ date: v.date, description: `سند صرف ${v.reference || ''} ${v.description || ''}`, debit: v.amount, credit: 0, balance: 0 }); });
       lines.sort((a, b) => a.date.localeCompare(b.date));
       let running = 0;
       lines.forEach(l => { running += l.credit - l.debit; l.balance = running; });

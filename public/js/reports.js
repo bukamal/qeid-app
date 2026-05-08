@@ -31,6 +31,10 @@ export async function loadReports() {
     <div class="report-card" data-report="supplier_statement">
       <div class="report-icon">${ICONS.factory}</div>
       <div class="report-info"><h4>كشف حساب مورد</h4><p>حركات مورد محدد</p></div>
+    </div>
+    <div class="report-card" data-report="vouchers_log">
+      <div class="report-icon">${ICONS.fileText}</div>
+      <div class="report-info"><h4>سجل السندات</h4><p>عرض وتحليل السندات</p></div>
     </div>`;
 
   document.querySelectorAll('.report-card').forEach(el => {
@@ -42,6 +46,7 @@ export async function loadReports() {
       else if (r === 'account_ledger') loadAccountLedgerForm();
       else if (r === 'customer_statement') loadCustomerStatementForm();
       else if (r === 'supplier_statement') loadSupplierStatementForm();
+      else if (r === 'vouchers_log') loadVouchersLog();
     });
   });
 }
@@ -207,6 +212,77 @@ export async function loadSupplierStatementForm() {
         document.getElementById('stmt-result').innerHTML = html;
       } catch (e) { showToast(e.message, 'error'); }
     });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ========== تقرير سجل السندات ==========
+export async function loadVouchersLog() {
+  try {
+    const vouchers = await apiCall('/payments?voucher=1', 'GET');
+    const [customers, suppliers] = await Promise.all([
+      apiCall('/customers', 'GET'),
+      apiCall('/suppliers', 'GET')
+    ]);
+
+    let totalReceipt = 0, totalPayment = 0, totalExpense = 0;
+
+    const rows = vouchers.map(v => {
+      const typeLabel = v.type === 'receipt' ? 'قبض' : v.type === 'payment' ? 'صرف' : 'مصروف';
+      const entityName = v.customer?.name || v.supplier?.name || '-';
+      const entityType = v.customer ? 'عميل' : v.supplier ? 'مورد' : '-';
+      if (v.type === 'receipt') totalReceipt += parseFloat(v.amount||0);
+      else if (v.type === 'payment') totalPayment += parseFloat(v.amount||0);
+      else totalExpense += parseFloat(v.amount||0);
+
+      return `<tr>
+        <td>${formatDate(v.date)}</td>
+        <td>${v.reference || '-'}</td>
+        <td>${typeLabel}</td>
+        <td>${entityName}</td>
+        <td>${entityType}</td>
+        <td style="font-weight:700;color:${v.type==='receipt'?'var(--success)':'var(--danger)'};">${formatNumber(v.amount)}</td>
+        <td>${v.description || ''}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('tab-content').innerHTML = `
+      <div class="card">
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <h3 class="card-title">سجل السندات</h3>
+        <div class="stats-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:20px;">
+          <div class="stat-card" style="border-color:var(--success);"><div class="stat-label">إجمالي القبوض</div><div class="stat-value positive">${formatNumber(totalReceipt)}</div></div>
+          <div class="stat-card" style="border-color:var(--danger);"><div class="stat-label">إجمالي الصرف</div><div class="stat-value negative">${formatNumber(totalPayment)}</div></div>
+          <div class="stat-card" style="border-color:var(--warning);"><div class="stat-label">إجمالي المصاريف</div><div class="stat-value" style="color:var(--warning);">${formatNumber(totalExpense)}</div></div>
+        </div>
+        <div class="filter-bar">
+          <button class="filter-pill active" data-vtype="all">الكل</button>
+          <button class="filter-pill" data-vtype="receipt">قبض</button>
+          <button class="filter-pill" data-vtype="payment">صرف</button>
+          <button class="filter-pill" data-vtype="expense">مصاريف</button>
+        </div>
+        <div class="table-wrap"><table class="table" id="vouchers-table"><thead><tr><th>التاريخ</th><th>المرجع</th><th>النوع</th><th>الجهة</th><th>تصنيف الجهة</th><th>المبلغ</th><th>الوصف</th></tr></thead><tbody>${rows}</tbody></table></div>
+      </div>`;
+
+    // فلترة حسب النوع
+    document.querySelectorAll('.filter-pill').forEach(pill => {
+      pill.addEventListener('click', function() {
+        document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        const vtype = this.dataset.vtype;
+        document.querySelectorAll('#vouchers-table tbody tr').forEach(row => {
+          const typeCell = row.cells[2].textContent.trim();
+          if (vtype === 'all' || 
+              (vtype === 'receipt' && typeCell === 'قبض') ||
+              (vtype === 'payment' && typeCell === 'صرف') ||
+              (vtype === 'expense' && typeCell === 'مصروف')) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+      });
+    });
+
   } catch (e) { showToast(e.message, 'error'); }
 }
 

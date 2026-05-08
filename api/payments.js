@@ -35,6 +35,7 @@ module.exports = async (req, res) => {
       : req.body?.voucher === true;
 
     if (isVoucherRequest) {
+      // ============ معالجة السندات ============
       if (req.method === 'GET') {
         const { data, error } = await supabase
           .from('vouchers')
@@ -56,6 +57,42 @@ module.exports = async (req, res) => {
         const cust = parseInt(customer_id) || null;
         const supp = parseInt(supplier_id) || null;
 
+        // التحقق من تطابق الفاتورة مع العميل/المورد
+        if (invoice_id && cust) {
+          const { data: inv } = await supabase.from('invoices').select('customer_id').eq('id', invoice_id).single();
+          if (inv && inv.customer_id !== cust) {
+            return res.status(400).json({ error: 'الفاتورة المختارة لا تخص هذا العميل' });
+          }
+        }
+        if (invoice_id && supp) {
+          const { data: inv } = await supabase.from('invoices').select('supplier_id').eq('id', invoice_id).single();
+          if (inv && inv.supplier_id !== supp) {
+            return res.status(400).json({ error: 'الفاتورة المختارة لا تخص هذا المورد' });
+          }
+        }
+
+        // توليد ترقيم تلقائي إذا لم يقدم reference
+        let finalReference = reference;
+        if (!finalReference) {
+          const prefix = type === 'receipt' ? 'SC' : type === 'payment' ? 'SP' : 'SE';
+          const { data: lastVoucher } = await supabase
+            .from('vouchers')
+            .select('reference')
+            .eq('user_id', userId)
+            .eq('type', type)
+            .ilike('reference', prefix + '-%')
+            .order('id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          let nextNum = 1;
+          if (lastVoucher && lastVoucher.reference) {
+            const numPart = lastVoucher.reference.split('-')[1];
+            const parsed = parseInt(numPart);
+            if (!isNaN(parsed)) nextNum = parsed + 1;
+          }
+          finalReference = `${prefix}-${String(nextNum).padStart(4, '0')}`;
+        }
+
         const { data: voucher, error } = await supabase
           .from('vouchers')
           .insert({
@@ -64,7 +101,7 @@ module.exports = async (req, res) => {
             date: date || new Date().toISOString().split('T')[0],
             amount: amt,
             description,
-            reference,
+            reference: finalReference,
             customer_id: cust,
             supplier_id: supp,
             invoice_id: invoice_id || null
@@ -79,7 +116,7 @@ module.exports = async (req, res) => {
             customer_id: cust,
             amount: amt,
             payment_date: voucher.date,
-            notes: `سند قبض ${voucher.reference || ''} - ${description || ''}`,
+            notes: `سند قبض ${voucher.reference} - ${description || ''}`,
             invoice_id: invoice_id || null,
             voucher_id: voucher.id
           });
@@ -90,7 +127,7 @@ module.exports = async (req, res) => {
             supplier_id: supp,
             amount: amt,
             payment_date: voucher.date,
-            notes: `سند صرف ${voucher.reference || ''} - ${description || ''}`,
+            notes: `سند صرف ${voucher.reference} - ${description || ''}`,
             invoice_id: invoice_id || null,
             voucher_id: voucher.id
           });
@@ -100,7 +137,7 @@ module.exports = async (req, res) => {
             user_id: userId,
             amount: amt,
             expense_date: voucher.date,
-            description: `سند مصروف ${voucher.reference || ''} - ${description || ''}`,
+            description: `سند مصروف ${voucher.reference} - ${description || ''}`,
             voucher_id: voucher.id
           });
         }
@@ -120,28 +157,20 @@ module.exports = async (req, res) => {
           .single();
         if (fetchErr || !voucher) return res.status(404).json({ error: 'السند غير موجود' });
 
+        // حذف آمن مع تفادي تعديل الرصيد إن لم توجد دفعة
         if (voucher.type === 'receipt' && voucher.customer_id) {
-          const { data: paymentsToDelete } = await supabase
-            .from('payments')
-            .select('id')
-            .eq('voucher_id', voucherId);
-          if (paymentsToDelete) {
-            for (let p of paymentsToDelete) {
-              await supabase.from('payments').delete().eq('id', p.id);
-            }
+          const { data: pmts } = await supabase.from('payments').select('id').eq('voucher_id', voucherId);
+          if (pmts && pmts.length > 0) {
+            for (let p of pmts) await supabase.from('payments').delete().eq('id', p.id);
+            await updateCustomerBalance(voucher.customer_id, userId, voucher.amount);
           }
-          await updateCustomerBalance(voucher.customer_id, userId, voucher.amount);
+          // إذا لم توجد دفعات، لا نعدل الرصيد (تم عكسه مسبقاً)
         } else if (voucher.type === 'payment' && voucher.supplier_id) {
-          const { data: paymentsToDelete } = await supabase
-            .from('payments')
-            .select('id')
-            .eq('voucher_id', voucherId);
-          if (paymentsToDelete) {
-            for (let p of paymentsToDelete) {
-              await supabase.from('payments').delete().eq('id', p.id);
-            }
+          const { data: pmts } = await supabase.from('payments').select('id').eq('voucher_id', voucherId);
+          if (pmts && pmts.length > 0) {
+            for (let p of pmts) await supabase.from('payments').delete().eq('id', p.id);
+            await updateSupplierBalance(voucher.supplier_id, userId, voucher.amount);
           }
-          await updateSupplierBalance(voucher.supplier_id, userId, voucher.amount);
         } else if (voucher.type === 'expense') {
           await supabase.from('expenses').delete().eq('voucher_id', voucherId);
         }
@@ -153,6 +182,9 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    // ============ قسم الدفعات العادية (غير السندات) ============
+    // تم إبقاؤها للقراءة والمراجعة فقط - تعطيل الإضافة والحذف المباشر
+
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('payments')
@@ -163,23 +195,12 @@ module.exports = async (req, res) => {
       return res.json(data);
     }
 
+    // منع الإضافة المباشرة من الواجهة القديمة (تم إخفاؤها)
     if (req.method === 'POST') {
-      const { invoice_id, customer_id, supplier_id, amount, payment_date, notes } = req.body;
-      if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'المبلغ مطلوب' });
-
-      const { data, error } = await supabase.from('payments').insert({
-        user_id: userId, invoice_id: invoice_id || null, customer_id: customer_id || null,
-        supplier_id: supplier_id || null, amount: parseFloat(amount),
-        payment_date: payment_date || new Date().toISOString().split('T')[0], notes
-      }).select().single();
-      if (error) throw error;
-
-      if (customer_id) await updateCustomerBalance(customer_id, userId, -parseFloat(amount));
-      if (supplier_id) await updateSupplierBalance(supplier_id, userId, -parseFloat(amount));
-
-      return res.json(data);
+      return res.status(405).json({ error: 'لا يمكن إضافة دفعة مباشرة. استخدم السندات.' });
     }
 
+    // منع الحذف المباشر للدفعات المرتبطة بسند، والسماح بحذف الدفعات غير المرتبطة مع تحذير (اختياري)
     if (req.method === 'DELETE') {
       const paymentId = req.query.id;
       if (!paymentId) return res.status(400).json({ error: 'معرف الدفعة مطلوب' });
@@ -187,6 +208,11 @@ module.exports = async (req, res) => {
       const { data: payment, error: fetchError } = await supabase.from('payments').select('*').eq('id', paymentId).eq('user_id', userId).single();
       if (fetchError || !payment) return res.status(404).json({ error: 'الدفعة غير موجودة' });
 
+      if (payment.voucher_id) {
+        return res.status(400).json({ error: 'هذه الدفعة مرتبطة بسند. لا يمكن حذفها من هنا. احذف السند أولاً.' });
+      }
+
+      // دفعة غير مرتبطة بسند (قد تكون من فاتورة مباشرة أو قديمة) نسمح بحذفها مع عكس الرصيد
       if (payment.customer_id) await updateCustomerBalance(payment.customer_id, userId, parseFloat(payment.amount));
       if (payment.supplier_id) await updateSupplierBalance(payment.supplier_id, userId, parseFloat(payment.amount));
 
