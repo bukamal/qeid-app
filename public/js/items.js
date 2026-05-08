@@ -30,7 +30,9 @@ export function renderFilteredItems() {
   filtered.forEach(item => {
     const baseUnitName = item.base_unit?.name || item.base_unit?.abbreviation || 'قطعة';
     const available = item.available ?? 0;
-    const safeId = item.id ?? 0;
+    const safeId = item.id;
+    if (!safeId) return; // تخطي المواد بدون معرف
+
     html += `<tr onclick="window.showItemDetail(${safeId})" style="cursor:pointer;">
       <td>
         <div style="font-weight:700;">${item.name || 'بدون اسم'}</div>
@@ -88,12 +90,11 @@ export async function loadItems() {
 
 // ========== تفاصيل المادة (بيانات حية من الخادم) ==========
 export async function showItemDetail(itemId) {
-  if (itemId === undefined || itemId === null) {
+  if (itemId === undefined || itemId === null || isNaN(itemId)) {
     showToast('معرف المادة غير صالح', 'error');
     return;
   }
 
-  // نافذة تحميل مؤقتة
   const loadingModal = openModal({
     title: 'جاري التحميل',
     bodyHTML: `<div class="skeleton-container">
@@ -105,6 +106,9 @@ export async function showItemDetail(itemId) {
 
   try {
     const item = await apiCall(`/items?id=${itemId}&detail=1`, 'GET');
+    if (!item || !item.id) {
+      throw new Error('بيانات المادة غير مكتملة');
+    }
     loadingModal.close();
     renderItemDetailModal(item);
   } catch (err) {
@@ -114,7 +118,13 @@ export async function showItemDetail(itemId) {
 }
 
 function renderItemDetailModal(item) {
-  // قيم افتراضية آمنة
+  // تأكد من وجود معرف
+  const itemId = item.id;
+  if (!itemId) {
+    showToast('لا يمكن عرض المادة: معرف مفقود', 'error');
+    return;
+  }
+
   const baseUnit = item.base_unit || {};
   const baseUnitName = baseUnit.name || baseUnit.abbreviation || 'قطعة';
   const itemUnits = item.item_units || [];
@@ -159,7 +169,7 @@ function renderItemDetailModal(item) {
       <div class="stat-card"><div class="stat-label">متوسط التكلفة</div><div class="stat-value" style="font-size:16px;">${formatNumber(avgCost)} / ${baseUnitName}</div></div>
       <div class="stat-card"><div class="stat-label">آخر سعر شراء</div><div class="stat-value" style="font-size:16px;">${item.last_purchase_price ? formatNumber(item.last_purchase_price) + ' / ' + baseUnitName : 'غير متوفر'}</div></div>
       <div class="stat-card"><div class="stat-label">سعر البيع</div><div class="stat-value" style="font-size:16px;">${formatNumber(sellPrice)} / ${baseUnitName}</div></div>
-      <div class="stat-card" style="background: var(--warning-light);"><div class="stat-label">💰 قيمة المخزون (بالتكلفة)</div><div class="stat-value" style="font-size:16px;">${formatNumber(costValue)}</div></div>
+      <div class="stat-card" style="background: var(--bg);"><div class="stat-label">💰 قيمة المخزون (بالتكلفة)</div><div class="stat-value" style="font-size:16px;">${formatNumber(costValue)}</div></div>
       <div class="stat-card" style="background: var(--success-light);"><div class="stat-label">💵 قيمة المخزون (بسعر البيع)</div><div class="stat-value" style="font-size:16px;">${formatNumber(sellingValue)}</div></div>
       <div class="stat-card" style="background: ${expectedProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)'};"><div class="stat-label">📈 الربح المتوقع</div><div class="stat-value" style="font-size:16px;">${formatNumber(expectedProfit)}</div></div>
     </div>`;
@@ -216,7 +226,7 @@ function renderItemDetailModal(item) {
   // --- ربط الأحداث ---
   modal.element.querySelector('#edit-item-btn').onclick = () => {
     modal.close();
-    setTimeout(() => showEditItemModal(item.id), 220);
+    setTimeout(() => showEditItemModal(itemId), 220);
   };
 
   modal.element.querySelector('#delete-item-btn').onclick = () => {
@@ -224,7 +234,7 @@ function renderItemDetailModal(item) {
     setTimeout(async () => {
       if (await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name || 'المادة'}</strong>؟`)) {
         try {
-          await apiCall(`/items?id=${item.id}`, 'DELETE');
+          await apiCall(`/items?id=${itemId}`, 'DELETE');
           showToast('تم الحذف بنجاح', 'success');
           loadItems();
         } catch (e) {
@@ -247,7 +257,7 @@ function renderItemDetailModal(item) {
   };
 }
 
-// ========== إضافة مادة جديدة ==========
+// ========== إضافة مادة جديدة (بدون تغيير عن النسخة السابقة) ==========
 async function showAddItemModal() {
   let categories = storeGet('categories');
   if (!categories) {
@@ -479,6 +489,10 @@ async function showAddItemModal() {
 
 // ========== تعديل مادة ==========
 async function showEditItemModal(itemId) {
+  if (!itemId) {
+    showToast('معرف المادة غير صالح', 'error');
+    return;
+  }
   const items = storeGet('items') || [];
   let categories = storeGet('categories');
   if (!categories) {
