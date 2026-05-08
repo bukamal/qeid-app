@@ -423,7 +423,7 @@ export async function loadInvoices() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== عرض الفواتير بعد التصفية ==========
+// ========== عرض الفواتير بعد التصفية (بطاقات غنية بدون أزرار) ==========
 export function renderFilteredInvoices() {
   const container = document.getElementById('invoices-list');
   if (!container) return;
@@ -448,55 +448,116 @@ export function renderFilteredInvoices() {
     const entity = inv.customer?.name || inv.supplier?.name || 'نقدي';
     const statusColor = (inv.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
     html += `
-      <div class="card card-hover">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+      <div class="card card-hover invoice-rich-card" data-id="${inv.id}" style="cursor:pointer; padding: 16px 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
           <div style="min-width:0;">
-            <div style="font-weight:800;font-size:15px;display:flex;align-items:center;gap:8px;">
-              <span style="background:${inv.type==='sale'?'var(--success-light)':'var(--warning-light)'};color:${inv.type==='sale'?'var(--success)':'var(--warning)'};padding:2px 10px;border-radius:20px;font-size:12px;">${typeLabel}</span>
-              فاتورة ${inv.reference || ''}
+            <div style="font-weight:800; font-size:16px; display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <span style="background:${inv.type==='sale'?'var(--success-light)':'var(--warning-light)'};color:${inv.type==='sale'?'var(--success)':'var(--warning)'};padding:3px 12px;border-radius:20px;font-size:12px;">${typeLabel}</span>
+              ${inv.reference ? `<span style="color:var(--text-secondary);">فاتورة ${inv.reference}</span>` : `<span style="color:var(--text-muted);">بدون مرجع</span>`}
             </div>
-            <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${formatDate(inv.date)} · ${entity}</div>
+            <div style="font-size:13px; color:var(--text-muted); display:flex; gap:16px; flex-wrap:wrap;">
+              <span>📅 ${formatDate(inv.date)}</span>
+              <span>👤 ${entity}</span>
+            </div>
           </div>
-          <div style="font-weight:900;font-size:20px;color:var(--primary);white-space:nowrap;">${formatNumber(inv.total)}</div>
+          <div style="text-align:left;">
+            <div style="font-weight:900; font-size:22px; color:var(--primary);">${formatNumber(inv.total)}</div>
+            <div style="font-size:12px; color:var(--text-muted);">الإجمالي</div>
+          </div>
         </div>
-        <div style="display:flex;gap:16px;font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-          <span>مدفوع: <strong>${formatNumber(inv.paid || 0)}</strong></span>
-          <span style="color:${statusColor};font-weight:700;">باقي: ${formatNumber(inv.balance || 0)}</span>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary btn-sm view-invoice-btn" data-id="${inv.id}">${ICONS.fileText} عرض</button>
-          <button class="btn btn-primary btn-sm print-invoice-btn" data-id="${inv.id}">${ICONS.print} طباعة</button>
-          <button class="btn btn-success btn-sm send-invoice-btn" data-id="${inv.id}">${ICONS.file} إرسال</button>
-          <button class="btn btn-warning btn-sm edit-invoice-btn" data-id="${inv.id}">${ICONS.edit} تعديل</button>
-          <button class="btn btn-danger btn-sm delete-invoice-btn" data-id="${inv.id}">${ICONS.trash} حذف</button>
+        <div style="display:flex; gap:20px; font-size:13px; border-top:1px solid var(--border); padding-top:12px; color:var(--text-secondary);">
+          <div><span style="color:var(--text-muted);">المدفوع:</span> <strong style="color:var(--success);">${formatNumber(inv.paid || 0)}</strong></div>
+          <div><span style="color:var(--text-muted);">المتبقي:</span> <strong style="color:${statusColor};">${formatNumber(inv.balance || 0)}</strong></div>
+          <div style="margin-right:auto; font-size:12px; color:${(inv.balance||0) <= 0 ? 'var(--success)' : 'var(--warning)'};">
+            ${(inv.balance||0) <= 0 ? '✅ مدفوعة' : '⏳ غير مدفوعة'}
+          </div>
         </div>
       </div>`;
   });
   container.innerHTML = html;
 
-  container.querySelectorAll('.view-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = (storeGet('invoices') || []).find(i => i.id === id);
-    if (inv) showInvoiceDetail(inv);
-  }));
-  container.querySelectorAll('.print-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    const inv = (storeGet('invoices') || []).find(i => i.id === id);
-    if (inv) printInvoiceWithFormat(inv);
-  }));
-  container.querySelectorAll('.send-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    sendInvoiceViaTelegram(id);
-  }));
-  container.querySelectorAll('.edit-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    editInvoice(id);
-  }));
-  container.querySelectorAll('.delete-invoice-btn').forEach(b => b.addEventListener('click', e => {
-    const id = parseInt(e.target.closest('button').dataset.id);
-    deleteInvoice(id);
-  }));
+  // ربط الأحداث لفتح التفاصيل عند النقر
+  container.querySelectorAll('.invoice-rich-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = parseInt(card.dataset.id);
+      const inv = (storeGet('invoices') || []).find(i => i.id === id);
+      if (inv) showInvoiceDetailModal(inv);
+    });
+  });
 }
+
+// ========== مودال تفاصيل الفاتورة (يضم جميع الأزرار) ==========
+export function showInvoiceDetailModal(invoice) {
+  if (!invoice) return;
+
+  const itemsList = storeGet('items') || [];
+  const lines = invoice.invoice_lines?.map(l => {
+    const item = itemsList.find(i => i.id === l.item_id);
+    const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
+    const factor = l.conversion_factor || 1;
+    const baseQty = l.quantity * factor;
+    const baseUnit = item?.base_unit?.name || 'قطعة';
+    let qtyDisplay = `${l.quantity} ${unitName}`;
+    if (factor > 1) qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
+    return `<tr><td style="font-weight:700;">${l.item?.name || '-'}</td><td>${qtyDisplay}</td><td>${formatNumber(l.unit_price)}</td><td style="font-weight:800;">${formatNumber(l.total)}</td></tr>`;
+  }).join('') || '';
+
+  const typeLabel = invoice.type === 'sale' ? 'مبيعات' : 'مشتريات';
+  const entity = invoice.customer?.name || invoice.supplier?.name || 'نقدي';
+  const entityLabel = invoice.type === 'sale' ? 'العميل' : 'المورد';
+  const statusColor = (invoice.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
+
+  const modal = openModal({
+    title: `فاتورة ${typeLabel} ${invoice.reference || ''}`,
+    bodyHTML: `
+      <div style="margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div style="background:var(--bg);border-radius:8px;padding:12px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div>
+            <div style="font-weight:700;">${formatDate(invoice.date)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:8px;padding:12px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${entityLabel}</div>
+            <div style="font-weight:700;">${entity}</div>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${lines}</tbody></table></div>
+        <div style="background:var(--bg);border-radius:12px;padding:16px;margin-top:16px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">الإجمالي</span><span style="font-weight:800;font-size:18px;">${formatNumber(invoice.total)}</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">المدفوع</span><span style="font-weight:700;color:var(--success);">${formatNumber(invoice.paid || 0)}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">المتبقي</span><span style="font-weight:800;color:${statusColor};font-size:18px;">${formatNumber(invoice.balance || 0)}</span></div>
+        </div>
+        ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-secondary" id="detail-close">إغلاق</button>
+      <button class="btn btn-primary" id="detail-print">${ICONS.print} طباعة</button>
+      <button class="btn btn-success" id="detail-send">${ICONS.file} إرسال</button>
+      <button class="btn btn-warning" id="detail-edit">${ICONS.edit} تعديل</button>
+      <button class="btn btn-danger" id="detail-delete">${ICONS.trash} حذف</button>
+    `
+  });
+
+  modal.element.querySelector('#detail-close').onclick = () => modal.close();
+  modal.element.querySelector('#detail-print').onclick = () => {
+    modal.close();
+    setTimeout(() => printInvoiceWithFormat(invoice), 300);
+  };
+  modal.element.querySelector('#detail-send').onclick = () => {
+    modal.close();
+    setTimeout(() => sendInvoiceViaTelegram(invoice.id), 300);
+  };
+  modal.element.querySelector('#detail-edit').onclick = () => {
+    modal.close();
+    setTimeout(() => editInvoice(invoice.id), 300);
+  };
+  modal.element.querySelector('#detail-delete').onclick = () => {
+    modal.close();
+    setTimeout(() => deleteInvoice(invoice.id), 300);
+  };
+}
+
+// يمكنك حذف الدالة القديمة showInvoiceDetail إن كانت لا تزال موجودة واستبدالها بهذه.
 
 // ========== حذف فاتورة ==========
 export async function deleteInvoice(id) {
@@ -532,58 +593,6 @@ export async function sendInvoiceViaTelegram(invoiceId) {
   } finally {
     if (btn && originalHTML) { btn.disabled = false; btn.innerHTML = originalHTML; }
   }
-}
-
-// ========== عرض تفاصيل الفاتورة ==========
-export function showInvoiceDetail(invoice) {
-  const itemsList = storeGet('items') || [];
-  const lines = invoice.invoice_lines?.map(l => {
-    const item = itemsList.find(i => i.id === l.item_id);
-    const unitName = l.unit?.name || l.unit?.abbreviation || (item?.base_unit?.name || 'قطعة');
-    const factor = l.conversion_factor || 1;
-    const baseQty = l.quantity * factor;
-    const baseUnit = item?.base_unit?.name || 'قطعة';
-    let qtyDisplay = `${l.quantity} ${unitName}`;
-    if (factor > 1) qtyDisplay += ` <span style="color:var(--text-muted);font-size:12px;">(= ${baseQty} ${baseUnit})</span>`;
-    return `<tr><td style="font-weight:700;">${l.item?.name || '-'}</td><td>${qtyDisplay}</td><td>${formatNumber(l.unit_price)}</td><td style="font-weight:800;">${formatNumber(l.total)}</td></tr>`;
-  }).join('') || '';
-
-  const typeLabel = invoice.type === 'sale' ? 'مبيعات' : 'مشتريات';
-  const entity = invoice.customer?.name || invoice.supplier?.name || 'نقدي';
-  const statusColor = (invoice.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
-
-  const modal = openModal({
-    title: `فاتورة ${typeLabel} ${invoice.reference || ''}`,
-    bodyHTML: `
-      <div style="margin-bottom:16px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-          <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div><div style="font-weight:700;">${formatDate(invoice.date)}</div></div>
-          <div style="background:var(--bg);border-radius:8px;padding:12px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${invoice.type === 'sale' ? 'العميل' : 'المورد'}</div><div style="font-weight:700;">${entity}</div></div>
-        </div>
-        <div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${lines}</tbody></table></div>
-        <div style="background:var(--bg);border-radius:12px;padding:16px;margin-top:16px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">الإجمالي</span><span style="font-weight:800;font-size:18px;">${formatNumber(invoice.total)}</span></div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">المدفوع</span><span style="font-weight:700;color:var(--success);">${formatNumber(invoice.paid || 0)}</span></div>
-          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">المتبقي</span><span style="font-weight:800;color:${statusColor};">${formatNumber(invoice.balance || 0)}</span></div>
-        </div>
-        ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
-      </div>`,
-    footerHTML: `
-      <button class="btn btn-secondary" id="detail-close">إغلاق</button>
-      <button class="btn btn-success" id="detail-send">${ICONS.file} إرسال</button>
-      <button class="btn btn-primary" id="detail-print">${ICONS.print} طباعة</button>
-    `
-  });
-
-  modal.element.querySelector('#detail-close').onclick = () => modal.close();
-  modal.element.querySelector('#detail-print').onclick = () => {
-    modal.close();
-    setTimeout(() => printInvoiceWithFormat(invoice), 300);
-  };
-  modal.element.querySelector('#detail-send').onclick = () => {
-    modal.close();
-    setTimeout(() => sendInvoiceViaTelegram(invoice.id), 300);
-  };
 }
 
 // اختيار تنسيق الطباعة
@@ -962,5 +971,5 @@ window.printInvoice = printInvoice;
 window.editInvoice = editInvoice;
 window.deleteInvoice = deleteInvoice;
 window.sendInvoiceViaTelegram = sendInvoiceViaTelegram;
-window.showInvoiceDetail = showInvoiceDetail;
+window.showInvoiceDetailModal = showInvoiceDetailModal;
 window.printInvoiceWithFormat = printInvoiceWithFormat;
