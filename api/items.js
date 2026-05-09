@@ -15,7 +15,6 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      // جلب المواد مع علاقاتها
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`)
@@ -23,7 +22,6 @@ module.exports = async (req, res) => {
         .order('name');
       if (itemsError) throw itemsError;
 
-      // جلب كل سطور الفواتير المرتبطة بمستخدم
       const { data: invoiceLines, error: linesError } = await supabase
         .from('invoice_lines')
         .select('item_id, quantity, quantity_in_base, invoice:invoices!inner(type, date)')
@@ -31,7 +29,6 @@ module.exports = async (req, res) => {
         .not('item_id', 'is', null);
       if (linesError) throw linesError;
 
-      // تجميع الإحصائيات لكل مادة
       const statsMap = {};
       for (const line of invoiceLines) {
         const { item_id, quantity_in_base, quantity, invoice } = line;
@@ -63,7 +60,6 @@ module.exports = async (req, res) => {
         }
       }
 
-      // إضافة الإحصائيات للمواد
       const enrichedItems = items.map(item => {
         const s = statsMap[item.id] || {};
         const available = parseFloat(item.quantity) || 0;
