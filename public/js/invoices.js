@@ -404,7 +404,6 @@ export async function loadInvoices() {
     }
     renderFilteredInvoices();
 
-    subscribe('invoices', () => { if (currentTab === 'invoices') loadInvoices(); });
     subscribe('customers', () => { if (currentTab === 'invoices') loadInvoices(); });
     subscribe('suppliers', () => { if (currentTab === 'invoices') loadInvoices(); });
   } catch (err) { showToast(err.message, 'error'); }
