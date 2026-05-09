@@ -1,3 +1,4 @@
+// public/js/modal.js
 import { ICONS, lockScroll, unlockScroll } from './core.js';
 
 let activeModal = null;
@@ -12,7 +13,12 @@ export function showToast(message, type = 'info') {
   if (type === 'warning') iconSvg = ICONS.alert;
   toast.innerHTML = `<span class="toast-icon">${iconSvg}</span> ${message}`;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  
+  // إزالة تلقائية بعد 3 ثوانٍ
+  setTimeout(() => {
+    toast.style.animation = 'toastOut 0.35s ease forwards';
+    setTimeout(() => toast.remove(), 350);
+  }, 3000);
 }
 
 export function closeActiveModal() {
@@ -21,14 +27,13 @@ export function closeActiveModal() {
   if (closeBtn) {
     closeBtn.click();
   } else {
-    // إغلاق يدوي
     if (activeModal.classList) {
       const box = activeModal.querySelector('.modal-box');
       activeModal.style.animation = 'fadeIn 0.2s ease reverse';
       if (box) box.style.animation = 'slideUp 0.25s ease reverse';
       setTimeout(() => {
         activeModal.remove();
-        if (activeModal === activeModal) activeModal = null; // eslint-disable-line
+        activeModal = null;
         unlockScroll();
       }, 200);
     }
@@ -80,7 +85,7 @@ export function confirmDialog(message) {
   return new Promise(resolve => {
     const modal = openModal({
       title: 'تأكيد العملية',
-      bodyHTML: `<div style="display:flex;gap:12px;align-items:center;padding:8px 0;"><div style="color:var(--warning);flex-shrink:0;">${ICONS.alert}</div><p style="font-size:15px;line-height:1.7;">${message}</p></div>`,
+      bodyHTML: `<div style="display:flex;gap:14px;align-items:center;padding:8px 0;"><div style="color:var(--warning);flex-shrink:0;">${ICONS.alert}</div><p style="font-size:15px;line-height:1.8;">${message}</p></div>`,
       footerHTML: `<button class="btn btn-secondary" id="confirm-cancel">إلغاء</button><button class="btn btn-danger" id="confirm-ok">تأكيد</button>`,
       onClose: () => resolve(false)
     });
@@ -134,3 +139,4 @@ export function showFormModal({ title, fields, initialValues = {}, onSave, onSuc
     }
   };
 }
+

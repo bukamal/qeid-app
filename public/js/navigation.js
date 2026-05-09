@@ -11,14 +11,15 @@ export const tabsConfig = {
   customers: { title: 'العملاء', subtitle: 'قائمة العملاء والذمم المدينة', icon: ICONS.users },
   suppliers: { title: 'الموردين', subtitle: 'قائمة الموردين والذمم الدائنة', icon: ICONS.factory },
   categories: { title: 'التصنيفات', subtitle: 'تصنيفات المواد', icon: ICONS.tag },
-  vouchers: { title: 'سندات', subtitle: 'سندات القبض والصرف والمصاريف', icon: ICONS.fileText },
+  vouchers: { title: 'السندات', subtitle: 'سندات القبض والصرف والمصاريف', icon: ICONS.fileText },
   invoices: { title: 'الفواتير', subtitle: 'سجل الفواتير والحركات', icon: ICONS.fileText },
   reports: { title: 'التقارير', subtitle: 'التقارير المالية والإحصائيات', icon: ICONS.chart }
-  // تم إخفاء 'payments' و 'expenses' لتفادي الازدواجية مع السندات
 };
 
 export function setActiveTab(tabName) {
-  document.querySelectorAll('.nav-item, .bottom-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tabName));
+  document.querySelectorAll('.nav-item, .bottom-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === tabName);
+  });
   const cfg = tabsConfig[tabName];
   document.getElementById('page-title').textContent = cfg?.title || '';
   document.getElementById('page-subtitle').textContent = cfg?.subtitle || '';
@@ -34,7 +35,7 @@ export function navigateTo(tabName) {
 
   const content = document.getElementById('tab-content');
   content.style.opacity = '0';
-  content.style.transform = 'translateY(10px)';
+  content.style.transform = 'translateY(12px)';
 
   setTimeout(async () => {
     switch (tabName) {
@@ -51,11 +52,11 @@ export function navigateTo(tabName) {
       case 'more': showMoreMenu(); break;
     }
     requestAnimationFrame(() => {
-      content.style.transition = 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+      content.style.transition = 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)';
       content.style.opacity = '1';
       content.style.transform = 'translateY(0)';
     });
-  }, 50);
+  }, 60);
 }
 
 function showMoreMenu() {
@@ -67,9 +68,7 @@ export function initNavigation() {
   const sidebarNav = document.getElementById('sidebar-nav');
   const sheetGrid = document.getElementById('sheet-grid');
 
-  // القائمة الرئيسية (الشريط الجانبي) بدون payments أو expenses
   const mainTabs = ['dashboard','items','sale-invoice','purchase-invoice','customers','suppliers','categories','vouchers','invoices','reports'];
-  // قائمة "المزيد" للجوال تحتوي فقط على ما هو غير ظاهر في الشريط السفلي
   const moreTabs = ['purchase-invoice','customers','suppliers','categories','vouchers','reports'];
 
   mainTabs.forEach(key => {
@@ -114,3 +113,4 @@ document.querySelectorAll('.bottom-item').forEach(btn => {
     else if (tabName) navigateTo(tabName);
   });
 });
+

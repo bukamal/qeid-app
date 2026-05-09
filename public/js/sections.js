@@ -1,15 +1,10 @@
 // public/js/sections.js
-import {
-  apiCall, formatNumber, ICONS
-} from './core.js';
+import { apiCall, formatNumber, ICONS, animateEntry } from './core.js';
 import { get as storeGet, set as storeSet } from './store.js';
 import { showToast, openModal, confirmDialog, showFormModal } from './modal.js';
 import { currentTab } from './navigation.js';
 import { subscribe } from './store.js';
 
-/**
- * تعريف خيارات كل قسم عام
- */
 export function getSectionOptions(key) {
   switch (key) {
     case '/customers':
@@ -81,27 +76,24 @@ export function getSectionOptions(key) {
   }
 }
 
-/**
- * بناء بطاقة عرض لعنصر في القسم العام
- */
 export function buildGenericItemHtml(item, opts) {
   const info = opts.extraFields
     .map(f => {
       const val = item[f.key];
       if (val === undefined || val === null) return '';
-      return `<span style="color:var(--text-muted);font-size:13px;background:var(--bg);padding:2px 8px;border-radius:6px;">${f.prefix || ''}${val}</span>`;
+      return `<span style="color:var(--text-muted);font-size:13px;background:var(--bg);padding:3px 10px;border-radius:8px; font-weight:600;">${f.prefix || ''}${val}</span>`;
     })
     .filter(Boolean)
     .join(' ');
 
   return `
-    <div class="card card-hover" style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div class="card card-hover" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
         <div style="min-width:0;">
-          <div style="font-weight:800;margin-bottom:6px;font-size:15px;">${item[opts.nameField]}</div>
+          <div style="font-weight:900;margin-bottom:8px;font-size:16px;">${item[opts.nameField]}</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;">${info}</div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
+        <div style="display:flex;gap:8px;flex-shrink:0;">
           <button class="btn btn-secondary btn-sm edit-btn" data-id="${item[opts.idField]}" data-type="${opts.apiBase}">${ICONS.edit}</button>
           <button class="btn btn-danger btn-sm delete-btn" data-id="${item[opts.idField]}" data-type="${opts.apiBase}">${ICONS.trash}</button>
         </div>
@@ -109,9 +101,6 @@ export function buildGenericItemHtml(item, opts) {
     </div>`;
 }
 
-/**
- * تحميل وعرض أي قسم عام (عملاء، موردين، تصنيفات)
- */
 export async function loadGenericSection(options) {
   try {
     const data = await apiCall(options.apiBase, 'GET');
@@ -126,10 +115,7 @@ export async function loadGenericSection(options) {
     </div>`;
 
     if (!data || !data.length) {
-      html += emptyState(
-        `لا يوجد ${options.titlePlural || options.title}`,
-        'ابدأ بإضافة أول سجل'
-      );
+      html += emptyState(`لا يوجد ${options.titlePlural || options.title}`, 'ابدأ بإضافة أول سجل');
     } else {
       data.forEach(item => {
         html += buildGenericItemHtml(item, options);
@@ -137,16 +123,11 @@ export async function loadGenericSection(options) {
     }
 
     document.getElementById('tab-content').innerHTML = html;
+    animateEntry('.card', 60);
 
-    // الاشتراك في إبطال المفتاح الخاص بهذا القسم لتحديث الواجهة تلقائياً
     if (options.cacheKey) {
       subscribe(options.cacheKey, () => {
-        // نتحقق من أن التبويب الحالي لا يزال هذا القسم
-        const tabMap = {
-          customers: 'customers',
-          suppliers: 'suppliers',
-          categories: 'categories'
-        };
+        const tabMap = { customers: 'customers', suppliers: 'suppliers', categories: 'categories' };
         if (currentTab === tabMap[options.cacheKey]) {
           loadGenericSection(options);
         }
@@ -155,9 +136,6 @@ export async function loadGenericSection(options) {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-/**
- * القسم الخاص بالوحدات (يبقى مستقلاً لكن بدون اشتراك لأنه لم يعد مطلوباً ربما)
- */
 export async function loadUnitsSection() {
   try {
     await Promise.all([
@@ -184,8 +162,8 @@ export async function loadUnitsSection() {
       html += '<div class="table-wrap"><table class="table"><thead><tr><th>الوحدة</th><th>الاختصار</th><th>الإجراءات</th></tr></thead><tbody>';
       units.forEach(unit => {
         html += `<tr>
-          <td style="font-weight:700;">${unit.name}</td>
-          <td><span style="background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:6px;font-size:12px;">${unit.abbreviation || '-'}</span></td>
+          <td style="font-weight:800;">${unit.name}</td>
+          <td><span style="background:var(--primary-light);color:var(--primary);padding:3px 12px;border-radius:8px;font-size:12px; font-weight:700;">${unit.abbreviation || '-'}</span></td>
           <td>
             <button class="btn btn-secondary btn-sm edit-unit-btn" data-id="${unit.id}">${ICONS.edit}</button>
             <button class="btn btn-danger btn-sm delete-unit-btn" data-id="${unit.id}">${ICONS.trash}</button>
@@ -264,22 +242,16 @@ export async function deleteUnit(unitId) {
 
   const usedInItems = [];
   items.forEach(item => {
-    if (item.base_unit_id == unitId) {
-      usedInItems.push(item.name);
-    } else if (item.item_units && Array.isArray(item.item_units)) {
-      item.item_units.forEach(iu => {
-        if (iu.unit_id == unitId) usedInItems.push(item.name);
-      });
+    if (item.base_unit_id == unitId) usedInItems.push(item.name);
+    else if (item.item_units && Array.isArray(item.item_units)) {
+      item.item_units.forEach(iu => { if (iu.unit_id == unitId) usedInItems.push(item.name); });
     }
   });
 
   if (usedInItems.length > 0) {
     const uniqueItems = [...new Set(usedInItems)].slice(0, 3);
     const more = usedInItems.length > 3 ? ` و${usedInItems.length - 3} أخرى` : '';
-    showToast(
-      `لا يمكن حذف "${unit.name}" لأنها مستخدمة في: ${uniqueItems.join('، ')}${more}`,
-      'error'
-    );
+    showToast(`لا يمكن حذف "${unit.name}" لأنها مستخدمة في: ${uniqueItems.join('، ')}${more}`, 'error');
     return;
   }
 
@@ -302,9 +274,6 @@ function emptyState(title, subtitle) {
   </div>`;
 }
 
-/**
- * مستمعات الأحداث العامة لأزرار الإضافة والحذف والتعديل
- */
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
@@ -355,12 +324,11 @@ document.addEventListener('click', async (e) => {
     if (!await confirmDialog(`هل أنت متأكد من حذف ${opts.title} <strong>${found?.[opts.nameField] || ''}</strong>؟`)) return;
 
     try {
-      const delUrl = opts.apiBase.includes('?')
-        ? `${opts.apiBase}&id=${id}`
-        : `${opts.apiBase}?id=${id}`;
+      const delUrl = opts.apiBase.includes('?') ? `${opts.apiBase}&id=${id}` : `${opts.apiBase}?id=${id}`;
       await apiCall(delUrl, 'DELETE');
       showToast('تم الحذف بنجاح', 'success');
       loadGenericSection(opts);
     } catch (err) { showToast(err.message, 'error'); }
   }
 });
+

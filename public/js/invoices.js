@@ -1,14 +1,10 @@
 // public/js/invoices.js
-import {
-  apiCall, formatNumber, formatDate, debounce, ICONS, initData,
-  generateLineRowHtml, getUnitOptionsForItem
-} from './core.js';
+import { apiCall, formatNumber, formatDate, debounce, ICONS, initData, generateLineRowHtml, getUnitOptionsForItem, animateEntry } from './core.js';
 import { get as storeGet } from './store.js';
 import { showToast, openModal, confirmDialog, closeActiveModal } from './modal.js';
 import { currentTab, navigateTo } from './navigation.js';
 import { subscribe } from './store.js';
 
-// ========== تعديل فاتورة موجودة ==========
 export async function editInvoice(invoiceId) {
   const invoices = storeGet('invoices') || [];
   const invoice = invoices.find(inv => inv.id === invoiceId);
@@ -19,7 +15,6 @@ export async function editInvoice(invoiceId) {
   showInvoiceModal(invoice.type, { mode: 'edit', invoiceData: invoice });
 }
 
-// ========== إنشاء/تعديل فاتورة (بيع / شراء) ==========
 export async function showInvoiceModal(type, options = {}) {
   try {
     let customers = storeGet('customers');
@@ -62,18 +57,18 @@ export async function showInvoiceModal(type, options = {}) {
       <input type="hidden" id="inv-type" value="${type}">
       <input type="hidden" id="inv-id" value="${mode === 'edit' ? invData.id : ''}">
       <div class="invoice-lines" id="inv-lines">${linesHtml}</div>
-      <button class="btn btn-secondary btn-sm" id="btn-add-line" style="width:auto;margin-bottom:16px;">${ICONS.plus} إضافة بند</button>
+      <button class="btn btn-secondary btn-sm" id="btn-add-line" style="width:auto;margin-bottom:20px;">${ICONS.plus} إضافة بند</button>
       <div class="form-group"><label class="form-label">${entLabel}</label><select class="select" id="inv-entity">${entOpts}</select></div>
       <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="input" id="inv-date" value="${mode === 'edit' ? invData.date : new Date().toISOString().split('T')[0]}"></div>
       <div class="form-group"><label class="form-label">الرقم المرجعي</label><input type="text" class="input" id="inv-ref" placeholder="رقم الفاتورة أو المرجع" value="${invData.reference || ''}"></div>
       <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="textarea" id="inv-notes" placeholder="أي ملاحظات إضافية...">${invData.notes || ''}</textarea></div>
-      <div style="background:var(--bg);border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="background:var(--bg);border-radius:16px;padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px; border: 1.5px solid var(--border);">
         <div class="form-group" style="margin:0;">
           <label class="form-label">المبلغ المدفوع</label>
           <input type="number" step="0.01" class="input" id="inv-paid" placeholder="0.00" value="${mode === 'edit' ? (invData.paid || 0) : '0'}">
-          ${mode === 'edit' ? '<span style="font-size:12px; color: var(--text-muted);">يمكنك تعديل الدفعة المرتبطة مباشرة بالفاتورة</span>' : '<span style="font-size:12px; color: var(--text-muted);">سيُملأ تلقائياً بالإجمالي، يمكنك تغييره</span>'}
+          ${mode === 'edit' ? '<span style="font-size:12px; color: var(--text-muted); display:block; margin-top:4px;">يمكنك تعديل الدفعة المرتبطة مباشرة بالفاتورة</span>' : '<span style="font-size:12px; color: var(--text-muted); display:block; margin-top:4px;">سيُملأ تلقائياً بالإجمالي، يمكنك تغييره</span>'}
         </div>
-        <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:22px;font-weight:900;color:var(--primary);padding:8px 0;">${mode === 'edit' ? formatNumber(invData.total || 0) : '0.00'}</div></div>
+        <div class="form-group" style="margin:0;"><label class="form-label">الإجمالي</label><div id="inv-grand-total" style="font-size:24px;font-weight:900;color:var(--primary);padding:10px 0;">${mode === 'edit' ? formatNumber(invData.total || 0) : '0.00'}</div></div>
       </div>`;
 
     const modalTitle = mode === 'edit'
@@ -158,7 +153,6 @@ export async function showInvoiceModal(type, options = {}) {
       updateGrandTotal();
     }
 
-    // دالة تحديث السعر عند تغيير الوحدة – مع منع السعر الأقل من الأساسي
     function handleUnitChange(row) {
       const sel = row.querySelector('.item-select');
       const unitSel = row.querySelector('.unit-select');
@@ -171,15 +165,10 @@ export async function showInvoiceModal(type, options = {}) {
       const basePrice = parseFloat(unitSel.dataset.basePrice || 0);
       const newPrice = basePrice * factor;
       priceEl.value = newPrice.toFixed(2);
-
-      // إذا كان السعر الجديد أقل من سعر الوحدة الأساسية (في حالة الوحدة الأكبر) نحذر
       if (factor > 1 && newPrice < basePrice) {
         showToast(`يبدو أن السعر المُحتسب للوحدة أقل من المتوقع. تأكد من صحة البيانات.`, 'warning');
       }
-
-      // تعطيل التعديل اليدوي ما لم يؤكد المستخدم (حماية من الخطأ)
       priceEl.title = `السعر للوحدة المختارة (${unitSel.selectedOptions[0]?.textContent || '?'}) . يمكنك تعديله يدوياً عند الحاجة`;
-
       calcRow(row);
     }
 
@@ -229,7 +218,6 @@ export async function showInvoiceModal(type, options = {}) {
       });
     });
 
-    // ========== دعم إضافة مادة محددة مسبقاً (itemId) ==========
     const preSelectedItemId = options.itemId;
     if (preSelectedItemId) {
       const linesContainer = container.querySelector('#inv-lines');
@@ -278,7 +266,6 @@ export async function showInvoiceModal(type, options = {}) {
         updateGrandTotal();
       }
     }
-    // ========== نهاية دعم itemId ==========
 
     if (mode === 'create') paidManuallyEdited = false;
 
@@ -382,18 +369,24 @@ export async function showInvoiceModal(type, options = {}) {
   }
 }
 
-// ========== قائمة الفواتير ==========
 export async function loadInvoices() {
   try {
     document.getElementById('tab-content').innerHTML = `
-        <div class="card">
-        <div class="card-header"><div><h3 class="card-title">الفواتير</h3><span class="card-subtitle">سجل الفواتير والحركات المالية</span></div></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">الفواتير</h3>
+            <span class="card-subtitle">سجل الفواتير والحركات المالية</span>
+          </div>
+        </div>
         <div class="filter-bar">
           <button class="filter-pill active" data-filter="all">الكل</button>
           <button class="filter-pill" data-filter="sale">مبيعات</button>
           <button class="filter-pill" data-filter="purchase">مشتريات</button>
         </div>
-        <div class="form-group" style="margin-bottom:0;"><input type="text" class="input" id="invoice-search" placeholder="البحث في الفواتير..."></div>
+        <div class="form-group" style="margin-bottom:0;">
+          <input type="text" class="input" id="invoice-search" placeholder="🔍 البحث في الفواتير...">
+        </div>
       </div>
       <div id="invoices-list"></div>`;
 
@@ -411,19 +404,12 @@ export async function loadInvoices() {
     }
     renderFilteredInvoices();
 
-    subscribe('invoices', () => {
-      if (currentTab === 'invoices') loadInvoices();
-    });
-    subscribe('customers', () => {
-      if (currentTab === 'invoices') loadInvoices();
-    });
-    subscribe('suppliers', () => {
-      if (currentTab === 'invoices') loadInvoices();
-    });
+    subscribe('invoices', () => { if (currentTab === 'invoices') loadInvoices(); });
+    subscribe('customers', () => { if (currentTab === 'invoices') loadInvoices(); });
+    subscribe('suppliers', () => { if (currentTab === 'invoices') loadInvoices(); });
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== عرض الفواتير بعد التصفية (بطاقات غنية بدون أزرار) ==========
 export function renderFilteredInvoices() {
   const container = document.getElementById('invoices-list');
   if (!container) return;
@@ -448,35 +434,35 @@ export function renderFilteredInvoices() {
     const entity = inv.customer?.name || inv.supplier?.name || 'نقدي';
     const statusColor = (inv.balance || 0) <= 0 ? 'var(--success)' : 'var(--warning)';
     html += `
-      <div class="card card-hover invoice-rich-card" data-id="${inv.id}" style="cursor:pointer; padding: 16px 20px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+      <div class="card card-hover invoice-rich-card" data-id="${inv.id}" style="cursor:pointer; padding: 20px 24px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 14px;">
           <div style="min-width:0;">
-            <div style="font-weight:800; font-size:16px; display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-              <span style="background:${inv.type==='sale'?'var(--success-light)':'var(--warning-light)'};color:${inv.type==='sale'?'var(--success)':'var(--warning)'};padding:3px 12px;border-radius:20px;font-size:12px;">${typeLabel}</span>
-              ${inv.reference ? `<span style="color:var(--text-secondary);">فاتورة ${inv.reference}</span>` : `<span style="color:var(--text-muted);">بدون مرجع</span>`}
+            <div style="font-weight:800; font-size:17px; display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="background:${inv.type==='sale'?'var(--success-light)':'var(--warning-light)'};color:${inv.type==='sale'?'var(--success)':'var(--warning)'};padding:4px 14px;border-radius:20px;font-size:12px; font-weight:800;">${typeLabel}</span>
+              ${inv.reference ? `<span style="color:var(--text-secondary); font-weight:700;">فاتورة ${inv.reference}</span>` : `<span style="color:var(--text-muted); font-weight:500;">بدون مرجع</span>`}
             </div>
-            <div style="font-size:13px; color:var(--text-muted); display:flex; gap:16px; flex-wrap:wrap;">
+            <div style="font-size:13px; color:var(--text-muted); display:flex; gap:18px; flex-wrap:wrap; font-weight:500;">
               <span>📅 ${formatDate(inv.date)}</span>
               <span>👤 ${entity}</span>
             </div>
           </div>
           <div style="text-align:left;">
-            <div style="font-weight:900; font-size:22px; color:var(--primary);">${formatNumber(inv.total)}</div>
-            <div style="font-size:12px; color:var(--text-muted);">الإجمالي</div>
+            <div style="font-weight:900; font-size:24px; color:var(--primary);">${formatNumber(inv.total)}</div>
+            <div style="font-size:12px; color:var(--text-muted); font-weight:500;">الإجمالي</div>
           </div>
         </div>
-        <div style="display:flex; gap:20px; font-size:13px; border-top:1px solid var(--border); padding-top:12px; color:var(--text-secondary);">
+        <div style="display:flex; gap:24px; font-size:13px; border-top:1px solid var(--border); padding-top:14px; color:var(--text-secondary); font-weight:500;">
           <div><span style="color:var(--text-muted);">المدفوع:</span> <strong style="color:var(--success);">${formatNumber(inv.paid || 0)}</strong></div>
           <div><span style="color:var(--text-muted);">المتبقي:</span> <strong style="color:${statusColor};">${formatNumber(inv.balance || 0)}</strong></div>
-          <div style="margin-right:auto; font-size:12px; color:${(inv.balance||0) <= 0 ? 'var(--success)' : 'var(--warning)'};">
+          <div style="margin-right:auto; font-size:12px; color:${(inv.balance||0) <= 0 ? 'var(--success)' : 'var(--warning)'}; font-weight:700;">
             ${(inv.balance||0) <= 0 ? '✅ مدفوعة' : '⏳ غير مدفوعة'}
           </div>
         </div>
       </div>`;
   });
   container.innerHTML = html;
+  animateEntry('.invoice-rich-card', 60);
 
-  // ربط الأحداث لفتح التفاصيل عند النقر
   container.querySelectorAll('.invoice-rich-card').forEach(card => {
     card.addEventListener('click', () => {
       const id = parseInt(card.dataset.id);
@@ -486,7 +472,6 @@ export function renderFilteredInvoices() {
   });
 }
 
-// ========== مودال تفاصيل الفاتورة (يضم جميع الأزرار) ==========
 export function showInvoiceDetailModal(invoice) {
   if (!invoice) return;
 
@@ -510,24 +495,24 @@ export function showInvoiceDetailModal(invoice) {
   const modal = openModal({
     title: `فاتورة ${typeLabel} ${invoice.reference || ''}`,
     bodyHTML: `
-      <div style="margin-bottom:16px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-          <div style="background:var(--bg);border-radius:8px;padding:12px;">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">التاريخ</div>
-            <div style="font-weight:700;">${formatDate(invoice.date)}</div>
+      <div style="margin-bottom:20px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+          <div style="background:var(--bg);border-radius:12px;padding:14px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px; font-weight:700;">التاريخ</div>
+            <div style="font-weight:800; font-size:15px;">${formatDate(invoice.date)}</div>
           </div>
-          <div style="background:var(--bg);border-radius:8px;padding:12px;">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${entityLabel}</div>
-            <div style="font-weight:700;">${entity}</div>
+          <div style="background:var(--bg);border-radius:12px;padding:14px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px; font-weight:700;">${entityLabel}</div>
+            <div style="font-weight:800; font-size:15px;">${entity}</div>
           </div>
         </div>
         <div class="table-wrap"><table class="table"><thead><tr><th>المادة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>${lines}</tbody></table></div>
-        <div style="background:var(--bg);border-radius:12px;padding:16px;margin-top:16px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">الإجمالي</span><span style="font-weight:800;font-size:18px;">${formatNumber(invoice.total)}</span></div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-muted);">المدفوع</span><span style="font-weight:700;color:var(--success);">${formatNumber(invoice.paid || 0)}</span></div>
-          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">المتبقي</span><span style="font-weight:800;color:${statusColor};font-size:18px;">${formatNumber(invoice.balance || 0)}</span></div>
+        <div style="background:var(--bg);border-radius:16px;padding:20px;margin-top:20px; border: 1.5px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><span style="color:var(--text-muted); font-weight:600;">الإجمالي</span><span style="font-weight:900;font-size:20px;">${formatNumber(invoice.total)}</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><span style="color:var(--text-muted); font-weight:600;">المدفوع</span><span style="font-weight:800;color:var(--success);">${formatNumber(invoice.paid || 0)}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted); font-weight:600;">المتبقي</span><span style="font-weight:900;color:${statusColor};font-size:20px;">${formatNumber(invoice.balance || 0)}</span></div>
         </div>
-        ${invoice.notes ? `<div style="margin-top:12px;padding:12px;background:var(--warning-light);border-radius:8px;color:var(--warning);font-size:13px;"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
+        ${invoice.notes ? `<div style="margin-top:14px;padding:14px;background:var(--warning-light);border-radius:12px;color:var(--warning);font-size:13px; font-weight:600; border: 1.5px solid var(--warning);"><strong>ملاحظات:</strong> ${invoice.notes}</div>` : ''}
       </div>`,
     footerHTML: `
       <button class="btn btn-secondary" id="detail-close">إغلاق</button>
@@ -539,27 +524,12 @@ export function showInvoiceDetailModal(invoice) {
   });
 
   modal.element.querySelector('#detail-close').onclick = () => modal.close();
-  modal.element.querySelector('#detail-print').onclick = () => {
-    modal.close();
-    setTimeout(() => printInvoiceWithFormat(invoice), 300);
-  };
-  modal.element.querySelector('#detail-send').onclick = () => {
-    modal.close();
-    setTimeout(() => sendInvoiceViaTelegram(invoice.id), 300);
-  };
-  modal.element.querySelector('#detail-edit').onclick = () => {
-    modal.close();
-    setTimeout(() => editInvoice(invoice.id), 300);
-  };
-  modal.element.querySelector('#detail-delete').onclick = () => {
-    modal.close();
-    setTimeout(() => deleteInvoice(invoice.id), 300);
-  };
+  modal.element.querySelector('#detail-print').onclick = () => { modal.close(); setTimeout(() => printInvoiceWithFormat(invoice), 300); };
+  modal.element.querySelector('#detail-send').onclick = () => { modal.close(); setTimeout(() => sendInvoiceViaTelegram(invoice.id), 300); };
+  modal.element.querySelector('#detail-edit').onclick = () => { modal.close(); setTimeout(() => editInvoice(invoice.id), 300); };
+  modal.element.querySelector('#detail-delete').onclick = () => { modal.close(); setTimeout(() => deleteInvoice(invoice.id), 300); };
 }
 
-// يمكنك حذف الدالة القديمة showInvoiceDetail إن كانت لا تزال موجودة واستبدالها بهذه.
-
-// ========== حذف فاتورة ==========
 export async function deleteInvoice(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذه الفاتورة؟ سيتم التراجع عن جميع التأثيرات المالية.')) return;
   try {
@@ -569,17 +539,12 @@ export async function deleteInvoice(id) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== إرسال الفاتورة عبر Telegram ==========
 export async function sendInvoiceViaTelegram(invoiceId) {
   const id = parseInt(invoiceId);
-  if (!id || isNaN(id)) {
-    showToast('معرف الفاتورة غير صالح', 'error');
-    return;
-  }
+  if (!id || isNaN(id)) { showToast('معرف الفاتورة غير صالح', 'error'); return; }
   closeActiveModal();
 
-  const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) ||
-              document.querySelector(`.send-invoice-btn[data-id="${id}"]`);
+  const btn = document.querySelector(`button[data-id="${id}"].send-invoice-btn`) || document.querySelector(`.send-invoice-btn[data-id="${id}"]`);
   const originalHTML = btn ? btn.innerHTML : null;
   if (btn) { btn.disabled = true; btn.innerHTML = `<span class="loader-inline"></span> جاري الإرسال...`; }
 
@@ -595,27 +560,26 @@ export async function sendInvoiceViaTelegram(invoiceId) {
   }
 }
 
-// اختيار تنسيق الطباعة
 function printInvoiceWithFormat(invoice) {
   const formatModal = openModal({
     title: 'اختيار تنسيق الطباعة',
     bodyHTML: `
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 0;">
-        <div class="format-option" data-format="a4" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px 12px; text-align: center; cursor: pointer; background: #ffffff;">
-          <div style="font-size: 40px; margin-bottom: 8px;">📄</div>
-          <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">A4 رسمية</div>
-          <div style="font-size: 12px; color: #64748b; line-height: 1.4;">فاتورة كاملة<br>للطباعة على A4</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 10px 0;">
+        <div class="format-option" data-format="a4">
+          <div style="font-size: 44px; margin-bottom: 10px;">📄</div>
+          <div style="font-weight: 900; font-size: 16px; margin-bottom: 6px; color: var(--text);">A4 رسمية</div>
+          <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">فاتورة كاملة<br>للطباعة على A4</div>
         </div>
-        <div class="format-option" data-format="thermal" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px 12px; text-align: center; cursor: pointer; background: #ffffff;">
-          <div style="font-size: 40px; margin-bottom: 8px;">🧾</div>
-          <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px; color: #1e293b;">حرارية 80mm</div>
-          <div style="font-size: 12px; color: #64748b; line-height: 1.4;">للطابعة الحرارية<br>الصغيرة</div>
+        <div class="format-option" data-format="thermal">
+          <div style="font-size: 44px; margin-bottom: 10px;">🧾</div>
+          <div style="font-weight: 900; font-size: 16px; margin-bottom: 6px; color: var(--text);">حرارية 80mm</div>
+          <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">للطابعة الحرارية<br>الصغيرة</div>
         </div>
       </div>
-      <div style="margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
-        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-          <input type="checkbox" id="preview-check" checked style="width: 18px; height: 18px; accent-color: #4f46e5;">
-          <span style="font-size: 14px; color: #1e293b; font-weight: 600;">عرض معاينة قبل الطباعة</span>
+      <div style="margin-top: 20px; padding: 16px; background: var(--bg); border-radius: 14px; border: 1.5px solid var(--border);">
+        <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+          <input type="checkbox" id="preview-check" checked style="width: 20px; height: 20px; accent-color: var(--primary);">
+          <span style="font-size: 14px; color: var(--text); font-weight: 700;">عرض معاينة قبل الطباعة</span>
         </label>
       </div>`,
     footerHTML: `<button class="btn btn-secondary" id="format-cancel">إلغاء</button><button class="btn btn-primary" id="format-confirm">🖨️ متابعة</button>`
@@ -623,13 +587,13 @@ function printInvoiceWithFormat(invoice) {
 
   const selectOption = (selected) => {
     formatModal.element.querySelectorAll('.format-option').forEach(o => {
-      o.style.borderColor = '#e2e8f0';
-      o.style.background = '#ffffff';
+      o.style.borderColor = 'var(--border)';
+      o.style.background = 'var(--surface-solid)';
       o.style.boxShadow = 'none';
     });
-    selected.style.borderColor = '#4f46e5';
-    selected.style.background = '#eef2ff';
-    selected.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.2)';
+    selected.style.borderColor = 'var(--primary)';
+    selected.style.background = 'var(--primary-light)';
+    selected.style.boxShadow = '0 6px 20px -4px var(--primary-glow)';
   };
 
   formatModal.element.querySelectorAll('.format-option').forEach(opt => {
@@ -640,8 +604,7 @@ function printInvoiceWithFormat(invoice) {
 
   formatModal.element.querySelector('#format-cancel').onclick = () => formatModal.close();
   formatModal.element.querySelector('#format-confirm').onclick = () => {
-    const selected = formatModal.element.querySelector('.format-option[style*="border-color: rgb(79, 70, 229)"]') 
-                  || formatModal.element.querySelector('[data-format="thermal"]');
+    const selected = formatModal.element.querySelector('.format-option[style*="border-color: var(--primary)"]') || formatModal.element.querySelector('[data-format="thermal"]');
     const selectedFormat = selected?.dataset.format || 'thermal';
     const withPreview = formatModal.element.querySelector('#preview-check').checked;
     formatModal.close();
@@ -649,13 +612,8 @@ function printInvoiceWithFormat(invoice) {
   };
 }
 
-// دالة الطباعة
 function printInvoice(invoice, options = {}) {
-  if (!invoice) {
-    showToast('لا توجد بيانات للطباعة', 'error');
-    return;
-  }
-
+  if (!invoice) { showToast('لا توجد بيانات للطباعة', 'error'); return; }
   const { preview = false, format = 'thermal' } = options;
   const CURRENCY = { symbol: 'ل.س', decimals: 2 };
 
@@ -807,7 +765,6 @@ function printInvoice(invoice, options = {}) {
         <div style="margin-top: 8px; font-size: 14px;">#${invoice.reference || invoice.id}</div>
       </div>
     </div>
-    
     <div class="a4-body">
       <div class="a4-info-grid">
         <div class="a4-info-box">
@@ -831,7 +788,6 @@ function printInvoice(invoice, options = {}) {
           <div class="a4-info-value" style="color: ${balance > 0 ? '#dc2626' : '#059669'};">${formatCurrency(balance)}</div>
         </div>
       </div>
-
       <table class="a4-table">
         <thead>
           <tr>
@@ -859,7 +815,6 @@ function printInvoice(invoice, options = {}) {
           `).join('')}
         </tbody>
       </table>
-
       <div class="a4-totals">
         <div class="a4-total-row"><span style="font-size: 16px; color: #475569;">إجمالي البنود / Subtotal</span><span style="font-size: 18px; font-weight: 700;">${formatCurrency(invoice.total || 0)}</span></div>
         ${paid > 0 ? `<div class="a4-total-row"><span style="color: #059669;">المدفوع / Paid</span><span style="font-weight: 700; color: #059669;">${formatCurrency(paid)}</span></div>` : ''}
@@ -870,23 +825,16 @@ function printInvoice(invoice, options = {}) {
         </div>
       </div>
     </div>
-
     <div class="a4-footer">
       <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">شكراً لتعاملكم معنا / Thank you for your business</div>
       <div>الراجحي للمحاسبة · للدعم: @bukamal1991</div>
       <div style="margin-top: 8px; font-size: 11px;">هذه الفاتورة صادرة إلكترونياً ولا تحتاج توقيع</div>
     </div>
-
     <div class="a4-stamp">PAID</div>
   </div>
-
   <div class="no-print" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 1000;">
-    <button onclick="window.print()" style="padding: 14px 28px; background: #4f46e5; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">
-      🖨️ طباعة / Print
-    </button>
-    <button onclick="window.close()" style="padding: 14px 28px; background: #ef4444; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700;">
-      ✕ إغلاق / Close
-    </button>
+    <button onclick="window.print()" style="padding: 14px 28px; background: #4f46e5; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">🖨️ طباعة / Print</button>
+    <button onclick="window.close()" style="padding: 14px 28px; background: #ef4444; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700;">✕ إغلاق / Close</button>
   </div>
   <script> window.onload = function() { setTimeout(function() {}, 100); }; </script>
 </body>
@@ -897,8 +845,8 @@ function printInvoice(invoice, options = {}) {
   if (preview) {
     const previewModal = openModal({
       title: `معاينة الفاتورة - ${format === 'a4' ? 'A4' : 'حرارية 80mm'}`,
-      bodyHTML: `<div style="background: #f1f5f9; padding: 20px; border-radius: 12px; overflow: auto; max-height: 70vh;">
-        <iframe srcdoc="${htmlContent.replace(/"/g, '&quot;')}" style="width: 100%; height: 500px; border: none; border-radius: 8px; background: white;"></iframe>
+      bodyHTML: `<div style="background: var(--bg); padding: 20px; border-radius: 16px; overflow: auto; max-height: 70vh;">
+        <iframe srcdoc="${htmlContent.replace(/"/g, '&quot;')}" style="width: 100%; height: 500px; border: none; border-radius: 12px; background: white;"></iframe>
       </div>`,
       footerHTML: `
         <button class="btn btn-secondary" id="preview-close">إغلاق</button>
@@ -973,3 +921,4 @@ window.deleteInvoice = deleteInvoice;
 window.sendInvoiceViaTelegram = sendInvoiceViaTelegram;
 window.showInvoiceDetailModal = showInvoiceDetailModal;
 window.printInvoiceWithFormat = printInvoiceWithFormat;
+

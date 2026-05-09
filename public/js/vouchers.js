@@ -1,5 +1,5 @@
 // public/js/vouchers.js
-import { apiCall, formatNumber, formatDate, ICONS } from './core.js';
+import { apiCall, formatNumber, formatDate, ICONS, animateEntry } from './core.js';
 import { showToast, confirmDialog, openModal } from './modal.js';
 import { invalidate, subscribe, get as storeGet } from './store.js';
 import { currentTab } from './navigation.js';
@@ -16,25 +16,25 @@ export async function loadVouchers() {
         </div>
         <button class="btn btn-primary btn-sm" id="btn-add-voucher">${ICONS.plus} إضافة سند</button>
       </div>
-      <div class="filter-bar" style="margin-bottom:12px;">
+      <div class="filter-bar" style="margin-bottom:14px;">
         <button class="filter-pill active" data-filter="all">الكل</button>
         <button class="filter-pill" data-filter="receipt">قبض</button>
         <button class="filter-pill" data-filter="payment">صرف</button>
         <button class="filter-pill" data-filter="expense">مصاريف</button>
       </div>
-      <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+      <div style="display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
         <div style="flex:1; min-width:200px;">
           <input type="text" class="input" id="voucher-search" placeholder="🔍 بحث في السندات...">
         </div>
-        <div style="width:150px;">
+        <div style="width:160px;">
           <input type="date" class="input" id="voucher-date-from" placeholder="من تاريخ">
         </div>
-        <div style="width:150px;">
+        <div style="width:160px;">
           <input type="date" class="input" id="voucher-date-to" placeholder="إلى تاريخ">
         </div>
         <button class="btn btn-secondary btn-sm" id="voucher-filter-clear" style="width:auto;">مسح الفلاتر</button>
       </div>
-      <div id="vouchers-summary" style="margin-bottom:16px;"></div>
+      <div id="vouchers-summary" style="margin-bottom:20px;"></div>
     </div>
     <div id="vouchers-list"></div>`;
 
@@ -42,7 +42,6 @@ export async function loadVouchers() {
 
     document.getElementById('btn-add-voucher')?.addEventListener('click', showAddVoucherModal);
     
-    // ربط الفلاتر
     const renderFiltered = () => {
       const filter = document.querySelector('.filter-pill.active')?.dataset.filter || 'all';
       const searchTerm = (document.getElementById('voucher-search')?.value || '').trim().toLowerCase();
@@ -50,13 +49,7 @@ export async function loadVouchers() {
       const dateTo = document.getElementById('voucher-date-to')?.value;
 
       let filtered = vouchers;
-      
-      // فلتر النوع
-      if (filter !== 'all') {
-        filtered = filtered.filter(v => v.type === filter);
-      }
-      
-      // فلتر البحث النصي
+      if (filter !== 'all') filtered = filtered.filter(v => v.type === filter);
       if (searchTerm) {
         filtered = filtered.filter(v =>
           (v.reference || '').toLowerCase().includes(searchTerm) ||
@@ -66,16 +59,9 @@ export async function loadVouchers() {
           String(v.amount).includes(searchTerm)
         );
       }
-      
-      // فلتر التاريخ
-      if (dateFrom) {
-        filtered = filtered.filter(v => v.date >= dateFrom);
-      }
-      if (dateTo) {
-        filtered = filtered.filter(v => v.date <= dateTo);
-      }
+      if (dateFrom) filtered = filtered.filter(v => v.date >= dateFrom);
+      if (dateTo) filtered = filtered.filter(v => v.date <= dateTo);
 
-      // تلخيص المبالغ
       let totalReceipt = 0, totalPayment = 0, totalExpense = 0;
       filtered.forEach(v => {
         if (v.type === 'receipt') totalReceipt += parseFloat(v.amount||0);
@@ -83,7 +69,7 @@ export async function loadVouchers() {
         else totalExpense += parseFloat(v.amount||0);
       });
       document.getElementById('vouchers-summary').innerHTML = `
-        <div style="display:flex; gap:16px; font-size:14px; flex-wrap:wrap;">
+        <div style="display:flex; gap:20px; font-size:14px; flex-wrap:wrap; font-weight:600;">
           <span style="color:var(--success);">📥 إجمالي القبوض: <strong>${formatNumber(totalReceipt)}</strong></span>
           <span style="color:var(--danger);">📤 إجمالي الصرف: <strong>${formatNumber(totalPayment)}</strong></span>
           <span style="color:var(--warning);">💸 إجمالي المصاريف: <strong>${formatNumber(totalExpense)}</strong></span>
@@ -103,30 +89,29 @@ export async function loadVouchers() {
         const sign = v.type === 'receipt' ? '+' : '-';
         
         listHtml += `
-          <div class="card card-hover" style="border-right:3px solid ${bgColor}; margin-bottom:12px; cursor:pointer;" data-voucher-id="${v.id}">
+          <div class="card card-hover" style="border-right:4px solid ${bgColor}; margin-bottom:14px; cursor:pointer;" data-voucher-id="${v.id}">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div style="flex:1;">
-                <div style="font-weight:900;font-size:20px;color:${bgColor};">
+                <div style="font-weight:900;font-size:22px;color:${bgColor};">
                   ${sign} ${formatNumber(v.amount)}
                 </div>
-                <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">
+                <div style="font-size:13px;color:var(--text-muted);margin-top:4px; font-weight:500;">
                   ${formatDate(v.date)} · ${typeLabel} ${entityName ? '· ' + entityName : ''}
                 </div>
               </div>
             </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">المرجع: ${v.reference || '-'}</div>
-            ${v.invoice_id ? `<div style="font-size:12px;color:var(--primary);margin-top:4px;">مرتبط بفاتورة رقم: ${v.invoice_id}</div>` : ''}
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px; font-weight:500;">المرجع: ${v.reference || '-'}</div>
+            ${v.invoice_id ? `<div style="font-size:12px;color:var(--primary);margin-top:6px; font-weight:600;">مرتبط بفاتورة رقم: ${v.invoice_id}</div>` : ''}
           </div>`;
       });
       container.innerHTML = listHtml;
+      animateEntry('.card-hover[data-voucher-id]', 60);
 
-      // ربط النقر لعرض التفاصيل
       document.querySelectorAll('.card-hover[data-voucher-id]').forEach(card => {
         card.addEventListener('click', () => showVoucherDetail(card.dataset.voucherId));
       });
     };
 
-    // مستمعات الفلاتر
     document.querySelectorAll('.filter-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -148,9 +133,7 @@ export async function loadVouchers() {
 
     renderFiltered();
 
-    subscribe('vouchers', () => {
-      if (currentTab === 'vouchers') loadVouchers();
-    });
+    subscribe('vouchers', () => { if (currentTab === 'vouchers') loadVouchers(); });
     subscribe('invoices', () => { if (currentTab === 'vouchers') loadVouchers(); });
     subscribe('customers', () => { if (currentTab === 'vouchers') loadVouchers(); });
     subscribe('suppliers', () => { if (currentTab === 'vouchers') loadVouchers(); });
@@ -241,7 +224,7 @@ async function showAddVoucherModal(initialData = {}) {
 
   const warningDiv = document.createElement('div');
   warningDiv.id = 'voucher-warning';
-  warningDiv.style.cssText = 'display:none; background: var(--warning-light); border: 1px solid var(--warning); border-radius: 8px; padding: 10px; margin-top: 10px; font-size: 13px; color: var(--warning);';
+  warningDiv.style.cssText = 'display:none; background: var(--warning-light); border: 1.5px solid var(--warning); border-radius: 12px; padding: 12px; margin-top: 12px; font-size: 13px; color: var(--warning); font-weight: 700; box-shadow: 0 4px 12px -4px var(--warning-glow);';
   modal.element.querySelector('.modal-body').appendChild(warningDiv);
 
   typeSel.addEventListener('change', () => {
@@ -293,20 +276,15 @@ async function showAddVoucherModal(initialData = {}) {
     const suppVal = type === 'payment' ? supplierSelect.value : null;
     const invoiceId = modal.element.querySelector('#v-invoice').value || null;
 
-    // التحقق من تطابق الفاتورة محلياً إن أمكن
     if (invoiceId && custVal) {
       const invoices = await apiCall('/invoices', 'GET');
       const inv = invoices.find(i => i.id == invoiceId);
-      if (inv && inv.customer_id != custVal) {
-        return showToast('الفاتورة المختارة لا تخص هذا العميل', 'error');
-      }
+      if (inv && inv.customer_id != custVal) return showToast('الفاتورة المختارة لا تخص هذا العميل', 'error');
     }
     if (invoiceId && suppVal) {
       const invoices = await apiCall('/invoices', 'GET');
       const inv = invoices.find(i => i.id == invoiceId);
-      if (inv && inv.supplier_id != suppVal) {
-        return showToast('الفاتورة المختارة لا تخص هذا المورد', 'error');
-      }
+      if (inv && inv.supplier_id != suppVal) return showToast('الفاتورة المختارة لا تخص هذا المورد', 'error');
     }
 
     const payload = {
@@ -345,17 +323,17 @@ function showVoucherDetail(voucherId) {
   const modal = openModal({
     title: `${typeLabel} ${v.reference || ''}`,
     bodyHTML: `
-      <div style="background:var(--bg);border-radius:12px;padding:16px;margin-bottom:16px;">
-        <div style="text-align:center;margin-bottom:12px;">
-          <div style="font-size:28px;font-weight:900;color:${bgColor};">${formatNumber(v.amount)}</div>
-          <div style="font-size:14px;color:var(--text-secondary);">${typeLabel}</div>
+      <div style="background:var(--bg);border-radius:16px;padding:20px;margin-bottom:20px; border: 1.5px solid var(--border);">
+        <div style="text-align:center;margin-bottom:16px;">
+          <div style="font-size:32px;font-weight:900;color:${bgColor};">${formatNumber(v.amount)}</div>
+          <div style="font-size:14px;color:var(--text-secondary); font-weight:700;">${typeLabel}</div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><span style="color:var(--text-muted);">التاريخ:</span> <strong>${formatDate(v.date)}</strong></div>
-          <div><span style="color:var(--text-muted);">المرجع:</span> <strong>${v.reference || '-'}</strong></div>
-          ${entity ? `<div><span style="color:var(--text-muted);">${entityLabel}:</span> <strong>${entity}</strong></div>` : ''}
-          ${v.description ? `<div style="grid-column:1/-1;"><span style="color:var(--text-muted);">الوصف:</span> <strong>${v.description}</strong></div>` : ''}
-          ${v.invoice_id ? `<div><span style="color:var(--text-muted);">الفاتورة:</span> <strong>#${v.invoice_id}</strong></div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div><span style="color:var(--text-muted); font-weight:600;">التاريخ:</span> <strong>${formatDate(v.date)}</strong></div>
+          <div><span style="color:var(--text-muted); font-weight:600;">المرجع:</span> <strong>${v.reference || '-'}</strong></div>
+          ${entity ? `<div><span style="color:var(--text-muted); font-weight:600;">${entityLabel}:</span> <strong>${entity}</strong></div>` : ''}
+          ${v.description ? `<div style="grid-column:1/-1;"><span style="color:var(--text-muted); font-weight:600;">الوصف:</span> <strong>${v.description}</strong></div>` : ''}
+          ${v.invoice_id ? `<div><span style="color:var(--text-muted); font-weight:600;">الفاتورة:</span> <strong>#${v.invoice_id}</strong></div>` : ''}
         </div>
       </div>
     `,
@@ -368,15 +346,15 @@ function showVoucherDetail(voucherId) {
 
   modal.element.querySelector('#vdetail-duplicate').onclick = () => {
     modal.close();
-    setTimeout(() => duplicateVoucher(voucherId), 200);
+    setTimeout(() => duplicateVoucher(voucherId), 250);
   };
   modal.element.querySelector('#vdetail-delete').onclick = () => {
     modal.close();
-    setTimeout(() => deleteVoucher(voucherId), 200);
+    setTimeout(() => deleteVoucher(voucherId), 250);
   };
   modal.element.querySelector('#vdetail-print').onclick = () => {
     modal.close();
-    setTimeout(() => printVoucher(voucherId), 200);
+    setTimeout(() => printVoucher(voucherId), 250);
   };
 }
 
@@ -481,3 +459,4 @@ function emptyState(title, subtitle) {
     <p>${subtitle}</p>
   </div>`;
 }
+

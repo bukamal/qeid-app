@@ -1,7 +1,7 @@
-import { apiCall, formatNumber, formatDate, ICONS } from './core.js';
+// public/js/reports.js
+import { apiCall, formatNumber, formatDate, ICONS, animateEntry } from './core.js';
 import { showToast } from './modal.js';
 
-// ========== عرض قائمة التقارير ==========
 export async function loadReports() {
   document.getElementById('tab-content').innerHTML = `
     <div class="card">
@@ -37,6 +37,8 @@ export async function loadReports() {
       <div class="report-info"><h4>سجل السندات</h4><p>عرض وتحليل السندات</p></div>
     </div>`;
 
+  animateEntry('.report-card', 80);
+
   document.querySelectorAll('.report-card').forEach(el => {
     el.addEventListener('click', () => {
       const r = el.dataset.report;
@@ -51,83 +53,79 @@ export async function loadReports() {
   });
 }
 
-// ========== ميزان المراجعة ==========
 export async function loadTrialBalance() {
   try {
     const data = await apiCall('/reports?type=trial_balance', 'GET');
     const rows = data.map(r => `<tr>
-      <td style="font-weight:700;">${r.name}</td>
+      <td style="font-weight:800;">${r.name}</td>
       <td>${formatNumber(r.total_debit)}</td>
       <td>${formatNumber(r.total_credit)}</td>
-      <td class="${r.balance>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(r.balance)}</td>
+      <td class="${r.balance>=0?'text-success':'text-danger'}" style="font-weight:900;">${formatNumber(r.balance)}</td>
     </tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">ميزان المراجعة</h3>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${rows}</tbody></table></div>
       </div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== قائمة الدخل ==========
 export async function loadIncomeStatement() {
   try {
     const d = await apiCall('/reports?type=income_statement', 'GET');
-    const iRows = d.income.map(i => `<tr><td>${i.name}</td><td style="font-weight:700;color:var(--success);">${formatNumber(i.balance)}</td></tr>`).join('');
-    const eRows = d.expenses.map(e => `<tr><td>${e.name}</td><td style="font-weight:700;color:var(--danger);">${formatNumber(e.balance)}</td></tr>`).join('');
+    const iRows = d.income.map(i => `<tr><td>${i.name}</td><td style="font-weight:800;color:var(--success);">${formatNumber(i.balance)}</td></tr>`).join('');
+    const eRows = d.expenses.map(e => `<tr><td>${e.name}</td><td style="font-weight:800;color:var(--danger);">${formatNumber(e.balance)}</td></tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">قائمة الدخل</h3>
-        <h4>الإيرادات</h4>
+        <h4 style="margin-bottom:10px; font-size:16px;">الإيرادات</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${iRows}</tbody></table></div>
-        <p style="font-weight:800;text-align:left;">إجمالي الإيرادات: <span style="color:var(--success);">${formatNumber(d.total_income)}</span></p>
-        <h4>المصروفات</h4>
+        <p style="font-weight:900;text-align:left; margin:14px 0; font-size:16px;">إجمالي الإيرادات: <span style="color:var(--success);">${formatNumber(d.total_income)}</span></p>
+        <h4 style="margin-bottom:10px; font-size:16px;">المصروفات</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div>
-        <p style="font-weight:800;text-align:left;">إجمالي المصروفات: <span style="color:var(--danger);">${formatNumber(d.total_expenses)}</span></p>
-        <hr>
-        <h2 style="color:${d.net_profit>=0?'var(--success)':'var(--danger)'};font-size:24px;font-weight:900;text-align:center;">صافي الربح: ${formatNumber(d.net_profit)}</h2>
+        <p style="font-weight:900;text-align:left; margin:14px 0; font-size:16px;">إجمالي المصروفات: <span style="color:var(--danger);">${formatNumber(d.total_expenses)}</span></p>
+        <hr style="border-color: var(--border); margin: 20px 0;">
+        <h2 style="color:${d.net_profit>=0?'var(--success)':'var(--danger)'};font-size:26px;font-weight:900;text-align:center;">صافي الربح: ${formatNumber(d.net_profit)}</h2>
       </div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== الميزانية العمومية ==========
 export async function loadBalanceSheet() {
   try {
     const d = await apiCall('/reports?type=balance_sheet', 'GET');
-    const aRows = d.assets.map(a => `<tr><td>${a.name}</td><td style="font-weight:700;">${formatNumber(a.balance)}</td></tr>`).join('');
-    const lRows = d.liabilities.map(l => `<tr><td>${l.name}</td><td style="font-weight:700;">${formatNumber(l.balance)}</td></tr>`).join('');
-    const eRows = d.equity.map(e => `<tr><td>${e.name}</td><td style="font-weight:700;">${formatNumber(e.balance)}</td></tr>`).join('');
+    const aRows = d.assets.map(a => `<tr><td>${a.name}</td><td style="font-weight:800;">${formatNumber(a.balance)}</td></tr>`).join('');
+    const lRows = d.liabilities.map(l => `<tr><td>${l.name}</td><td style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`).join('');
+    const eRows = d.equity.map(e => `<tr><td>${e.name}</td><td style="font-weight:800;">${formatNumber(e.balance)}</td></tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">الميزانية العمومية</h3>
-        <h4>الأصول</h4>
+        <h4 style="margin-bottom:10px; font-size:16px;">الأصول</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${aRows}</tbody></table></div>
-        <p style="font-weight:800;text-align:left;">إجمالي الأصول: ${formatNumber(d.total_assets)}</p>
-        <h4>الخصوم</h4>
+        <p style="font-weight:900;text-align:left; margin:14px 0; font-size:16px;">إجمالي الأصول: ${formatNumber(d.total_assets)}</p>
+        <h4 style="margin-bottom:10px; font-size:16px;">الخصوم</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${lRows}</tbody></table></div>
-        <p style="font-weight:800;text-align:left;">إجمالي الخصوم: ${formatNumber(d.total_liabilities)}</p>
-        <h4>حقوق الملكية</h4>
+        <p style="font-weight:900;text-align:left; margin:14px 0; font-size:16px;">إجمالي الخصوم: ${formatNumber(d.total_liabilities)}</p>
+        <h4 style="margin-bottom:10px; font-size:16px;">حقوق الملكية</h4>
         <div class="table-wrap"><table class="table"><thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead><tbody>${eRows}</tbody></table></div>
-        <p style="font-weight:800;text-align:left;">إجمالي حقوق الملكية: ${formatNumber(d.total_equity)}</p>
+        <p style="font-weight:900;text-align:left; margin:14px 0; font-size:16px;">إجمالي حقوق الملكية: ${formatNumber(d.total_equity)}</p>
       </div>`;
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== الأستاذ العام ==========
 export async function loadAccountLedgerForm() {
   try {
     const accounts = await apiCall('/accounts', 'GET');
     const opts = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">الأستاذ العام</h3>
         <div class="form-group"><select class="select" id="ledger-account">${opts}</select></div>
         <button class="btn btn-primary" id="btn-ledger" style="width:auto;">عرض الحركات</button>
-        <div id="ledger-result" style="margin-top:16px"></div>
+        <div id="ledger-result" style="margin-top:20px"></div>
       </div>`;
     document.getElementById('btn-ledger').addEventListener('click', async () => {
       const id = document.getElementById('ledger-account').value;
@@ -138,9 +136,9 @@ export async function loadAccountLedgerForm() {
         lines.forEach(l => html += `<tr>
           <td>${formatDate(l.date)}</td>
           <td>${l.description||''}</td>
-          <td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td>
-          <td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td>
-          <td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td>
+          <td style="color:var(--success);font-weight:800;">${formatNumber(l.debit)}</td>
+          <td style="color:var(--danger);font-weight:800;">${formatNumber(l.credit)}</td>
+          <td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:900;">${formatNumber(l.balance)}</td>
         </tr>`);
         html += '</tbody></table></div>';
         document.getElementById('ledger-result').innerHTML = html;
@@ -149,18 +147,17 @@ export async function loadAccountLedgerForm() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== كشف حساب عميل ==========
 export async function loadCustomerStatementForm() {
   try {
     const custs = await apiCall('/customers', 'GET');
     const opts = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">كشف حساب عميل</h3>
         <div class="form-group"><select class="select" id="stmt-cust">${opts}</select></div>
         <button class="btn btn-primary" id="btn-stmt-cust" style="width:auto;">عرض الكشف</button>
-        <div id="stmt-result" style="margin-top:16px"></div>
+        <div id="stmt-result" style="margin-top:20px"></div>
       </div>`;
     document.getElementById('btn-stmt-cust').addEventListener('click', async () => {
       const id = document.getElementById('stmt-cust').value;
@@ -171,9 +168,9 @@ export async function loadCustomerStatementForm() {
         lines.forEach(l => html += `<tr>
           <td>${formatDate(l.date)}</td>
           <td>${l.description||''}</td>
-          <td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td>
-          <td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td>
-          <td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td>
+          <td style="color:var(--success);font-weight:800;">${formatNumber(l.debit)}</td>
+          <td style="color:var(--danger);font-weight:800;">${formatNumber(l.credit)}</td>
+          <td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:900;">${formatNumber(l.balance)}</td>
         </tr>`);
         html += '</tbody></table></div>';
         document.getElementById('stmt-result').innerHTML = html;
@@ -182,18 +179,17 @@ export async function loadCustomerStatementForm() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== كشف حساب مورد ==========
 export async function loadSupplierStatementForm() {
   try {
     const supps = await apiCall('/suppliers', 'GET');
     const opts = supps.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">كشف حساب مورد</h3>
         <div class="form-group"><select class="select" id="stmt-supp">${opts}</select></div>
         <button class="btn btn-primary" id="btn-stmt-supp" style="width:auto;">عرض الكشف</button>
-        <div id="stmt-result" style="margin-top:16px"></div>
+        <div id="stmt-result" style="margin-top:20px"></div>
       </div>`;
     document.getElementById('btn-stmt-supp').addEventListener('click', async () => {
       const id = document.getElementById('stmt-supp').value;
@@ -204,9 +200,9 @@ export async function loadSupplierStatementForm() {
         lines.forEach(l => html += `<tr>
           <td>${formatDate(l.date)}</td>
           <td>${l.description||''}</td>
-          <td style="color:var(--success);font-weight:700;">${formatNumber(l.debit)}</td>
-          <td style="color:var(--danger);font-weight:700;">${formatNumber(l.credit)}</td>
-          <td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:800;">${formatNumber(l.balance)}</td>
+          <td style="color:var(--success);font-weight:800;">${formatNumber(l.debit)}</td>
+          <td style="color:var(--danger);font-weight:800;">${formatNumber(l.credit)}</td>
+          <td class="${(l.balance||0)>=0?'text-success':'text-danger'}" style="font-weight:900;">${formatNumber(l.balance)}</td>
         </tr>`);
         html += '</tbody></table></div>';
         document.getElementById('stmt-result').innerHTML = html;
@@ -215,7 +211,6 @@ export async function loadSupplierStatementForm() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ========== تقرير سجل السندات ==========
 export async function loadVouchersLog() {
   try {
     const vouchers = await apiCall('/payments?voucher=1', 'GET');
@@ -240,16 +235,16 @@ export async function loadVouchersLog() {
         <td>${typeLabel}</td>
         <td>${entityName}</td>
         <td>${entityType}</td>
-        <td style="font-weight:700;color:${v.type==='receipt'?'var(--success)':'var(--danger)'};">${formatNumber(v.amount)}</td>
+        <td style="font-weight:800;color:${v.type==='receipt'?'var(--success)':'var(--danger)'};">${formatNumber(v.amount)}</td>
         <td>${v.description || ''}</td>
       </tr>`;
     }).join('');
 
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
-        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:12px;">🔙 رجوع</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.loadReports()" style="width:auto;margin-bottom:14px;">🔙 رجوع</button>
         <h3 class="card-title">سجل السندات</h3>
-        <div class="stats-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:20px;">
+        <div class="stats-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:24px;">
           <div class="stat-card" style="border-color:var(--success);"><div class="stat-label">إجمالي القبوض</div><div class="stat-value positive">${formatNumber(totalReceipt)}</div></div>
           <div class="stat-card" style="border-color:var(--danger);"><div class="stat-label">إجمالي الصرف</div><div class="stat-value negative">${formatNumber(totalPayment)}</div></div>
           <div class="stat-card" style="border-color:var(--warning);"><div class="stat-label">إجمالي المصاريف</div><div class="stat-value" style="color:var(--warning);">${formatNumber(totalExpense)}</div></div>
@@ -263,7 +258,6 @@ export async function loadVouchersLog() {
         <div class="table-wrap"><table class="table" id="vouchers-table"><thead><tr><th>التاريخ</th><th>المرجع</th><th>النوع</th><th>الجهة</th><th>تصنيف الجهة</th><th>المبلغ</th><th>الوصف</th></tr></thead><tbody>${rows}</tbody></table></div>
       </div>`;
 
-    // فلترة حسب النوع
     document.querySelectorAll('.filter-pill').forEach(pill => {
       pill.addEventListener('click', function() {
         document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -286,5 +280,5 @@ export async function loadVouchersLog() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// تعريض دالة loadReports للوصول من أزرار الرجوع
 window.loadReports = loadReports;
+

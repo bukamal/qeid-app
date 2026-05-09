@@ -1,29 +1,26 @@
 // public/js/dashboard.js
-// لوحة التحكم: عرض الإحصائيات والمخططات
-
-import { apiCall, formatNumber, renderSkeleton } from './core.js';
+import { apiCall, formatNumber, renderSkeleton, animateEntry } from './core.js';
 import { showToast } from './modal.js';
 
 export async function loadDashboard() {
   const container = document.getElementById('tab-content');
   
-  // عرض هيكل تحميل مؤقت
   container.innerHTML = `
     <div class="skeleton-stats">
       ${Array(4).fill(`
         <div class="skeleton-stat">
           <div class="skeleton-line w-50"></div>
-          <div class="skeleton-line w-70" style="height: 28px; margin-top: 8px;"></div>
+          <div class="skeleton-line w-70" style="height: 32px; margin-top: 10px;"></div>
         </div>
       `).join('')}
     </div>
     <div class="skeleton-chart">
       <div class="skeleton-line w-40" style="margin-bottom: 16px;"></div>
-      <div style="height: 200px; background: var(--border); border-radius: 8px; animation: pulse 1.5s infinite;"></div>
+      <div style="height: 220px; background: var(--border); border-radius: 12px; animation: pulse 1.5s infinite;"></div>
     </div>
     <div class="skeleton-chart">
       <div class="skeleton-line w-40" style="margin-bottom: 16px;"></div>
-      <div style="height: 200px; background: var(--border); border-radius: 8px; animation: pulse 1.5s infinite;"></div>
+      <div style="height: 220px; background: var(--border); border-radius: 12px; animation: pulse 1.5s infinite;"></div>
     </div>
   `;
   
@@ -31,18 +28,33 @@ export async function loadDashboard() {
     const data = await apiCall('/summary', 'GET');
     
     let html = `<div class="stats-grid">
-      <div class="stat-card profit"><div class="stat-label">صافي الربح</div><div class="stat-value ${data.net_profit>=0?'positive':'negative'}" style="font-size:24px;">${formatNumber(data.net_profit)}</div>${data.net_profit>=0?'<div class="stat-trend up">↑ ربح</div>':'<div class="stat-trend down">↓ خسارة</div>'}</div>
-      <div class="stat-card cash"><div class="stat-label">رصيد الصندوق</div><div class="stat-value ${data.cash_balance>=0?'positive':'negative'}">${formatNumber(data.cash_balance)}</div></div>
-      <div class="stat-card receivables"><div class="stat-label">الذمم المدينة</div><div class="stat-value">${formatNumber(data.receivables)}</div></div>
-      <div class="stat-card payables"><div class="stat-label">الذمم الدائنة</div><div class="stat-value">${formatNumber(data.payables)}</div></div>
-    </div><div class="chart-card"><div class="chart-title">المبيعات مقابل المشتريات</div><canvas id="incomeChart"></canvas></div>`;
+      <div class="stat-card profit">
+        <div class="stat-label">صافي الربح</div>
+        <div class="stat-value ${data.net_profit>=0?'positive':'negative'}" style="font-size:26px;">${formatNumber(data.net_profit)}</div>
+        ${data.net_profit>=0?'<div class="stat-trend up">↑ ربح</div>':'<div class="stat-trend down">↓ خسارة</div>'}
+      </div>
+      <div class="stat-card cash">
+        <div class="stat-label">رصيد الصندوق</div>
+        <div class="stat-value ${data.cash_balance>=0?'positive':'negative'}">${formatNumber(data.cash_balance)}</div>
+      </div>
+      <div class="stat-card receivables">
+        <div class="stat-label">الذمم المدينة</div>
+        <div class="stat-value">${formatNumber(data.receivables)}</div>
+      </div>
+      <div class="stat-card payables">
+        <div class="stat-label">الذمم الدائنة</div>
+        <div class="stat-value">${formatNumber(data.payables)}</div>
+      </div>
+    </div>`;
+    
+    html += `<div class="chart-card"><div class="chart-title">المبيعات مقابل المشتريات</div><canvas id="incomeChart"></canvas></div>`;
     
     if (data.monthly) html += `<div class="chart-card"><div class="chart-title">الحركات المالية الشهرية</div><canvas id="paymentsChart"></canvas></div>`;
     if (data.daily?.dates.length) html += `<div class="chart-card"><div class="chart-title">الربح اليومي (آخر 30 يوم)</div><canvas id="profitChart"></canvas></div>`;
     
     container.innerHTML = html;
+    animateEntry('.stat-card, .chart-card', 100);
 
-    // رسم المخططات
     new Chart(document.getElementById('incomeChart'), {
       type: 'doughnut',
       data: {
@@ -58,8 +70,8 @@ export async function loadDashboard() {
         data: {
           labels: data.monthly.labels,
           datasets: [
-            { label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#4f46e5', borderRadius: 6 },
-            { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444', borderRadius: 6 }
+            { label: 'وارد', data: data.monthly.payments_in, backgroundColor: '#4f46e5', borderRadius: 8 },
+            { label: 'منصرف', data: data.monthly.payments_out, backgroundColor: '#ef4444', borderRadius: 8 }
           ]
         },
         options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } }
@@ -71,7 +83,7 @@ export async function loadDashboard() {
         type: 'line',
         data: {
           labels: data.daily.dates.slice(-30),
-          datasets: [{ label: 'صافي الربح', data: data.daily.profits.slice(-30), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5 }]
+          datasets: [{ label: 'صافي الربح', data: data.daily.profits.slice(-30), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', tension: 0.3, fill: true, pointRadius: 4, pointHoverRadius: 6 }]
         },
         options: { responsive: true, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, plugins: { legend: { labels: { font: { family: 'Tajawal' } } } } }
       });
@@ -81,3 +93,4 @@ export async function loadDashboard() {
     showToast(err.message, 'error');
   }
 }
+

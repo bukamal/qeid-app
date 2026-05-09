@@ -1,7 +1,7 @@
-import { apiCall, formatNumber, formatDate, ICONS } from './core.js';
+// public/js/expenses.js
+import { apiCall, formatNumber, formatDate, ICONS, animateEntry } from './core.js';
 import { showToast, confirmDialog, showFormModal } from './modal.js';
 
-// دالة مساعدة لعرض حالة فارغة
 function emptyState(title, subtitle) {
   return `<div class="empty-state">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -12,7 +12,6 @@ function emptyState(title, subtitle) {
   </div>`;
 }
 
-// ========== تحميل المصاريف ==========
 export async function loadExpenses() {
   try {
     const expenses = await apiCall('/expenses', 'GET');
@@ -30,24 +29,25 @@ export async function loadExpenses() {
       html += emptyState('لا توجد مصاريف مسجلة', 'سجل أول مصروف باستخدام الزر أعلاه');
     } else {
       expenses.forEach(ex => {
-        html += `<div class="card" style="border-right:3px solid var(--danger);">
+        html += `<div class="card" style="border-right:4px solid var(--danger); margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div>
-              <div style="font-weight:900;font-size:20px;color:var(--danger);">
+              <div style="font-weight:900;font-size:22px;color:var(--danger);">
                 ${formatNumber(ex.amount)}
               </div>
-              <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">
+              <div style="font-size:13px;color:var(--text-muted);margin-top:4px; font-weight:500;">
                 ${formatDate(ex.expense_date)}
               </div>
             </div>
             <button class="btn btn-ghost btn-sm" data-delete-expense="${ex.id}">${ICONS.trash}</button>
           </div>
-          ${ex.description ? `<div style="margin-top:10px;font-size:14px;color:var(--text-secondary);">${ex.description}</div>` : ''}
+          ${ex.description ? `<div style="margin-top:12px;font-size:14px;color:var(--text-secondary); font-weight:500;">${ex.description}</div>` : ''}
         </div>`;
       });
     }
 
     document.getElementById('tab-content').innerHTML = html;
+    animateEntry('.card', 60);
 
     document.getElementById('btn-add-expense')?.addEventListener('click', showAddExpenseModal);
 
@@ -58,7 +58,6 @@ export async function loadExpenses() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
-// ========== نموذج إضافة مصروف ==========
 function showAddExpenseModal() {
   showFormModal({
     title: 'إضافة مصروف جديد',
@@ -77,7 +76,6 @@ function showAddExpenseModal() {
   });
 }
 
-// ========== حذف مصروف ==========
 async function deleteExpense(id) {
   if (!await confirmDialog('هل أنت متأكد من حذف هذا المصروف؟')) return;
   try {
@@ -86,3 +84,4 @@ async function deleteExpense(id) {
     loadExpenses();
   } catch (e) { showToast(e.message, 'error'); }
 }
+
