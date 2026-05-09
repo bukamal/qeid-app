@@ -61,7 +61,7 @@ export function renderFilteredItems() {
     </div>`;
   }
 
-  // جدول متطور
+  // جدول بدون عمودي التصنيف والإجراءات
   let html = `
     <div class="table-wrap">
       <table class="table items-table">
@@ -69,11 +69,9 @@ export function renderFilteredItems() {
           <tr>
             <th>#</th>
             <th>اسم المادة</th>
-            <th>التصنيف</th>
             <th>الكمية (الوحدة الأساسية)</th>
             <th>سعر البيع</th>
             <th>قيمة المخزون (بالتكلفة)</th>
-            <th>الإجراءات</th>
           </tr>
         </thead>
         <tbody>
@@ -84,7 +82,6 @@ export function renderFilteredItems() {
     const available = item.available ?? 0;
     const stockStatus = available <= 0 ? 'نفذ' : available < LOW_STOCK_THRESHOLD ? 'منخفض' : 'متوفر';
     const stockColor = available <= 0 ? 'var(--danger)' : available < LOW_STOCK_THRESHOLD ? 'var(--warning)' : 'var(--success)';
-    const categoryName = item.category?.name || 'بدون تصنيف';
     const sellingPrice = item.selling_price || 0;
     const totalValue = item.total_value ?? (available * (parseFloat(item.average_cost) || 0));
     const hasSubUnits = (item.item_units || []).length > 0;
@@ -96,19 +93,13 @@ export function renderFilteredItems() {
           ${item.name}
           ${hasSubUnits ? `<span style="display:inline-block; background:var(--primary-light); color:var(--primary); padding:2px 8px; border-radius:12px; font-size:10px; margin-right:8px;">وحدات</span>` : ''}
         </td>
-        <td>${categoryName}</td>
         <td>
           <span style="color:${stockColor}; font-weight:700;">${available}</span> ${baseUnitName}
-          <span style="font-size:11px; color:${stockColor}; margin-right:6px;">(${stockStatus})</span>
-          ${computeSubUnitQuantities(available, baseUnitName, item.item_units || []) ? `<div style="font-size:10px; color:var(--text-muted); margin-top:4px;">${computeSubUnitQuantities(available, baseUnitName, item.item_units || [])}</div>` : ''}
+          <span style="font-size:10px; color:${stockColor}; margin-right:4px;">(${stockStatus})</span>
+          ${computeSubUnitQuantities(available, baseUnitName, item.item_units || []) ? `<div style="font-size:9px; color:var(--text-muted); margin-top:2px;">${computeSubUnitQuantities(available, baseUnitName, item.item_units || [])}</div>` : ''}
         </td>
         <td><strong>${formatNumber(sellingPrice)}</strong></td>
         <td>${formatNumber(totalValue)}</td>
-        <td>
-          <button class="btn btn-danger btn-sm delete-item-btn" data-id="${item.id}" title="حذف المادة" style="background:transparent; border:none; color:var(--danger); cursor:pointer; padding:4px 8px;">
-            ${ICONS.trash}
-          </button>
-        </td>
       </tr>
     `;
   });
@@ -125,29 +116,9 @@ export function renderFilteredItems() {
   // ربط أحداث النقر على الصف (إظهار التفاصيل)
   container.querySelectorAll('.item-row').forEach(row => {
     row.addEventListener('click', (e) => {
-      // تجنب فتح المودال إذا تم الضغط على زر الحذف
-      if (e.target.closest('.delete-item-btn')) return;
+      // لا نريد فتح المودال إذا تم الضغط على زر الحذف (لكن لا يوجد زر حذف الآن)
       const itemId = row.dataset.id;
       if (itemId) showItemDetail(itemId);
-    });
-  });
-
-  // ربط أزرار الحذف
-  container.querySelectorAll('.delete-item-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const itemId = btn.dataset.id;
-      const item = items.find(i => i.id == itemId);
-      if (!item) return;
-      if (await confirmDialog(`هل أنت متأكد من حذف المادة <strong>${item.name}</strong>؟`)) {
-        try {
-          await apiCall(`/items?id=${itemId}`, 'DELETE');
-          showToast('تم الحذف بنجاح', 'success');
-          loadItems();
-        } catch (e) {
-          showToast(e.message, 'error');
-        }
-      }
     });
   });
 }
@@ -210,7 +181,7 @@ export async function loadItems() {
 
 export function showItemDetail(itemId) {
   const items = storeGet('items') || [];
-  const item = items.find(i => i.id === itemId);
+  const item = items.find(i => i.id == itemId);
   if (!item) return;
 
   const baseUnit = item.base_unit || {};
