@@ -3,23 +3,10 @@ const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// ========== دوال RPC الذرية ==========
-async function updateCustomerBalanceRPC(customerId, userId, change) {
-  const { error } = await supabase.rpc('update_customer_balance', {
-    p_customer_id: customerId,
-    p_user_id: userId,
-    p_change: change,
-  });
-  if (error) throw error;
-}
-
-async function updateSupplierBalanceRPC(supplierId, userId, change) {
-  const { error } = await supabase.rpc('update_supplier_balance', {
-    p_supplier_id: supplierId,
-    p_user_id: userId,
-    p_change: change,
-  });
-  if (error) throw error;
+function safeParseEntityId(value) {
+  if (value === null || value === undefined || value === '' || value === 'cash') return null;
+  const num = parseInt(value, 10);
+  return Number.isNaN(num) ? null : num;
 }
 
 module.exports = async (req, res) => {
@@ -56,134 +43,60 @@ module.exports = async (req, res) => {
         if (!amount || parseFloat(amount) <= 0)
           return res.status(400).json({ error: 'المبلغ مطلوب' });
 
-        const amt = parseFloat(amount);
-        const cust = parseInt(customer_id) || null;
-        const supp = parseInt(supplier_id) || null;
+        const cust = safeParseEntityId(customer_id);
+        const supp = safeParseEntityId(supplier_id);
 
-        // التحقق من تطابق الفاتورة مع العميل/المورد
-        if (invoice_id && cust) {
-          const { data: inv } = await supabase.from('invoices').select('customer_id').eq('id', invoice_id).single();
-          if (inv && inv.customer_id !== cust) {
-            return res.status(400).json({ error: 'الفاتورة المختارة لا تخص هذا العميل' });
-          }
-        }
-        if (invoice_id && supp) {
-          const { data: inv } = await supabase.from('invoices').select('supplier_id').eq('id', invoice_id).single();
-          if (inv && inv.supplier_id !== supp) {
-            return res.status(400).json({ error: 'الفاتورة المختارة لا تخص هذا المورد' });
-          }
-        }
-
-        // توليد ترقيم تلقائي إذا لم يقدم reference
-        let finalReference = reference;
-        if (!finalReference) {
-          const prefix = type === 'receipt' ? 'SC' : type === 'payment' ? 'SP' : 'SE';
-          const { data: lastVoucher } = await supabase
-            .from('vouchers')
-            .select('reference')
-            .eq('user_id', userId)
-            .eq('type', type)
-            .ilike('reference', prefix + '-%')
-            .order('id', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          let nextNum = 1;
-          if (lastVoucher && lastVoucher.reference) {
-            const numPart = lastVoucher.reference.split('-')[1];
-            const parsed = parseInt(numPart);
-            if (!isNaN(parsed)) nextNum = parsed + 1;
-          }
-          finalReference = `${prefix}-${String(nextNum).padStart(4, '0')}`;
-        }
-
-        const { data: voucher, error } = await supabase
+        // توليد ترقيم تلقائي (يمكن نقله إلى RPC لكن نتركه هنا)
+        const prefix = type === 'receipt' ? 'SC' : type === 'payment' ? 'SP' : 'SE';
+        const { data: lastVoucher } = await supabase
           .from('vouchers')
-          .insert({
-            user_id: userId,
-            type,
-            date: date || new Date().toISOString().split('T')[0],
-            amount: amt,
-            description,
-            reference: finalReference,
-            customer_id: cust,
-            supplier_id: supp,
-            invoice_id: invoice_id || null
-          })
-          .select()
-          .single();
-        if (error) throw error;
-
-        if (type === 'receipt' && cust) {
-          await supabase.from('payments').insert({
-            user_id: userId,
-            customer_id: cust,
-            amount: amt,
-            payment_date: voucher.date,
-            notes: `سند قبض ${voucher.reference} - ${description || ''}`,
-            invoice_id: invoice_id || null,
-            voucher_id: voucher.id
-          });
-          await updateCustomerBalanceRPC(cust, userId, -amt);  // استخدم RPC
-        } else if (type === 'payment' && supp) {
-          await supabase.from('payments').insert({
-            user_id: userId,
-            supplier_id: supp,
-            amount: amt,
-            payment_date: voucher.date,
-            notes: `سند صرف ${voucher.reference} - ${description || ''}`,
-            invoice_id: invoice_id || null,
-            voucher_id: voucher.id
-          });
-          await updateSupplierBalanceRPC(supp, userId, -amt);  // استخدم RPC
-        } else if (type === 'expense') {
-          await supabase.from('expenses').insert({
-            user_id: userId,
-            amount: amt,
-            expense_date: voucher.date,
-            description: `سند مصروف ${voucher.reference} - ${description || ''}`,
-            voucher_id: voucher.id
-          });
+          .select('reference')
+          .eq('user_id', userId)
+          .eq('type', type)
+          .ilike('reference', prefix + '-%')
+          .order('id', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        let nextNum = 1;
+        if (lastVoucher?.reference) {
+          const numPart = lastVoucher.reference.split('-')[1];
+          const parsed = parseInt(numPart);
+          if (!isNaN(parsed)) nextNum = parsed + 1;
         }
+        const finalReference = reference || `${prefix}-${String(nextNum).padStart(4, '0')}`;
 
-        return res.json(voucher);
+        // استدعاء الدالة الذرية لإنشاء السند
+        const { data, error } = await supabase.rpc('create_voucher_full', {
+          p_user_id: userId,
+          p_type: type,
+          p_date: date || new Date().toISOString().split('T')[0],
+          p_amount: parseFloat(amount),
+          p_description: description,
+          p_reference: finalReference,
+          p_customer_id: cust,
+          p_supplier_id: supp,
+          p_invoice_id: invoice_id || null
+        });
+        if (error) throw error;
+        return res.json(data);
       }
 
       if (req.method === 'DELETE') {
         const voucherId = req.query.id;
         if (!voucherId) return res.status(400).json({ error: 'معرف السند مطلوب' });
 
-        const { data: voucher, error: fetchErr } = await supabase
-          .from('vouchers')
-          .select('*')
-          .eq('id', voucherId)
-          .eq('user_id', userId)
-          .single();
-        if (fetchErr || !voucher) return res.status(404).json({ error: 'السند غير موجود' });
-
-        if (voucher.type === 'receipt' && voucher.customer_id) {
-          const { data: pmts } = await supabase.from('payments').select('id').eq('voucher_id', voucherId);
-          if (pmts && pmts.length > 0) {
-            for (let p of pmts) await supabase.from('payments').delete().eq('id', p.id);
-            await updateCustomerBalanceRPC(voucher.customer_id, userId, voucher.amount);  // RPC
-          }
-        } else if (voucher.type === 'payment' && voucher.supplier_id) {
-          const { data: pmts } = await supabase.from('payments').select('id').eq('voucher_id', voucherId);
-          if (pmts && pmts.length > 0) {
-            for (let p of pmts) await supabase.from('payments').delete().eq('id', p.id);
-            await updateSupplierBalanceRPC(voucher.supplier_id, userId, voucher.amount);  // RPC
-          }
-        } else if (voucher.type === 'expense') {
-          await supabase.from('expenses').delete().eq('voucher_id', voucherId);
-        }
-
-        await supabase.from('vouchers').delete().eq('id', voucherId).eq('user_id', userId);
+        const { error } = await supabase.rpc('delete_voucher_full', {
+          p_voucher_id: voucherId,
+          p_user_id: userId
+        });
+        if (error) throw error;
         return res.json({ success: true });
       }
 
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // ============ قسم الدفعات العادية (غير السندات) ============
+    // ============ الدفعات العادية ============
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('payments')
@@ -194,26 +107,28 @@ module.exports = async (req, res) => {
       return res.json(data);
     }
 
-    // منع الإضافة المباشرة من الواجهة القديمة (تم إخفاؤها)
     if (req.method === 'POST') {
       return res.status(405).json({ error: 'لا يمكن إضافة دفعة مباشرة. استخدم السندات.' });
     }
 
-    // حذف الدفعات غير المرتبطة بسند مع عكس الرصيد (ذرية)
     if (req.method === 'DELETE') {
       const paymentId = req.query.id;
       if (!paymentId) return res.status(400).json({ error: 'معرف الدفعة مطلوب' });
 
-      const { data: payment, error: fetchError } = await supabase.from('payments').select('*').eq('id', paymentId).eq('user_id', userId).single();
-      if (fetchError || !payment) return res.status(404).json({ error: 'الدفعة غير موجودة' });
+      const { data: payment } = await supabase.from('payments').select('*').eq('id', paymentId).eq('user_id', userId).single();
+      if (!payment) return res.status(404).json({ error: 'الدفعة غير موجودة' });
 
       if (payment.voucher_id) {
-        return res.status(400).json({ error: 'هذه الدفعة مرتبطة بسند. لا يمكن حذفها من هنا. احذف السند أولاً.' });
+        return res.status(400).json({ error: 'هذه الدفعة مرتبطة بسند. لا يمكن حذفها من هنا.' });
       }
 
-      // دفعة غير مرتبطة بسند (قديمة) - نستخدم RPC
-      if (payment.customer_id) await updateCustomerBalanceRPC(payment.customer_id, userId, parseFloat(payment.amount));
-      if (payment.supplier_id) await updateSupplierBalanceRPC(payment.supplier_id, userId, parseFloat(payment.amount));
+      // دفعة قديمة غير مرتبطة بسند – تحديث ذري
+      if (payment.customer_id) {
+        await supabase.rpc('update_customer_balance', { p_customer_id: payment.customer_id, p_user_id: userId, p_change: payment.amount });
+      }
+      if (payment.supplier_id) {
+        await supabase.rpc('update_supplier_balance', { p_supplier_id: payment.supplier_id, p_user_id: userId, p_change: payment.amount });
+      }
 
       await supabase.from('payments').delete().eq('id', paymentId).eq('user_id', userId);
       return res.json({ success: true });
