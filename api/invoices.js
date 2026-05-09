@@ -368,20 +368,23 @@ module.exports = async (req, res) => {
         .select();
       if (insertError) throw insertError;
 
+      // Process inventory updates for new lines with proper async sequencing
+      const processedLines = [];
       for (const newLine of insertedNewLines) {
         if (newLine.item_id) {
           const baseQty = newLine.quantity_in_base || (newLine.quantity * (await resolveConversionFactor(newLine.item_id, newLine.unit_id, newLine.conversion_factor)));
           if (newType === 'purchase') {
-          const unitCost = parseFloat(newLine.unit_price) || 0;
-          await applyPurchaseToItem(newLine.item_id, userId, baseQty, unitCost, supabase);
-          await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', newLine.id);
-          newLine.unit_cost = unitCost;
+            const unitCost = parseFloat(newLine.unit_price) || 0;
+            await applyPurchaseToItem(newLine.item_id, userId, baseQty, unitCost, supabase);
+            await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', newLine.id);
+            newLine.unit_cost = unitCost;
           } else if (newType === 'sale') {
             const costAmount = await applySaleToItem(newLine.item_id, userId, baseQty, supabase);
             await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', newLine.id);
             newLine.cost_amount = costAmount;
           }
         }
+        processedLines.push(newLine);
       }
 
       const { data: updatedInvoice, error: updateError } = await supabase
@@ -496,3 +499,4 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
