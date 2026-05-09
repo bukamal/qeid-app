@@ -3,20 +3,23 @@ const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-async function updateCustomerBalance(customerId, userId, change) {
-  const { data: cur } = await supabase.from('customers').select('balance').eq('id', customerId).eq('user_id', userId).single();
-  if (cur) {
-    const newBalance = parseFloat(cur.balance || 0) + change;
-    await supabase.from('customers').update({ balance: newBalance }).eq('id', customerId).eq('user_id', userId);
-  }
+// ========== دوال RPC الذرية ==========
+async function updateCustomerBalanceRPC(customerId, userId, change) {
+  const { error } = await supabase.rpc('update_customer_balance', {
+    p_customer_id: customerId,
+    p_user_id: userId,
+    p_change: change,
+  });
+  if (error) throw error;
 }
 
-async function updateSupplierBalance(supplierId, userId, change) {
-  const { data: cur } = await supabase.from('suppliers').select('balance').eq('id', supplierId).eq('user_id', userId).single();
-  if (cur) {
-    const newBalance = parseFloat(cur.balance || 0) + change;
-    await supabase.from('suppliers').update({ balance: newBalance }).eq('id', supplierId).eq('user_id', userId);
-  }
+async function updateSupplierBalanceRPC(supplierId, userId, change) {
+  const { error } = await supabase.rpc('update_supplier_balance', {
+    p_supplier_id: supplierId,
+    p_user_id: userId,
+    p_change: change,
+  });
+  if (error) throw error;
 }
 
 module.exports = async (req, res) => {
@@ -120,7 +123,7 @@ module.exports = async (req, res) => {
             invoice_id: invoice_id || null,
             voucher_id: voucher.id
           });
-          await updateCustomerBalance(cust, userId, -amt);
+          await updateCustomerBalanceRPC(cust, userId, -amt);  // استخدم RPC
         } else if (type === 'payment' && supp) {
           await supabase.from('payments').insert({
             user_id: userId,
@@ -131,7 +134,7 @@ module.exports = async (req, res) => {
             invoice_id: invoice_id || null,
             voucher_id: voucher.id
           });
-          await updateSupplierBalance(supp, userId, -amt);
+          await updateSupplierBalanceRPC(supp, userId, -amt);  // استخدم RPC
         } else if (type === 'expense') {
           await supabase.from('expenses').insert({
             user_id: userId,
@@ -157,19 +160,17 @@ module.exports = async (req, res) => {
           .single();
         if (fetchErr || !voucher) return res.status(404).json({ error: 'السند غير موجود' });
 
-        // حذف آمن مع تفادي تعديل الرصيد إن لم توجد دفعة
         if (voucher.type === 'receipt' && voucher.customer_id) {
           const { data: pmts } = await supabase.from('payments').select('id').eq('voucher_id', voucherId);
           if (pmts && pmts.length > 0) {
             for (let p of pmts) await supabase.from('payments').delete().eq('id', p.id);
-            await updateCustomerBalance(voucher.customer_id, userId, voucher.amount);
+            await updateCustomerBalanceRPC(voucher.customer_id, userId, voucher.amount);  // RPC
           }
-          // إذا لم توجد دفعات، لا نعدل الرصيد (تم عكسه مسبقاً)
         } else if (voucher.type === 'payment' && voucher.supplier_id) {
           const { data: pmts } = await supabase.from('payments').select('id').eq('voucher_id', voucherId);
           if (pmts && pmts.length > 0) {
             for (let p of pmts) await supabase.from('payments').delete().eq('id', p.id);
-            await updateSupplierBalance(voucher.supplier_id, userId, voucher.amount);
+            await updateSupplierBalanceRPC(voucher.supplier_id, userId, voucher.amount);  // RPC
           }
         } else if (voucher.type === 'expense') {
           await supabase.from('expenses').delete().eq('voucher_id', voucherId);
@@ -183,8 +184,6 @@ module.exports = async (req, res) => {
     }
 
     // ============ قسم الدفعات العادية (غير السندات) ============
-    // تم إبقاؤها للقراءة والمراجعة فقط - تعطيل الإضافة والحذف المباشر
-
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('payments')
@@ -200,7 +199,7 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: 'لا يمكن إضافة دفعة مباشرة. استخدم السندات.' });
     }
 
-    // منع الحذف المباشر للدفعات المرتبطة بسند، والسماح بحذف الدفعات غير المرتبطة مع تحذير (اختياري)
+    // حذف الدفعات غير المرتبطة بسند مع عكس الرصيد (ذرية)
     if (req.method === 'DELETE') {
       const paymentId = req.query.id;
       if (!paymentId) return res.status(400).json({ error: 'معرف الدفعة مطلوب' });
@@ -212,9 +211,9 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'هذه الدفعة مرتبطة بسند. لا يمكن حذفها من هنا. احذف السند أولاً.' });
       }
 
-      // دفعة غير مرتبطة بسند (قد تكون من فاتورة مباشرة أو قديمة) نسمح بحذفها مع عكس الرصيد
-      if (payment.customer_id) await updateCustomerBalance(payment.customer_id, userId, parseFloat(payment.amount));
-      if (payment.supplier_id) await updateSupplierBalance(payment.supplier_id, userId, parseFloat(payment.amount));
+      // دفعة غير مرتبطة بسند (قديمة) - نستخدم RPC
+      if (payment.customer_id) await updateCustomerBalanceRPC(payment.customer_id, userId, parseFloat(payment.amount));
+      if (payment.supplier_id) await updateSupplierBalanceRPC(payment.supplier_id, userId, parseFloat(payment.amount));
 
       await supabase.from('payments').delete().eq('id', paymentId).eq('user_id', userId);
       return res.json({ success: true });
