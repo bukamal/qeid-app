@@ -1,9 +1,7 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
+const { escapeHtml } = require('../lib/sanitize');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-// ========== دوال RPC للعمليات الذرية ==========
 const rpc = {
   applyPurchase: (itemId, userId, qty, cost) =>
     supabase.rpc('apply_purchase_to_item', {
@@ -46,7 +44,6 @@ const rpc = {
   updateInvoiceFull: (params) => supabase.rpc('update_invoice_full', params),
 };
 
-// ========== دوال مساعدة ==========
 function safeParseEntityId(value) {
   if (value === null || value === undefined || value === '' || value === 'cash') return null;
   const num = parseInt(value, 10);
@@ -63,9 +60,7 @@ async function resolveConversionFactor(itemId, unitId, fallbackFactor) {
       .eq('unit_id', unitId)
       .maybeSingle();
     if (iu) return parseFloat(iu.conversion_factor);
-  } catch (e) {
-    /* fallback */
-  }
+  } catch (e) { /* fallback */ }
   return parseFloat(fallbackFactor) || 1;
 }
 
@@ -80,7 +75,7 @@ async function buildLineData(line, invoiceId = null) {
   const qtyBase = qty * factor;
   return {
     item_id: line.item_id || null,
-    description: line.description || null,
+    description: line.description ? escapeHtml(line.description) : null,
     quantity: qty,
     unit_price: parseFloat(line.unit_price) || 0,
     total: parseFloat(line.total) || 0,
@@ -92,7 +87,6 @@ async function buildLineData(line, invoiceId = null) {
   };
 }
 
-// ========== المدخل الرئيسي ==========
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -104,18 +98,14 @@ module.exports = async (req, res) => {
     let initData = req.method === 'GET' || req.method === 'DELETE' ? req.query.initData : req.body?.initData;
     const userId = await getUserId(initData);
 
-    // ==================== GET ====================
     if (req.method === 'GET') {
       const { data: invoices, error } = await supabase
         .from('invoices')
-        .select(
-          'id,user_id,type,customer_id,supplier_id,date,reference,notes,total,status,created_at,customer:customers(name),supplier:suppliers(name),invoice_lines(*,item:items(name),unit:units(name))'
-        )
+        .select('id,user_id,type,customer_id,supplier_id,date,reference,notes,total,status,created_at,customer:customers(name),supplier:suppliers(name),invoice_lines(*,item:items(name),unit:units(name))')
         .eq('user_id', userId)
         .order('date', { ascending: false });
       if (error) throw error;
 
-      // جلب كل الدفعات للمستخدم دفعة واحدة (تجنب N+1)
       const { data: allPayments, error: payError } = await supabase
         .from('payments')
         .select('invoice_id, amount')
@@ -130,11 +120,13 @@ module.exports = async (req, res) => {
       for (let inv of invoices) {
         inv.paid = paymentMap[inv.id] || 0;
         inv.balance = inv.total - inv.paid;
+        if (inv.notes) inv.notes = escapeHtml(inv.notes);
+        if (inv.customer?.name) inv.customer.name = escapeHtml(inv.customer.name);
+        if (inv.supplier?.name) inv.supplier.name = escapeHtml(inv.supplier.name);
       }
       return res.json(invoices);
     }
 
-    // ==================== POST ====================
     if (req.method === 'POST') {
       let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!type || !['sale', 'purchase'].includes(type))
@@ -144,6 +136,8 @@ module.exports = async (req, res) => {
 
       const cust = safeParseEntityId(customer_id);
       const supp = safeParseEntityId(supplier_id);
+      const escapedNotes = notes ? escapeHtml(notes) : null;
+      const escapedRef = reference ? escapeHtml(reference) : null;
 
       const lineData = [];
       let total = 0;
@@ -161,8 +155,8 @@ module.exports = async (req, res) => {
           customer_id: cust,
           supplier_id: supp,
           date: date || new Date().toISOString().split('T')[0],
-          reference,
-          notes,
+          reference: escapedRef,
+          notes: escapedNotes,
           total,
           status: 'posted',
         })
@@ -177,21 +171,16 @@ module.exports = async (req, res) => {
         .select();
       if (linesError) throw linesError;
 
-      // تطبيق المخزون (ذرية)
       for (const line of insertedLines) {
         if (line.item_id) {
-          const baseQty =
-            line.quantity_in_base ||
-            line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor));
+          const baseQty = line.quantity_in_base || line.quantity;
           if (type === 'purchase') {
             const unitCostPerBase = baseQty !== 0 ? line.total / baseQty : 0;
             await rpc.applyPurchase(line.item_id, userId, baseQty, unitCostPerBase);
             await supabase.from('invoice_lines').update({ unit_cost: unitCostPerBase }).eq('id', line.id);
-            line.unit_cost = unitCostPerBase;
           } else {
             const { data: costAmount } = await rpc.applySale(line.item_id, userId, baseQty);
             await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', line.id);
-            line.cost_amount = costAmount;
           }
         }
       }
@@ -218,7 +207,6 @@ module.exports = async (req, res) => {
       return res.json({ ...invoice, invoice_lines: insertedLines, paid, balance: total - paid });
     }
 
-    // ==================== PUT (تستخدم الدالة الذرية الشاملة) ====================
     if (req.method === 'PUT') {
       const { id, type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!id) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
@@ -226,7 +214,6 @@ module.exports = async (req, res) => {
       const newCust = safeParseEntityId(customer_id);
       const newSupp = safeParseEntityId(supplier_id);
 
-      // جلب النوع القديم
       const { data: oldInvoice } = await supabase
         .from('invoices')
         .select('type')
@@ -236,7 +223,6 @@ module.exports = async (req, res) => {
       if (!oldInvoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
       const newType = type || oldInvoice.type;
 
-      // تحضير السطور بصيغة مناسبة لتمريرها للـ JSON
       const linesJson = [];
       for (let line of lines || []) {
         const l = await buildLineData(line, id);
@@ -250,19 +236,16 @@ module.exports = async (req, res) => {
         p_customer_id: newCust,
         p_supplier_id: newSupp,
         p_date: date || oldInvoice.date,
-        p_reference: reference || null,
-        p_notes: notes || null,
+        p_reference: reference ? escapeHtml(reference) : null,
+        p_notes: notes ? escapeHtml(notes) : null,
         p_new_lines: linesJson,
         p_paid_amount: parseFloat(paid_amount) || 0,
       });
       if (error) throw error;
 
-      // جلب الفاتورة النهائية
       const { data: updatedInvoice } = await supabase
         .from('invoices')
-        .select(
-          'id,user_id,type,customer_id,supplier_id,date,reference,notes,total,status,created_at,customer:customers(name),supplier:suppliers(name),invoice_lines(*,item:items(name),unit:units(name))'
-        )
+        .select('id,user_id,type,customer_id,supplier_id,date,reference,notes,total,status,created_at,customer:customers(name),supplier:suppliers(name),invoice_lines(*,item:items(name),unit:units(name))')
         .eq('id', id)
         .single();
 
@@ -273,7 +256,6 @@ module.exports = async (req, res) => {
       return res.json(updatedInvoice);
     }
 
-    // ==================== DELETE ====================
     if (req.method === 'DELETE') {
       const invoiceId = req.query.id;
       if (!invoiceId) return res.status(400).json({ error: 'معرف الفاتورة مطلوب' });
@@ -286,7 +268,6 @@ module.exports = async (req, res) => {
         .single();
       if (!invoice) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
 
-      // عكس المخزون
       for (const line of invoice.invoice_lines) {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || line.quantity;
@@ -299,7 +280,6 @@ module.exports = async (req, res) => {
         }
       }
 
-      // عكس أثر الدفعات
       const { data: payments } = await supabase
         .from('payments')
         .select('id, amount, customer_id, supplier_id')
@@ -309,7 +289,6 @@ module.exports = async (req, res) => {
         if (p.supplier_id) await rpc.updateSupplierBalance(p.supplier_id, userId, p.amount);
       }
 
-      // عكس أثر الفاتورة على الرصيد
       if (invoice.type === 'sale' && invoice.customer_id) {
         await rpc.updateCustomerBalance(invoice.customer_id, userId, -invoice.total);
       } else if (invoice.type === 'purchase' && invoice.supplier_id) {

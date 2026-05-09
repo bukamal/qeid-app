@@ -1,11 +1,10 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const https = require('https');
 const FormData = require('form-data');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
+const { escapeHtml } = require('../lib/sanitize');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const BOT_TOKEN = process.env.BOT_TOKEN;
-
 const CURRENCY = { symbol: 'ل.س', name: 'ليرة سورية', decimals: 2 };
 
 function formatCurrency(amount) {
@@ -34,7 +33,6 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // ✅ Rate Limiting (أكثر صرامة للإرسال)
   const allowed = await rateLimitMiddleware(req, res, 'invoices-send');
   if (!allowed) return;
 
@@ -70,13 +68,22 @@ module.exports = async (req, res) => {
     const timeStr = formatTimeEn(now);
     const dateStr = formatDateEn(invoice.date);
 
-    // إنشاء HTML للفاتورة (نفس المحتوى السابق تماماً)
+    // Escape all user-supplied text
+    const safeCustomerName = invoice.customer?.name ? escapeHtml(invoice.customer.name) : '';
+    const safeCustomerPhone = invoice.customer?.phone ? escapeHtml(invoice.customer.phone) : '';
+    const safeSupplierName = invoice.supplier?.name ? escapeHtml(invoice.supplier.name) : '';
+    const safeSupplierPhone = invoice.supplier?.phone ? escapeHtml(invoice.supplier.phone) : '';
+    const safeNotes = invoice.notes ? escapeHtml(invoice.notes) : '';
+    const safeReference = invoice.reference ? escapeHtml(invoice.reference) : '';
+    const safeEntityName = entity ? escapeHtml(entity.name) : '';
+    const safeEntityPhone = entity?.phone ? escapeHtml(entity.phone) : '';
+
     const htmlContent = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=80mm, initial-scale=1">
-<title>${typeLabel} - ${invoice.reference || invoice.id}</title>
+<title>${typeLabel} - ${safeReference || invoice.id}</title>
 <style>
 @page { size: 80mm auto; margin: 0; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -140,31 +147,31 @@ body {
   <div class="invoice-type">${typeLabel}</div>
 </div>
 <div class="info-box">
-  <div class="info-row"><span class="info-label">رقم الفاتورة:</span><span class="info-value">#${invoice.reference || invoice.id}</span></div>
+  <div class="info-row"><span class="info-label">رقم الفاتورة:</span><span class="info-value">#${safeReference || invoice.id}</span></div>
   <div class="info-row"><span class="info-label">التاريخ:</span><span class="info-value">${dateStr} ${timeStr}</span></div>
   <div class="info-row"><span class="info-label">الحالة:</span><span class="info-value">${balance <= 0 ? '<span class="paid-badge">✓ مدفوعة</span>' : '<span class="unpaid-badge">⏳ غير مدفوعة</span>'}</span></div>
 </div>
 ${entity ? `
 <div class="info-box" style="background: #e0e7ff; border-color: #c7d2fe;">
   <div class="info-label" style="text-align: center; color: #4f46e5;">${entityLabel}</div>
-  <div class="entity-name">${entity.name}</div>
-  ${entity.phone ? `<div class="info-row"><span class="info-label">الهاتف:</span><span class="info-value">${entity.phone}</span></div>` : ''}
+  <div class="entity-name">${safeEntityName}</div>
+  ${safeEntityPhone ? `<div class="info-row"><span class="info-label">الهاتف:</span><span class="info-value">${safeEntityPhone}</span></div>` : ''}
 </div>
 ` : ''}
 <hr class="divider">
 <table class="items-table">
   <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>المجموع</th></tr></thead>
   <tbody>
-    ${invoice.invoice_lines?.map(l => `
-    <tr>
-      <td>
-        <div style="font-weight: 800;">${(l.item?.name || '-').substring(0, 15)}</div>
-      </td>
-      <td class="num">${l.quantity} <span style="font-size: 8px; color: #64748b;">${l.unit?.abbreviation || l.unit?.name || ''}</span></td>
-      <td class="num">${parseFloat(l.unit_price).toFixed(2)}</td>
-      <td class="num" style="color: #4f46e5; font-weight: 900;">${parseFloat(l.total).toFixed(2)}</td>
-    </tr>
-    `).join('') || '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">لا يوجد بنود</td></tr>'}
+    ${invoice.invoice_lines?.map(l => {
+      const itemName = l.item?.name ? escapeHtml(l.item.name) : '-';
+      const unitName = l.unit?.abbreviation ? escapeHtml(l.unit.abbreviation) : (l.unit?.name ? escapeHtml(l.unit.name) : '');
+      return `<tr>
+        <td><div style="font-weight: 800;">${itemName.substring(0, 15)}</div></td>
+        <td class="num">${l.quantity} <span style="font-size: 8px; color: #64748b;">${unitName}</span></td>
+        <td class="num">${parseFloat(l.unit_price).toFixed(2)}</td>
+        <td class="num" style="color: #4f46e5; font-weight: 900;">${parseFloat(l.total).toFixed(2)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">لا يوجد بنود</td></tr>'}
   </tbody>
 </table>
 <hr class="divider-thick">
@@ -178,9 +185,7 @@ ${entity ? `
 ${payments && payments.length > 0 ? `
 <div class="payments-section">
   <div class="payments-title">سجل الدفعات</div>
-  ${payments.map(p => `
-  <div class="payment-row"><span>${formatDateEn(p.payment_date)}</span><span style="font-weight: 800;">${formatCurrency(p.amount)}</span></div>
-  `).join('')}
+  ${payments.map(p => `<div class="payment-row"><span>${formatDateEn(p.payment_date)}</span><span style="font-weight: 800;">${formatCurrency(p.amount)}</span></div>`).join('')}
 </div>
 ` : ''}
 <div class="barcode">*${invoice.id}*</div>
@@ -195,20 +200,20 @@ ${payments && payments.length > 0 ? `
 </body>
 </html>`;
 
-    // إرسال الملف عبر Telegram Bot API
     const form = new FormData();
     form.append('chat_id', String(userId));
     form.append('document', Buffer.from(htmlContent, 'utf-8'), {
-      filename: `فاتورة-${invoice.reference || invoice.id}.html`,
+      filename: `فاتورة-${safeReference || invoice.id}.html`,
       contentType: 'text/html; charset=utf-8'
     });
-    form.append('caption', `🧾 ${typeLabel} ${invoice.reference || ''}\n💰 الإجمالي: ${formatCurrency(invoice.total)}${balance > 0 ? `\n⚠️ متبقي: ${formatCurrency(balance)}` : '\n✅ مدفوعة بالكامل'}`);
+    form.append('caption', `🧾 ${typeLabel} ${safeReference || ''}\n💰 الإجمالي: ${formatCurrency(invoice.total)}${balance > 0 ? `\n⚠️ متبقي: ${formatCurrency(balance)}` : '\n✅ مدفوعة بالكامل'}`);
 
     const options = {
       hostname: 'api.telegram.org',
       path: `/bot${BOT_TOKEN}/sendDocument`,
       method: 'POST',
-      headers: form.getHeaders()
+      headers: form.getHeaders(),
+      timeout: 15000
     };
 
     const tgReq = https.request(options, (tgRes) => {
@@ -231,6 +236,10 @@ ${payments && payments.length > 0 ? `
     tgReq.on('error', (e) => {
       console.error('Network error:', e);
       res.status(500).json({ error: e.message });
+    });
+    tgReq.on('timeout', () => {
+      tgReq.destroy();
+      res.status(504).json({ error: 'انتهت مهلة الاتصال بـ Telegram' });
     });
 
     form.pipe(tgReq);

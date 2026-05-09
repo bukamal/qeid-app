@@ -1,7 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { escapeHtml } = require('../lib/sanitize');
 
 const TABLES = {
   category: { table: 'categories', pk: 'id', columns: ['name'] },
@@ -12,7 +11,6 @@ module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ✅ Rate Limiting
   const allowed = await rateLimitMiddleware(req, res, 'definitions');
   if (!allowed) return;
 
@@ -30,13 +28,19 @@ module.exports = async (req, res) => {
         .eq('user_id', userId)
         .order('name');
       if (error) throw error;
-      return res.json(data);
+      const safeData = data.map(item => ({
+        ...item,
+        name: escapeHtml(item.name),
+        abbreviation: item.abbreviation ? escapeHtml(item.abbreviation) : null
+      }));
+      return res.json(safeData);
     }
 
     if (req.method === 'POST') {
       const entry = { name: req.body.name?.trim() };
-      if (type === 'unit') entry.abbreviation = req.body.abbreviation || null;
+      if (type === 'unit') entry.abbreviation = req.body.abbreviation ? escapeHtml(req.body.abbreviation.trim()) : null;
       if (!entry.name) return res.status(400).json({ error: 'الاسم مطلوب' });
+      entry.name = escapeHtml(entry.name);
 
       const { data: existing } = await supabase
         .from(config.table)
@@ -58,8 +62,9 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       const { id, name, abbreviation } = req.body;
       if (!id) return res.status(400).json({ error: 'المعرف مطلوب' });
-      const updates = { name: name?.trim() };
-      if (type === 'unit') updates.abbreviation = abbreviation || null;
+      const updates = {};
+      if (name) updates.name = escapeHtml(name.trim());
+      if (type === 'unit' && abbreviation !== undefined) updates.abbreviation = abbreviation ? escapeHtml(abbreviation.trim()) : null;
 
       if (updates.name) {
         const { data: existing } = await supabase

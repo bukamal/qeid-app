@@ -1,7 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { escapeHtml } = require('../lib/sanitize');
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
@@ -66,6 +65,7 @@ module.exports = async (req, res) => {
         const totalValue = available * (parseFloat(item.average_cost) || 0);
         return {
           ...item,
+          name: escapeHtml(item.name),
           purchase_qty: s.purchase_qty || 0,
           sale_qty: s.sale_qty || 0,
           purchase_count: s.purchase_count || 0,
@@ -85,6 +85,7 @@ module.exports = async (req, res) => {
       if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
 
       const trimmedName = name.trim();
+      const escapedName = escapeHtml(trimmedName);
       const { data: existing } = await supabase
         .from('items')
         .select('id')
@@ -101,7 +102,7 @@ module.exports = async (req, res) => {
       const avgCost = parseFloat(purchase_price) || 0;
 
       const { data, error } = await supabase.from('items').insert({
-        user_id: userId, name: trimmedName, category_id: category_id || null,
+        user_id: userId, name: escapedName, category_id: category_id || null,
         item_type: item_type || 'مخزون', purchase_price: parseFloat(purchase_price) || 0,
         selling_price: parseFloat(selling_price) || 0, quantity: parseFloat(quantity) || 0,
         base_unit_id: base_unit_id || null,
@@ -121,6 +122,7 @@ module.exports = async (req, res) => {
       }
 
       const { data: fullData } = await supabase.from('items').select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`).eq('id', data.id).single();
+      if (fullData) fullData.name = escapeHtml(fullData.name);
       return res.json(fullData || data);
     }
 
@@ -161,14 +163,16 @@ module.exports = async (req, res) => {
         if (validUnits.length > 0) await supabase.from('item_units').insert(validUnits);
       }
 
+      const escapedName = name ? escapeHtml(name.trim()) : undefined;
       const { data, error } = await supabase.from('items').update({
-        name: name?.trim(), category_id: category_id || null, item_type,
+        name: escapedName, category_id: category_id || null, item_type,
         purchase_price: parseFloat(purchase_price) || 0, selling_price: parseFloat(selling_price) || 0,
         quantity: parseFloat(quantity) || 0, base_unit_id: base_unit_id || null
       }).eq('id', id).eq('user_id', userId).select().single();
       if (error) throw error;
 
       const { data: fullData } = await supabase.from('items').select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`).eq('id', id).single();
+      if (fullData) fullData.name = escapeHtml(fullData.name);
       return res.json(fullData || data);
     }
 

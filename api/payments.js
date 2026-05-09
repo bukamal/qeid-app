@@ -1,7 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { escapeHtml } = require('../lib/sanitize');
 
 function safeParseEntityId(value) {
   if (value === null || value === undefined || value === '' || value === 'cash') return null;
@@ -25,7 +24,6 @@ module.exports = async (req, res) => {
       : req.body?.voucher === true;
 
     if (isVoucherRequest) {
-      // ============ معالجة السندات ============
       if (req.method === 'GET') {
         const { data, error } = await supabase
           .from('vouchers')
@@ -33,7 +31,14 @@ module.exports = async (req, res) => {
           .eq('user_id', userId)
           .order('date', { ascending: false });
         if (error) throw error;
-        return res.json(data);
+        const safeData = data.map(v => ({
+          ...v,
+          description: v.description ? escapeHtml(v.description) : null,
+          reference: v.reference ? escapeHtml(v.reference) : null,
+          customer: v.customer ? { name: escapeHtml(v.customer.name) } : null,
+          supplier: v.supplier ? { name: escapeHtml(v.supplier.name) } : null
+        }));
+        return res.json(safeData);
       }
 
       if (req.method === 'POST') {
@@ -46,7 +51,6 @@ module.exports = async (req, res) => {
         const cust = safeParseEntityId(customer_id);
         const supp = safeParseEntityId(supplier_id);
 
-        // توليد ترقيم تلقائي (يمكن نقله إلى RPC لكن نتركه هنا)
         const prefix = type === 'receipt' ? 'SC' : type === 'payment' ? 'SP' : 'SE';
         const { data: lastVoucher } = await supabase
           .from('vouchers')
@@ -63,15 +67,15 @@ module.exports = async (req, res) => {
           const parsed = parseInt(numPart);
           if (!isNaN(parsed)) nextNum = parsed + 1;
         }
-        const finalReference = reference || `${prefix}-${String(nextNum).padStart(4, '0')}`;
+        const finalReference = reference ? escapeHtml(reference) : `${prefix}-${String(nextNum).padStart(4, '0')}`;
+        const escapedDescription = description ? escapeHtml(description) : null;
 
-        // استدعاء الدالة الذرية لإنشاء السند
         const { data, error } = await supabase.rpc('create_voucher_full', {
           p_user_id: userId,
           p_type: type,
           p_date: date || new Date().toISOString().split('T')[0],
           p_amount: parseFloat(amount),
-          p_description: description,
+          p_description: escapedDescription,
           p_reference: finalReference,
           p_customer_id: cust,
           p_supplier_id: supp,
@@ -96,7 +100,7 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // ============ الدفعات العادية ============
+    // Legacy payments (non-voucher)
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('payments')
@@ -104,7 +108,13 @@ module.exports = async (req, res) => {
         .eq('user_id', userId)
         .order('payment_date', { ascending: false });
       if (error) throw error;
-      return res.json(data);
+      const safeData = data.map(p => ({
+        ...p,
+        notes: p.notes ? escapeHtml(p.notes) : null,
+        customer: p.customer ? { name: escapeHtml(p.customer.name) } : null,
+        supplier: p.supplier ? { name: escapeHtml(p.supplier.name) } : null
+      }));
+      return res.json(safeData);
     }
 
     if (req.method === 'POST') {
@@ -122,7 +132,6 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'هذه الدفعة مرتبطة بسند. لا يمكن حذفها من هنا.' });
       }
 
-      // دفعة قديمة غير مرتبطة بسند – تحديث ذري
       if (payment.customer_id) {
         await supabase.rpc('update_customer_balance', { p_customer_id: payment.customer_id, p_user_id: userId, p_change: payment.amount });
       }

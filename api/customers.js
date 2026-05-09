@@ -1,13 +1,11 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { escapeHtml } = require('../lib/sanitize');
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ✅ Rate Limiting
   const allowed = await rateLimitMiddleware(req, res, 'customers');
   if (!allowed) return;
 
@@ -22,24 +20,30 @@ module.exports = async (req, res) => {
         .eq('user_id', userId)
         .order('name');
       if (error) throw error;
-      return res.json(data);
+      const safeData = data.map(c => ({ ...c, name: escapeHtml(c.name), phone: c.phone ? escapeHtml(c.phone) : null, address: c.address ? escapeHtml(c.address) : null }));
+      return res.json(safeData);
     }
 
     if (req.method === 'POST') {
       const { name, phone, address } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم العميل مطلوب' });
 
+      const trimmedName = name.trim();
+      const escapedName = escapeHtml(trimmedName);
+      const escapedPhone = phone ? escapeHtml(phone) : null;
+      const escapedAddress = address ? escapeHtml(address) : null;
+
       const { data: existing } = await supabase
         .from('customers')
         .select('id')
         .eq('user_id', userId)
-        .ilike('name', name.trim())
+        .ilike('name', trimmedName)
         .maybeSingle();
       if (existing) return res.status(400).json({ error: 'يوجد عميل بنفس الاسم' });
 
       const { data, error } = await supabase
         .from('customers')
-        .insert({ user_id: userId, name: name.trim(), phone: phone || null, address: address || null, balance: 0 })
+        .insert({ user_id: userId, name: escapedName, phone: escapedPhone, address: escapedAddress, balance: 0 })
         .select()
         .single();
       if (error) throw error;
@@ -51,19 +55,25 @@ module.exports = async (req, res) => {
       if (!id) return res.status(400).json({ error: 'معرف العميل مطلوب' });
 
       if (name) {
+        const trimmedName = name.trim();
         const { data: existing } = await supabase
           .from('customers')
           .select('id')
           .eq('user_id', userId)
-          .ilike('name', name.trim())
+          .ilike('name', trimmedName)
           .neq('id', id)
           .maybeSingle();
         if (existing) return res.status(400).json({ error: 'يوجد عميل آخر بنفس الاسم' });
       }
 
+      const updates = {};
+      if (name) updates.name = escapeHtml(name.trim());
+      if (phone !== undefined) updates.phone = phone ? escapeHtml(phone) : null;
+      if (address !== undefined) updates.address = address ? escapeHtml(address) : null;
+
       const { data, error } = await supabase
         .from('customers')
-        .update({ name: name?.trim(), phone, address })
+        .update(updates)
         .eq('id', id)
         .eq('user_id', userId)
         .select()

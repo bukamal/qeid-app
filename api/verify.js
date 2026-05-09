@@ -1,7 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
-const { setCorsHeaders, verifyTelegramData, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { supabase } = require('../lib/supabase');
+const { setCorsHeaders, verifyTelegramData, rateLimitMiddleware, getUserId } = require('../lib/auth');
+const { escapeHtml } = require('../lib/sanitize');
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
@@ -20,21 +19,28 @@ module.exports = async (req, res) => {
     const params = new URLSearchParams(initData);
     const user = JSON.parse(params.get('user'));
 
+    // Check allowed users list
     const allowedUsers = process.env.ALLOWED_USERS || '';
     const allowedIds = allowedUsers.split(',').map(id => id.trim()).filter(Boolean);
     if (allowedIds.length > 0 && !allowedIds.includes(String(user.id))) {
       return res.status(403).json({ verified: false, error: 'غير مصرح لك باستخدام التطبيق' });
     }
 
-    const { error } = await supabase
+    // Upsert user
+    const { error: userError } = await supabase
       .from('users')
-      .upsert({ id: user.id, first_name: user.first_name, username: user.username }, { onConflict: 'id' });
+      .upsert({ 
+        id: user.id, 
+        first_name: escapeHtml(user.first_name || ''), 
+        username: escapeHtml(user.username || '') 
+      }, { onConflict: 'id' });
 
-    if (error) {
-      console.error('Supabase user error:', error);
-      return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + error.message });
+    if (userError) {
+      console.error('Supabase user error:', userError);
+      return res.status(500).json({ error: 'فشل حفظ المستخدم: ' + userError.message });
     }
 
+    // Create default accounts if not exist
     const defaultAccounts = [
       { name: 'الصندوق', type: 'asset' },
       { name: 'المبيعات', type: 'income' },
@@ -43,6 +49,7 @@ module.exports = async (req, res) => {
       { name: 'مصاريف عامة', type: 'expense' },
       { name: 'رأس المال', type: 'equity' }
     ];
+
     for (const acc of defaultAccounts) {
       const { data: existing } = await supabase
         .from('accounts')

@@ -1,13 +1,11 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { escapeHtml } = require('../lib/sanitize');
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ✅ Rate Limiting
   const allowed = await rateLimitMiddleware(req, res, 'expenses');
   if (!allowed) return;
 
@@ -22,7 +20,8 @@ module.exports = async (req, res) => {
         .eq('user_id', userId)
         .order('expense_date', { ascending: false });
       if (error) throw error;
-      return res.json(data);
+      const safeData = data.map(e => ({ ...e, description: e.description ? escapeHtml(e.description) : null }));
+      return res.json(safeData);
     }
 
     if (req.method === 'POST') {
@@ -34,7 +33,7 @@ module.exports = async (req, res) => {
           user_id: userId,
           amount: parseFloat(amount),
           expense_date: expense_date || new Date().toISOString().split('T')[0],
-          description
+          description: description ? escapeHtml(description) : null
         })
         .select()
         .single();

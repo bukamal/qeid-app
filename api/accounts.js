@@ -1,7 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabase } = require('../lib/supabase');
 const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth');
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { escapeHtml } = require('../lib/sanitize');
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
@@ -21,15 +20,17 @@ module.exports = async (req, res) => {
         .eq('user_id', userId)
         .order('name');
       if (error) throw error;
-      return res.json(data);
+      const safeData = data.map(acc => ({ ...acc, name: escapeHtml(acc.name) }));
+      return res.json(safeData);
     }
 
     if (req.method === 'POST') {
       const { name, type } = req.body;
       if (!name) return res.status(400).json({ error: 'اسم الحساب مطلوب' });
+      const escapedName = escapeHtml(name.trim());
       const { data, error } = await supabase
         .from('accounts')
-        .insert({ user_id: userId, name, type: type || 'expense', balance: 0 })
+        .insert({ user_id: userId, name: escapedName, type: type || 'expense', balance: 0 })
         .select()
         .single();
       if (error) throw error;
