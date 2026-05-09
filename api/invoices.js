@@ -3,125 +3,62 @@ const { setCorsHeaders, getUserId, rateLimitMiddleware } = require('../lib/auth'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// ========== دوال إدارة المخزون (المتوسط المرجح) ==========
-
-async function applyPurchaseToItem(itemId, userId, qtyPurchased, unitCost, supabase) {
-  const { data: item, error } = await supabase
-    .from('items')
-    .select('quantity, average_cost')
-    .eq('id', itemId)
-    .eq('user_id', userId)
-    .single();
+// ========== دوال RPC الذرية ==========
+async function updateCustomerBalanceRPC(customerId, userId, change) {
+  const { error } = await supabase.rpc('update_customer_balance', {
+    p_customer_id: customerId,
+    p_user_id: userId,
+    p_change: change,
+  });
   if (error) throw error;
-
-  const oldQty = parseFloat(item.quantity) || 0;
-  const oldAvgCost = parseFloat(item.average_cost) || 0;
-
-  const totalOldCost = oldQty * oldAvgCost;
-  const totalNewCost = qtyPurchased * unitCost;
-  const newQty = oldQty + qtyPurchased;
-  const newAvgCost = newQty !== 0 ? (totalOldCost + totalNewCost) / newQty : 0;
-
-  const { error: updateError } = await supabase
-    .from('items')
-    .update({ quantity: newQty, average_cost: newAvgCost })
-    .eq('id', itemId)
-    .eq('user_id', userId);
-  if (updateError) throw updateError;
 }
 
-async function reversePurchaseFromItem(itemId, userId, qtyPurchased, unitCost, supabase) {
-  const { data: item, error } = await supabase
-    .from('items')
-    .select('quantity, average_cost')
-    .eq('id', itemId)
-    .eq('user_id', userId)
-    .single();
+async function updateSupplierBalanceRPC(supplierId, userId, change) {
+  const { error } = await supabase.rpc('update_supplier_balance', {
+    p_supplier_id: supplierId,
+    p_user_id: userId,
+    p_change: change,
+  });
   if (error) throw error;
-
-  const oldQty = parseFloat(item.quantity) || 0;
-  const oldAvgCost = parseFloat(item.average_cost) || 0;
-
-  if (qtyPurchased > oldQty) {
-    throw new Error(`لا يمكن عكس شراء ${qtyPurchased} وحدة من المادة ${itemId} لأن المخزون الحالي هو ${oldQty}`);
-  }
-
-  const totalOldCost = oldQty * oldAvgCost;
-  const totalRevCost = qtyPurchased * unitCost;
-  const newQty = oldQty - qtyPurchased;
-  const newTotalCost = totalOldCost - totalRevCost;
-  const newAvgCost = newQty !== 0 ? Math.max(0, newTotalCost / newQty) : 0;
-
-  const { error: updateError } = await supabase
-    .from('items')
-    .update({ quantity: newQty, average_cost: newAvgCost })
-    .eq('id', itemId)
-    .eq('user_id', userId);
-  if (updateError) throw updateError;
 }
 
-async function applySaleToItem(itemId, userId, qtySold, supabase) {
-  const { data: item, error } = await supabase
-    .from('items')
-    .select('quantity, average_cost')
-    .eq('id', itemId)
-    .eq('user_id', userId)
-    .single();
+async function applyPurchaseToItemRPC(itemId, userId, qty, unitCost) {
+  const { error } = await supabase.rpc('apply_purchase_to_item', {
+    p_item_id: itemId,
+    p_user_id: userId,
+    p_qty_purchased: qty,
+    p_unit_cost: unitCost,
+  });
   if (error) throw error;
-
-  const oldQty = parseFloat(item.quantity) || 0;
-  const avgCost = parseFloat(item.average_cost) || 0;
-
-  if (qtySold > oldQty) {
-    throw new Error(`المخزون غير كافٍ للمادة ${itemId}. المتاح: ${oldQty}, المطلوب: ${qtySold}`);
-  }
-
-  const costAmount = qtySold * avgCost;
-  const newQty = oldQty - qtySold;
-
-  const { error: updateError } = await supabase
-    .from('items')
-    .update({ quantity: newQty })
-    .eq('id', itemId)
-    .eq('user_id', userId);
-  if (updateError) throw updateError;
-
-  return costAmount;
 }
 
-async function reverseSaleFromItem(itemId, userId, qtySold, supabase) {
-  const { data: item, error } = await supabase
-    .from('items')
-    .select('quantity')
-    .eq('id', itemId)
-    .eq('user_id', userId)
-    .single();
+async function reversePurchaseFromItemRPC(itemId, userId, qty, unitCost) {
+  const { error } = await supabase.rpc('reverse_purchase_from_item', {
+    p_item_id: itemId,
+    p_user_id: userId,
+    p_qty_purchased: qty,
+    p_unit_cost: unitCost,
+  });
   if (error) throw error;
-
-  const oldQty = parseFloat(item.quantity) || 0;
-  const { error: updateError } = await supabase
-    .from('items')
-    .update({ quantity: oldQty + qtySold })
-    .eq('id', itemId)
-    .eq('user_id', userId);
-  if (updateError) throw updateError;
 }
 
-// ========== دوال الأرصدة ==========
-async function updateCustomerBalance(customerId, userId, change) {
-  const { data: cur } = await supabase.from('customers').select('balance').eq('id', customerId).eq('user_id', userId).single();
-  if (cur) {
-    const newBalance = parseFloat(cur.balance || 0) + change;
-    await supabase.from('customers').update({ balance: newBalance }).eq('id', customerId).eq('user_id', userId);
-  }
+async function applySaleToItemRPC(itemId, userId, qtySold) {
+  const { data, error } = await supabase.rpc('apply_sale_to_item', {
+    p_item_id: itemId,
+    p_user_id: userId,
+    p_qty_sold: qtySold,
+  });
+  if (error) throw error;
+  return data; // cost_amount
 }
 
-async function updateSupplierBalance(supplierId, userId, change) {
-  const { data: cur } = await supabase.from('suppliers').select('balance').eq('id', supplierId).eq('user_id', userId).single();
-  if (cur) {
-    const newBalance = parseFloat(cur.balance || 0) + change;
-    await supabase.from('suppliers').update({ balance: newBalance }).eq('id', supplierId).eq('user_id', userId);
-  }
+async function reverseSaleFromItemRPC(itemId, userId, qtySold) {
+  const { error } = await supabase.rpc('reverse_sale_from_item', {
+    p_item_id: itemId,
+    p_user_id: userId,
+    p_qty_sold: qtySold,
+  });
+  if (error) throw error;
 }
 
 // ========== دوال مساعدة ==========
@@ -163,39 +100,11 @@ async function buildLineData(line, invoiceId = null) {
   return obj;
 }
 
-async function checkStockAvailability(lines, userId, supabase) {
-  const itemIds = [...new Set(lines.filter(l => l.item_id).map(l => l.item_id))];
-  if (itemIds.length === 0) return;
-
-  const { data: items, error } = await supabase
-    .from('items')
-    .select('id, quantity')
-    .in('id', itemIds)
-    .eq('user_id', userId);
-  if (error) throw error;
-
-  const stockMap = {};
-  items.forEach(it => { stockMap[it.id] = parseFloat(it.quantity) || 0; });
-
-  for (const line of lines) {
-    if (!line.item_id) continue;
-    const factor = parseFloat(line.conversion_factor) || 1;
-    const qtyInBase = (parseFloat(line.quantity) || 0) * factor;
-    const available = stockMap[line.item_id] || 0;
-    if (qtyInBase > available) {
-      const item = items.find(i => i.id == line.item_id);
-      const itemName = item ? ` (${item.id})` : '';
-      throw new Error(`المخزون غير كافٍ للمادة ${line.item_id}${itemName}. المتاح: ${available}, المطلوب: ${qtyInBase}`);
-    }
-  }
-}
-
 // ========== المدخل الرئيسي ==========
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ✅ Rate Limiting Check
   const allowed = await rateLimitMiddleware(req, res, 'invoices');
   if (!allowed) return;
 
@@ -225,10 +134,6 @@ module.exports = async (req, res) => {
       let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!type || !['sale', 'purchase'].includes(type)) return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
       if (!lines || !Array.isArray(lines) || lines.length === 0) return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
-
-      if (type === 'sale') {
-        await checkStockAvailability(lines, userId, supabase);
-      }
 
       const cust = parseInt(customer_id) && customer_id !== 'cash' ? parseInt(customer_id) : null;
       const supp = parseInt(supplier_id) && supplier_id !== 'cash' ? parseInt(supplier_id) : null;
@@ -265,22 +170,20 @@ module.exports = async (req, res) => {
         .select();
       if (linesError) throw linesError;
 
-      const processedLines = [];
+      // معالجة المخزون والأرصدة (استخدام RPC الذرية)
       for (const line of insertedLines) {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
           if (type === 'purchase') {
-            const unitCost = parseFloat(line.unit_price) || 0;
-            await applyPurchaseToItem(line.item_id, userId, baseQty, unitCost, supabase);
-            await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', line.id);
-            processedLines.push({ ...line, unit_cost: unitCost });
-          } else if (type === 'sale') {
-            const costAmount = await applySaleToItem(line.item_id, userId, baseQty, supabase);
+            const unitCostPerBase = baseQty !== 0 ? line.total / baseQty : 0;
+            await applyPurchaseToItemRPC(line.item_id, userId, baseQty, unitCostPerBase);
+            await supabase.from('invoice_lines').update({ unit_cost: unitCostPerBase }).eq('id', line.id);
+            line.unit_cost = unitCostPerBase;
+          } else {
+            const costAmount = await applySaleToItemRPC(line.item_id, userId, baseQty);
             await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', line.id);
-            processedLines.push({ ...line, cost_amount: costAmount });
+            line.cost_amount = costAmount;
           }
-        } else {
-          processedLines.push(line);
         }
       }
 
@@ -298,14 +201,14 @@ module.exports = async (req, res) => {
       }
 
       if (type === 'sale' && cust) {
-        await updateCustomerBalance(cust, userId, total - paid);
+        await updateCustomerBalanceRPC(cust, userId, total - paid);
       } else if (type === 'purchase' && supp) {
-        await updateSupplierBalance(supp, userId, total - paid);
+        await updateSupplierBalanceRPC(supp, userId, total - paid);
       }
 
       const finalInvoice = {
         ...invoice,
-        invoice_lines: processedLines,
+        invoice_lines: insertedLines,
         paid,
         balance: total - paid
       };
@@ -327,26 +230,23 @@ module.exports = async (req, res) => {
 
       const newType = type || oldInvoice.type;
 
-      if (newType === 'sale') {
-        await checkStockAvailability(lines || [], userId, supabase);
-      }
-
+      // عكس تأثير القديم
       for (const oldLine of oldInvoice.invoice_lines) {
         if (oldLine.item_id) {
           const baseQty = oldLine.quantity_in_base || (oldLine.quantity * (await resolveConversionFactor(oldLine.item_id, oldLine.unit_id, oldLine.conversion_factor)));
           if (oldInvoice.type === 'purchase') {
             const unitCost = oldLine.unit_cost || (oldLine.unit_price / (oldLine.conversion_factor || 1));
-            await reversePurchaseFromItem(oldLine.item_id, userId, baseQty, unitCost, supabase);
-          } else if (oldInvoice.type === 'sale') {
-            await reverseSaleFromItem(oldLine.item_id, userId, baseQty, supabase);
+            await reversePurchaseFromItemRPC(oldLine.item_id, userId, baseQty, unitCost);
+          } else {
+            await reverseSaleFromItemRPC(oldLine.item_id, userId, baseQty);
           }
         }
       }
 
       if (oldInvoice.type === 'sale' && oldInvoice.customer_id) {
-        await updateCustomerBalance(oldInvoice.customer_id, userId, -oldInvoice.total);
+        await updateCustomerBalanceRPC(oldInvoice.customer_id, userId, -oldInvoice.total);
       } else if (oldInvoice.type === 'purchase' && oldInvoice.supplier_id) {
-        await updateSupplierBalance(oldInvoice.supplier_id, userId, -oldInvoice.total);
+        await updateSupplierBalanceRPC(oldInvoice.supplier_id, userId, -oldInvoice.total);
       }
 
       await supabase.from('invoice_lines').delete().eq('invoice_id', id);
@@ -368,23 +268,20 @@ module.exports = async (req, res) => {
         .select();
       if (insertError) throw insertError;
 
-      // Process inventory updates for new lines with proper async sequencing
-      const processedLines = [];
       for (const newLine of insertedNewLines) {
         if (newLine.item_id) {
           const baseQty = newLine.quantity_in_base || (newLine.quantity * (await resolveConversionFactor(newLine.item_id, newLine.unit_id, newLine.conversion_factor)));
           if (newType === 'purchase') {
-            const unitCost = parseFloat(newLine.unit_price) || 0;
-            await applyPurchaseToItem(newLine.item_id, userId, baseQty, unitCost, supabase);
-            await supabase.from('invoice_lines').update({ unit_cost: unitCost }).eq('id', newLine.id);
-            newLine.unit_cost = unitCost;
-          } else if (newType === 'sale') {
-            const costAmount = await applySaleToItem(newLine.item_id, userId, baseQty, supabase);
+            const unitCostPerBase = baseQty !== 0 ? newLine.total / baseQty : 0;
+            await applyPurchaseToItemRPC(newLine.item_id, userId, baseQty, unitCostPerBase);
+            await supabase.from('invoice_lines').update({ unit_cost: unitCostPerBase }).eq('id', newLine.id);
+            newLine.unit_cost = unitCostPerBase;
+          } else {
+            const costAmount = await applySaleToItemRPC(newLine.item_id, userId, baseQty);
             await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', newLine.id);
             newLine.cost_amount = costAmount;
           }
         }
-        processedLines.push(newLine);
       }
 
       const { data: updatedInvoice, error: updateError } = await supabase
@@ -434,9 +331,9 @@ module.exports = async (req, res) => {
       const totalPaid = finalPayments?.reduce((s, p) => s + parseFloat(p.amount), 0) || 0;
 
       if (newType === 'sale' && newCust) {
-        await updateCustomerBalance(newCust, userId, newTotal - totalPaid);
+        await updateCustomerBalanceRPC(newCust, userId, newTotal - totalPaid);
       } else if (newType === 'purchase' && newSupp) {
-        await updateSupplierBalance(newSupp, userId, newTotal - totalPaid);
+        await updateSupplierBalanceRPC(newSupp, userId, newTotal - totalPaid);
       }
 
       updatedInvoice.paid = totalPaid;
@@ -464,9 +361,9 @@ module.exports = async (req, res) => {
           const baseQty = line.quantity_in_base || (line.quantity * (await resolveConversionFactor(line.item_id, line.unit_id, line.conversion_factor)));
           if (invoice.type === 'purchase') {
             const unitCost = line.unit_cost || (line.unit_price / (line.conversion_factor || 1));
-            await reversePurchaseFromItem(line.item_id, userId, baseQty, unitCost, supabase);
-          } else if (invoice.type === 'sale') {
-            await reverseSaleFromItem(line.item_id, userId, baseQty, supabase);
+            await reversePurchaseFromItemRPC(line.item_id, userId, baseQty, unitCost);
+          } else {
+            await reverseSaleFromItemRPC(line.item_id, userId, baseQty);
           }
         }
       }
@@ -476,14 +373,14 @@ module.exports = async (req, res) => {
         .select('id, amount, customer_id, supplier_id')
         .eq('invoice_id', invoiceId);
       for (const p of (payments || [])) {
-        if (p.customer_id) await updateCustomerBalance(p.customer_id, userId, p.amount);
-        if (p.supplier_id) await updateSupplierBalance(p.supplier_id, userId, p.amount);
+        if (p.customer_id) await updateCustomerBalanceRPC(p.customer_id, userId, p.amount);
+        if (p.supplier_id) await updateSupplierBalanceRPC(p.supplier_id, userId, p.amount);
       }
 
       if (invoice.type === 'sale' && invoice.customer_id) {
-        await updateCustomerBalance(invoice.customer_id, userId, -invoice.total);
+        await updateCustomerBalanceRPC(invoice.customer_id, userId, -invoice.total);
       } else if (invoice.type === 'purchase' && invoice.supplier_id) {
-        await updateSupplierBalance(invoice.supplier_id, userId, -invoice.total);
+        await updateSupplierBalanceRPC(invoice.supplier_id, userId, -invoice.total);
       }
 
       await supabase.from('payments').delete().eq('invoice_id', invoiceId);
@@ -499,4 +396,3 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
