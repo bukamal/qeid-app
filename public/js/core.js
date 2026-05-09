@@ -43,9 +43,12 @@ export const user = tg.initDataUnsafe?.user;
 export const apiBase = '/api';
 
 export function formatNumber(num) {
-  if (num === undefined || num === null) return '0.00';
-  return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (num === undefined || num === null || isNaN(num)) return '0';
+  const n = Number(num);
+  if (Number.isInteger(n)) return n.toLocaleString('en-US');
+  return parseFloat(n.toFixed(2)).toLocaleString('en-US');
 }
+
 
 export function formatDate(dateStr) {
   if (!dateStr) return '-';
