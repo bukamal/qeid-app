@@ -642,7 +642,7 @@ function printInvoice(invoice, options = {}) {
   const entity = invoice.customer || invoice.supplier;
   const entityLabel = invoice.type === 'sale' ? 'العميل' : 'المورد';
 
-  const thermalHTML = `<!DOCTYPE html>
+const thermalHTML = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
@@ -651,66 +651,132 @@ function printInvoice(invoice, options = {}) {
 <style>
   @page { size: 80mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { width: 80mm; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px; line-height: 1.4; padding: 4mm; color: #000; background: #fff; }
+  body {
+    width: 80mm;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 10px;
+    line-height: 1.25;
+    padding: 3mm;
+    color: #000;
+    background: #fff;
+  }
   .center { text-align: center; }
-  .bold { font-weight: 900; }
-  .shop { font-size: 20px; margin-bottom: 2px; color: #2563eb; }
-  .type { font-size: 14px; color: #555; margin-bottom: 4px; }
-  .line { border-top: 2px dashed #000; margin: 6px 0; }
-  .row { display: flex; justify-content: space-between; margin: 3px 0; }
-  .label { color: #555; font-size: 11px; }
-  .value { font-weight: 700; font-size: 12px; }
-  table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-  th { text-align: right; font-size: 10px; color: #666; border-bottom: 1px solid #999; padding: 3px 0; }
-  td { padding: 4px 0; vertical-align: top; }
-  .name { font-weight: 700; max-width: 100px; word-wrap: break-word; font-size: 11px; }
-  .num { text-align: left; font-family: 'Courier New', monospace; font-size: 11px; }
-  .total-row { font-size: 15px; font-weight: 900; margin: 6px 0; padding: 4px 0; border-top: 2px solid #000; }
-  .grand-total { color: #2563eb; font-size: 18px; }
-  .footer { text-align: center; font-size: 10px; color: #666; margin-top: 12px; padding-top: 8px; border-top: 1px dashed #999; }
-  .cut-here { border-top: 3px dotted #000; margin: 8px 0; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+  .bold { font-weight: 700; }
+  .shop {
+    font-size: 16px;
+    font-weight: 900;
+    margin-bottom: 1px;
+    color: #2563eb;
+  }
+  .shop-sub {
+    font-size: 8px;
+    color: #888;
+    margin-bottom: 4px;
+  }
+  .type {
+    font-size: 12px;
+    font-weight: 700;
+    color: #333;
+    margin: 4px 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
   .paid { background: #dcfce7; color: #166534; }
   .unpaid { background: #fef3c7; color: #92400e; }
-  @media print { body { width: 80mm; padding: 2mm; } .no-print { display: none; } }
+  .line { border-top: 1px dashed #000; margin: 4px 0; }
+  .row { display: flex; justify-content: space-between; margin: 2px 0; font-size: 10px; }
+  .label { color: #555; font-size: 9px; }
+  .value { font-weight: 600; font-size: 10px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0;
+    font-size: 9px;
+  }
+  th {
+    text-align: right;
+    font-size: 8px;
+    color: #666;
+    border-bottom: 1px solid #999;
+    padding: 2px 0;
+    font-weight: 700;
+  }
+  td {
+    padding: 2px 0;
+    vertical-align: middle;
+  }
+  .name { font-weight: 700; max-width: 90px; word-wrap: break-word; }
+  .num { text-align: left; font-family: 'Courier New', monospace; font-size: 9px; }
+  .total-row {
+    font-size: 13px;
+    font-weight: 900;
+    margin: 4px 0;
+    padding: 3px 0;
+    border-top: 2px solid #000;
+  }
+  .grand-total { color: #2563eb; font-size: 16px; }
+  .footer {
+    text-align: center;
+    font-size: 8px;
+    color: #666;
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px dashed #999;
+    line-height: 1.3;
+  }
+  .cut-here { border-top: 2px dotted #000; margin: 6px 0 4px; }
+  .no-print { display: block; }
+  @media print {
+    body { padding: 2mm; }
+    .no-print { display: none !important; }
+  }
 </style>
 </head>
 <body>
   <div class="center">
-    <div class="shop bold">الراجحي للمحاسبة</div>
-    <div style="font-size: 9px; color: #888; margin-bottom: 4px;">ALRAJEHI ACCOUNTING</div>
+    <div class="shop">الراجحي للمحاسبة</div>
+    <div class="shop-sub">ALRAJEHI ACCOUNTING</div>
     <div class="type">فاتورة ${invoice.type === 'sale' ? 'بيع' : 'شراء'}</div>
     <span class="badge ${balance <= 0 ? 'paid' : 'unpaid'}">${balance <= 0 ? '✓ مدفوعة' : '⏳ غير مدفوعة'}</span>
   </div>
+
   <div class="line"></div>
-  <div class="row"><span class="label">التاريخ / Date:</span><span class="value">${dateStr} ${timeStr}</span></div>
-  <div class="row"><span class="label">المرجع / Ref:</span><span class="value">${invoice.reference || '-'}</span></div>
+  <div class="row"><span class="label">التاريخ:</span><span class="value">${dateStr} ${timeStr}</span></div>
+  <div class="row"><span class="label">المرجع:</span><span class="value">${invoice.reference || '-'}</span></div>
   ${entity ? `<div class="row"><span class="label">${entityLabel}:</span><span class="value">${entity.name}</span></div>` : ''}
   <div class="line"></div>
+
   <table>
     <tr><th style="width:40%">الصنف</th><th style="width:15%">Qty</th><th style="width:22%">Price</th><th style="width:23%">Total</th></tr>
     ${items.map(l => `
-      <tr>
-        <td class="name">${(l.item?.name || '-').substring(0, 15)}</td>
-        <td class="num">${l.quantity} <span style="font-size:8px;color:#666">${l.unit?.abbreviation || l.unit?.name || ''}</span></td>
-        <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
-        <td class="num bold">${parseFloat(l.total || 0).toFixed(2)}</td>
-      </tr>
+    <tr>
+      <td class="name">${(l.item?.name || '-').substring(0, 15)}</td>
+      <td class="num">${l.quantity} <span style="font-size:7px;color:#666">${l.unit?.abbreviation || l.unit?.name || ''}</span></td>
+      <td class="num">${parseFloat(l.unit_price || 0).toFixed(2)}</td>
+      <td class="num bold">${parseFloat(l.total || 0).toFixed(2)}</td>
+    </tr>
     `).join('')}
   </table>
+
   <div class="line"></div>
-  <div class="row total-row"><span>الإجمالي Total:</span><span class="grand-total">${formatCurrency(invoice.total || 0)}</span></div>
-  <div class="row"><span>المدفوع Paid:</span><span>${formatCurrency(paid)}</span></div>
-  <div class="row bold" style="font-size:14px; color: ${balance > 0 ? '#dc2626' : '#059669'}"><span>الباقي Balance:</span><span>${formatCurrency(balance)}</span></div>
+  <div class="row total-row"><span>الإجمالي:</span><span class="grand-total">${formatCurrency(invoice.total || 0)}</span></div>
+  <div class="row"><span>المدفوع:</span><span>${formatCurrency(paid)}</span></div>
+  <div class="row bold" style="font-size:12px; color: ${balance > 0 ? '#dc2626' : '#059669'}"><span>الباقي:</span><span>${formatCurrency(balance)}</span></div>
+
   <div class="cut-here"></div>
   <div class="footer">
-    <div>شكراً لتعاملكم / Thank you</div>
-    <div style="margin-top:4px; font-size: 9px;">للدعم: @bukamal1991</div>
+    <div>شكراً لتعاملكم · البسيط للمحاسبة</div>
   </div>
-  <div class="no-print" style="margin-top: 20px; text-align: center;">
-    <button onclick="window.print()" style="padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">🖨️ طباعة / Print</button>
+
+  <div class="no-print" style="margin-top: 10px; text-align: center;">
+    <button onclick="window.print()" style="padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🖨️ طباعة</button>
   </div>
-  <script>window.onload = function() { setTimeout(function() { window.print(); }, 500); };<\/script>
 </body>
 </html>`;
 
