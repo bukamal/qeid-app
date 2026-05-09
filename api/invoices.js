@@ -87,6 +87,14 @@ async function buildLineData(line, invoiceId = null) {
   };
 }
 
+// NEW: Validate cash payment - full amount must be paid immediately
+function validateCashPayment(invoiceType, entityId, paidAmount, totalAmount) {
+  const isCash = (invoiceType === 'sale' && !entityId) || (invoiceType === 'purchase' && !entityId);
+  if (isCash && Math.abs(paidAmount - totalAmount) > 0.01) {
+    throw new Error('الفاتورة النقدية تتطلب دفع كامل المبلغ فوراً');
+  }
+}
+
 module.exports = async (req, res) => {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -146,6 +154,10 @@ module.exports = async (req, res) => {
         lineData.push(l);
         total += l.total;
       }
+
+      // Validate cash payment
+      const entityIdForCash = type === 'sale' ? cust : supp;
+      validateCashPayment(type, entityIdForCash, parseFloat(paid_amount) || 0, total);
 
       const { data: invoice, error: invError } = await supabase
         .from('invoices')
@@ -228,6 +240,11 @@ module.exports = async (req, res) => {
         const l = await buildLineData(line, id);
         linesJson.push(l);
       }
+
+      // Validate cash payment for update
+      const newTotal = linesJson.reduce((s, l) => s + l.total, 0);
+      const newEntityId = newType === 'sale' ? newCust : newSupp;
+      validateCashPayment(newType, newEntityId, parseFloat(paid_amount) || 0, newTotal);
 
       const { error } = await rpc.updateInvoiceFull({
         p_invoice_id: id,

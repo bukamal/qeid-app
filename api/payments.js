@@ -118,7 +118,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
-      return res.status(405).json({ error: 'لا يمكن إضافة دفعة مباشرة. استخدم السندات.' });
+      return res.status(405).json({ error: 'لا يمكن إضافة دفعة مباشرة. استخدم السندات (قبض/دفع/مصروف).' });
     }
 
     if (req.method === 'DELETE') {

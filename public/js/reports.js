@@ -96,7 +96,7 @@ export async function loadBalanceSheet() {
   try {
     const d = await apiCall('/reports?type=balance_sheet', 'GET');
     const aRows = d.assets.map(a => `<tr><td>${a.name}</td><td style="font-weight:800;">${formatNumber(a.balance)}</td></tr>`).join('');
-    const lRows = d.liabilities.map(l => `<tr><td>${l.name}</td><td style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`).join('');
+    const lRows = d.liabilities.map(l => `<td><td>${l.name}</td><td style="font-weight:800;">${formatNumber(l.balance)}</td></tr>`).join('');
     const eRows = d.equity.map(e => `<tr><td>${e.name}</td><td style="font-weight:800;">${formatNumber(e.balance)}</td></tr>`).join('');
     document.getElementById('tab-content').innerHTML = `
       <div class="card">
@@ -222,7 +222,7 @@ export async function loadVouchersLog() {
     let totalReceipt = 0, totalPayment = 0, totalExpense = 0;
 
     const rows = vouchers.map(v => {
-      const typeLabel = v.type === 'receipt' ? 'قبض' : v.type === 'payment' ? 'صرف' : 'مصروف';
+      const typeLabel = v.type === 'receipt' ? 'قبض' : v.type === 'payment' ? 'دفع' : 'مصروف';
       const entityName = v.customer?.name || v.supplier?.name || '-';
       const entityType = v.customer ? 'عميل' : v.supplier ? 'مورد' : '-';
       if (v.type === 'receipt') totalReceipt += parseFloat(v.amount||0);
@@ -246,13 +246,13 @@ export async function loadVouchersLog() {
         <h3 class="card-title">سجل السندات</h3>
         <div class="stats-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:24px;">
           <div class="stat-card" style="border-color:var(--success);"><div class="stat-label">إجمالي القبوض</div><div class="stat-value positive">${formatNumber(totalReceipt)}</div></div>
-          <div class="stat-card" style="border-color:var(--danger);"><div class="stat-label">إجمالي الصرف</div><div class="stat-value negative">${formatNumber(totalPayment)}</div></div>
+          <div class="stat-card" style="border-color:var(--danger);"><div class="stat-label">إجمالي الدفع</div><div class="stat-value negative">${formatNumber(totalPayment)}</div></div>
           <div class="stat-card" style="border-color:var(--warning);"><div class="stat-label">إجمالي المصاريف</div><div class="stat-value" style="color:var(--warning);">${formatNumber(totalExpense)}</div></div>
         </div>
         <div class="filter-bar">
           <button class="filter-pill active" data-vtype="all">الكل</button>
           <button class="filter-pill" data-vtype="receipt">قبض</button>
-          <button class="filter-pill" data-vtype="payment">صرف</button>
+          <button class="filter-pill" data-vtype="payment">دفع</button>
           <button class="filter-pill" data-vtype="expense">مصاريف</button>
         </div>
         <div class="table-wrap"><table class="table" id="vouchers-table"><thead><tr><th>التاريخ</th><th>المرجع</th><th>النوع</th><th>الجهة</th><th>تصنيف الجهة</th><th>المبلغ</th><th>الوصف</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -267,7 +267,7 @@ export async function loadVouchersLog() {
           const typeCell = row.cells[2].textContent.trim();
           if (vtype === 'all' || 
               (vtype === 'receipt' && typeCell === 'قبض') ||
-              (vtype === 'payment' && typeCell === 'صرف') ||
+              (vtype === 'payment' && typeCell === 'دفع') ||
               (vtype === 'expense' && typeCell === 'مصروف')) {
             row.style.display = '';
           } else {
@@ -281,4 +281,3 @@ export async function loadVouchersLog() {
 }
 
 window.loadReports = loadReports;
-

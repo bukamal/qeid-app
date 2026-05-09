@@ -12,14 +12,14 @@ export async function loadVouchers() {
       <div class="card-header">
         <div>
           <h3 class="card-title">السندات</h3>
-          <span class="card-subtitle">سندات القبض والصرف والمصاريف</span>
+          <span class="card-subtitle">سندات القبض والدفع والمصاريف</span>
         </div>
         <button class="btn btn-primary btn-sm" id="btn-add-voucher">${ICONS.plus} إضافة سند</button>
       </div>
       <div class="filter-bar" style="margin-bottom:14px;">
         <button class="filter-pill active" data-filter="all">الكل</button>
         <button class="filter-pill" data-filter="receipt">قبض</button>
-        <button class="filter-pill" data-filter="payment">صرف</button>
+        <button class="filter-pill" data-filter="payment">دفع</button>
         <button class="filter-pill" data-filter="expense">مصاريف</button>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
@@ -71,7 +71,7 @@ export async function loadVouchers() {
       document.getElementById('vouchers-summary').innerHTML = `
         <div style="display:flex; gap:20px; font-size:14px; flex-wrap:wrap; font-weight:600;">
           <span style="color:var(--success);">📥 إجمالي القبوض: <strong>${formatNumber(totalReceipt)}</strong></span>
-          <span style="color:var(--danger);">📤 إجمالي الصرف: <strong>${formatNumber(totalPayment)}</strong></span>
+          <span style="color:var(--danger);">📤 إجمالي الدفع: <strong>${formatNumber(totalPayment)}</strong></span>
           <span style="color:var(--warning);">💸 إجمالي المصاريف: <strong>${formatNumber(totalExpense)}</strong></span>
         </div>`;
 
@@ -83,7 +83,7 @@ export async function loadVouchers() {
 
       let listHtml = '';
       filtered.forEach(v => {
-        const typeLabel = v.type === 'receipt' ? 'قبض' : v.type === 'payment' ? 'صرف' : 'مصروف';
+        const typeLabel = v.type === 'receipt' ? 'قبض' : v.type === 'payment' ? 'دفع' : 'مصروف';
         const entityName = v.customer?.name || v.supplier?.name || '';
         const bgColor = v.type === 'receipt' ? 'var(--success)' : v.type === 'payment' ? 'var(--danger)' : 'var(--warning)';
         const sign = v.type === 'receipt' ? '+' : '-';
@@ -163,7 +163,7 @@ async function showAddVoucherModal(initialData = {}) {
       <label class="form-label">نوع السند</label>
       <select class="select" id="v-type">
         <option value="receipt" ${initialData.type === 'receipt' ? 'selected' : ''}>سند قبض</option>
-        <option value="payment" ${initialData.type === 'payment' ? 'selected' : ''}>سند صرف</option>
+        <option value="payment" ${initialData.type === 'payment' ? 'selected' : ''}>سند دفع</option>
         <option value="expense" ${initialData.type === 'expense' ? 'selected' : ''}>سند مصروف</option>
       </select>
     </div>
@@ -315,7 +315,7 @@ function showVoucherDetail(voucherId) {
   const v = vouchers.find(x => x.id == voucherId);
   if (!v) return showToast('السند غير موجود', 'error');
 
-  const typeLabel = v.type === 'receipt' ? 'سند قبض' : v.type === 'payment' ? 'سند صرف' : 'سند مصروف';
+  const typeLabel = v.type === 'receipt' ? 'سند قبض' : v.type === 'payment' ? 'سند دفع' : 'سند مصروف';
   const entity = v.customer?.name || v.supplier?.name || '';
   const entityLabel = v.customer ? 'العميل' : 'المورد';
   const bgColor = v.type === 'receipt' ? 'var(--success)' : v.type === 'payment' ? 'var(--danger)' : 'var(--warning)';
@@ -392,7 +392,7 @@ function printVoucher(voucherId) {
   const v = vouchers.find(x => x.id == voucherId);
   if (!v) return showToast('السند غير موجود', 'error');
   
-  const typeLabel = v.type === 'receipt' ? 'سند قبض' : v.type === 'payment' ? 'سند صرف' : 'سند مصروف';
+  const typeLabel = v.type === 'receipt' ? 'سند قبض' : v.type === 'payment' ? 'سند دفع' : 'سند مصروف';
   const entity = v.customer?.name || v.supplier?.name || '';
   const entityLabel = v.customer ? 'العميل' : 'المورد';
   const bgColor = v.type === 'receipt' ? '#059669' : v.type === 'payment' ? '#dc2626' : '#d97706';
@@ -459,4 +459,3 @@ function emptyState(title, subtitle) {
     <p>${subtitle}</p>
   </div>`;
 }
-

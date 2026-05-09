@@ -61,76 +61,79 @@ export function renderFilteredItems() {
     </div>`;
   }
 
-  let html = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">';
+  // جدول متطور
+  let html = `
+    <div class="table-wrap">
+      <table class="table items-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>اسم المادة</th>
+            <th>التصنيف</th>
+            <th>الكمية (الوحدة الأساسية)</th>
+            <th>سعر البيع</th>
+            <th>قيمة المخزون (بالتكلفة)</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
   
-  filtered.forEach(item => {
+  filtered.forEach((item, idx) => {
     const baseUnitName = item.base_unit?.name || item.base_unit?.abbreviation || 'قطعة';
     const available = item.available ?? 0;
     const stockStatus = available <= 0 ? 'نفذ' : available < LOW_STOCK_THRESHOLD ? 'منخفض' : 'متوفر';
     const stockColor = available <= 0 ? 'var(--danger)' : available < LOW_STOCK_THRESHOLD ? 'var(--warning)' : 'var(--success)';
-    const hasSubUnits = (item.item_units || []).length > 0;
     const categoryName = item.category?.name || 'بدون تصنيف';
     const sellingPrice = item.selling_price || 0;
-    const costPrice = parseFloat(item.average_cost) || 0;
-    const profitMargin = sellingPrice - costPrice;
-    const subUnitsText = computeSubUnitQuantities(available, baseUnitName, item.item_units || []);
-
+    const totalValue = item.total_value ?? (available * (parseFloat(item.average_cost) || 0));
+    const hasSubUnits = (item.item_units || []).length > 0;
+    
     html += `
-      <div class="card card-hover item-rich-card" data-id="${item.id}" style="cursor:pointer; padding: 20px; position: relative;">
-        <button class="item-delete-btn" data-id="${item.id}" title="حذف المادة" style="position:absolute; top:14px; left:14px; background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:10px; opacity:0; transition:all 0.2s;">
-          ${ICONS.trash}
-        </button>
-        
-        <div onclick="window.showItemDetail(${item.id})" style="height:100%;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
-            <div style="flex:1;">
-              <div style="font-weight:800; font-size:17px; margin-bottom:4px; color:var(--text);">
-                ${item.name}
-              </div>
-              <div style="font-size:12px; color:var(--text-muted); font-weight:500;">${categoryName}</div>
-            </div>
-            ${hasSubUnits ? `<span style="background:var(--primary-light); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700;">📦 وحدة</span>` : ''}
-          </div>
-          
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <div>
-              <div style="color:${stockColor}; font-weight:700; font-size:15px; display:flex; align-items:center; gap:6px;">
-                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${stockColor}; box-shadow: 0 0 8px ${stockColor}40;"></span>
-                ${available} ${baseUnitName}
-              </div>
-              <div style="font-size:11px; color:${stockColor}; margin-top:4px; font-weight:600;">${stockStatus}</div>
-              ${subUnitsText ? `<div style="font-size:11px; color:var(--text-muted); margin-top:6px; font-weight:500;">${subUnitsText}</div>` : ''}
-            </div>
-            <div style="text-align:right;">
-              <div style="font-weight:800; color:var(--primary); font-size:18px;">${formatNumber(sellingPrice)}</div>
-              <div style="font-size:11px; color:var(--text-muted); font-weight:500;">سعر البيع</div>
-            </div>
-          </div>
-          
-          <div style="border-top:1px solid var(--border); padding-top:10px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:13px;">
-              <span style="color:var(--text-muted);">التكلفة:</span> 
-              <span style="font-weight:700;">${formatNumber(costPrice)}</span>
-            </div>
-            <div style="font-size:13px;">
-              <span style="color:var(--text-muted);">الربح/قطعة:</span> 
-              <span style="font-weight:700; color:${profitMargin >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatNumber(profitMargin)}</span>
-            </div>
-          </div>
-          
-          <div style="margin-top:6px; font-size:12px; color:var(--text-muted); text-align:left; font-weight:500;">
-            <span>قيمة المخزون (بالتكلفة):</span>
-            <span style="font-weight:800; color:var(--text-secondary);">${formatNumber(item.total_value ?? 0)}</span>
-          </div>
-        </div>
-      </div>`;
+      <tr class="item-row" data-id="${item.id}" style="cursor:pointer;">
+        <td>${idx + 1}</td>
+        <td style="font-weight:800;">
+          ${item.name}
+          ${hasSubUnits ? `<span style="display:inline-block; background:var(--primary-light); color:var(--primary); padding:2px 8px; border-radius:12px; font-size:10px; margin-right:8px;">وحدات</span>` : ''}
+        </td>
+        <td>${categoryName}</td>
+        <td>
+          <span style="color:${stockColor}; font-weight:700;">${available}</span> ${baseUnitName}
+          <span style="font-size:11px; color:${stockColor}; margin-right:6px;">(${stockStatus})</span>
+          ${computeSubUnitQuantities(available, baseUnitName, item.item_units || []) ? `<div style="font-size:10px; color:var(--text-muted); margin-top:4px;">${computeSubUnitQuantities(available, baseUnitName, item.item_units || [])}</div>` : ''}
+        </td>
+        <td><strong>${formatNumber(sellingPrice)}</strong></td>
+        <td>${formatNumber(totalValue)}</td>
+        <td>
+          <button class="btn btn-danger btn-sm delete-item-btn" data-id="${item.id}" title="حذف المادة" style="background:transparent; border:none; color:var(--danger); cursor:pointer; padding:4px 8px;">
+            ${ICONS.trash}
+          </button>
+        </td>
+      </tr>
+    `;
   });
   
-  html += '</div>';
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+  
   container.innerHTML = html;
-  animateEntry('.item-rich-card', 80);
+  animateEntry('.item-row', 60);
 
-  container.querySelectorAll('.item-delete-btn').forEach(btn => {
+  // ربط أحداث النقر على الصف (إظهار التفاصيل)
+  container.querySelectorAll('.item-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      // تجنب فتح المودال إذا تم الضغط على زر الحذف
+      if (e.target.closest('.delete-item-btn')) return;
+      const itemId = row.dataset.id;
+      if (itemId) showItemDetail(itemId);
+    });
+  });
+
+  // ربط أزرار الحذف
+  container.querySelectorAll('.delete-item-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const itemId = btn.dataset.id;
@@ -185,7 +188,7 @@ export async function loadItems() {
       </div>
     </div>
     <div id="items-list">
-      ${renderSkeleton('cards')}
+      ${renderSkeleton('table')}
     </div>
   `;
   
@@ -789,4 +792,3 @@ async function showEditItemModal(itemId) {
 }
 
 window.showItemDetail = showItemDetail;
-
