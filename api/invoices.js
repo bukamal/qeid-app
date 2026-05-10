@@ -186,11 +186,15 @@ module.exports = async (req, res) => {
       for (const line of insertedLines) {
         if (line.item_id) {
           const baseQty = line.quantity_in_base || line.quantity;
-          if (type === 'purchase') {
-            const unitCostPerBase = baseQty !== 0 ? line.total / baseQty : 0;
-            await rpc.applyPurchase(line.item_id, userId, baseQty, unitCostPerBase);
-            await supabase.from('invoice_lines').update({ unit_cost: unitCostPerBase }).eq('id', line.id);
-          } else {
+if (type === 'purchase') {
+  const unitCostPerBase = baseQty !== 0 ? line.total / baseQty : 0;
+  const { error: rpcError } = await rpc.applyPurchase(line.item_id, userId, baseQty, unitCostPerBase);
+  if (rpcError) {
+    throw new Error(`فشل تحديث المخزون للمادة ${line.item_id}: ${rpcError.message}`);
+  }
+  await supabase.from('invoice_lines').update({ unit_cost: unitCostPerBase }).eq('id', line.id);
+}
+ else {
             const { data: costAmount } = await rpc.applySale(line.item_id, userId, baseQty);
             await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', line.id);
           }
