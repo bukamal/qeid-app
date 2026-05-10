@@ -91,22 +91,22 @@ export function renderFilteredItems() {
         <td>${idx + 1}</td>
         <td style="font-weight:800;">
           ${item.name}
-          ${hasSubUnits ? `<span style="display:inline-block; background:var(--primary-light); color:var(--primary); padding:2px 8px; border-radius:12px; font-size:10px; margin-right:8px;">وحدات</span>` : ''}
-        </td>
+          <!-- تم إزالة كلمة "وحدات" بناءً على طلب المستخدم -->
+         </td>
         <td>
           <span style="color:${stockColor}; font-weight:700;">${available}</span> ${baseUnitName}
           <span style="font-size:10px; color:${stockColor}; margin-right:4px;">(${stockStatus})</span>
           ${computeSubUnitQuantities(available, baseUnitName, item.item_units || []) ? `<div style="font-size:9px; color:var(--text-muted); margin-top:2px;">${computeSubUnitQuantities(available, baseUnitName, item.item_units || [])}</div>` : ''}
-        </td>
+         </td>
         <td><strong>${formatNumber(sellingPrice)}</strong></td>
         <td>${formatNumber(totalValue)}</td>
-      </tr>
+       </tr>
     `;
   });
   
   html += `
         </tbody>
-      </table>
+       </table>
     </div>
   `;
   
@@ -116,7 +116,6 @@ export function renderFilteredItems() {
   // ربط أحداث النقر على الصف (إظهار التفاصيل)
   container.querySelectorAll('.item-row').forEach(row => {
     row.addEventListener('click', (e) => {
-      // لا نريد فتح المودال إذا تم الضغط على زر الحذف (لكن لا يوجد زر حذف الآن)
       const itemId = row.dataset.id;
       if (itemId) showItemDetail(itemId);
     });
@@ -194,8 +193,9 @@ export function showItemDetail(itemId) {
       <div style="margin-bottom:20px;">
         <div style="font-weight:800;margin-bottom:12px;color:var(--text-secondary); font-size:15px;">نظام الوحدات</div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="background:var(--success-light);border:1.5px solid var(--success);border-radius:12px;padding:12px 16px;">
-            <span style="color:var(--success);font-weight:800;">الوحدة الأساسية:</span>
+          <!-- الوحدة الأساسية - تم تغيير اللون إلى primary -->
+          <div style="background:var(--primary-light);border:1.5px solid var(--primary);border-radius:12px;padding:12px 16px;">
+            <span style="color:var(--primary);font-weight:800;">الوحدة الأساسية:</span>
             <span style="font-weight:700;"> ${baseUnitName}</span>
           </div>`;
     
