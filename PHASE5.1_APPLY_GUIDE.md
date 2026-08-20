@@ -1,0 +1,1 @@
+Apply 04_invoice_full_rpc.sql in staging first. Review stock/journal integration before production.

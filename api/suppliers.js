@@ -14,11 +14,13 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      const { data, error } = await supabase
+      const q = (req.query.q || '').trim();
+      let query = supabase
         .from('suppliers')
         .select('*')
-        .eq('user_id', userId)
-        .order('name');
+        .eq('user_id', userId);
+      if (q) query = query.ilike('name', `%${q}%`);
+      const { data, error } = await query.order('name').limit(20);
       if (error) throw error;
       const safeData = data.map(s => ({ ...s, name: escapeHtml(s.name), phone: s.phone ? escapeHtml(s.phone) : null, address: s.address ? escapeHtml(s.address) : null }));
       return res.json(safeData);

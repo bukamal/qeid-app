@@ -42,6 +42,13 @@ const rpc = {
       p_change: change,
     }),
   updateInvoiceFull: (params) => supabase.rpc('update_invoice_full', params),
+  createInvoiceFull: (payload) => supabase.rpc('create_invoice_full', {
+    p_payload: payload
+  }),
+  voidInvoiceFull: (invoiceId, userId) => supabase.rpc('void_invoice_full', {
+    p_invoice_id: invoiceId,
+    p_user_id: userId
+  }),
 };
 
 function safeParseEntityId(value) {
@@ -139,88 +146,40 @@ module.exports = async (req, res) => {
       let { type, customer_id, supplier_id, date, reference, notes, lines, paid_amount } = req.body;
       if (!type || !['sale', 'purchase'].includes(type))
         return res.status(400).json({ error: 'نوع الفاتورة غير صحيح' });
-      if (!lines || !Array.isArray(lines) || lines.length === 0)
+      if (!Array.isArray(lines) || lines.length === 0)
         return res.status(400).json({ error: 'يجب إضافة بند واحد على الأقل' });
 
       const cust = safeParseEntityId(customer_id);
       const supp = safeParseEntityId(supplier_id);
-      const escapedNotes = notes ? escapeHtml(notes) : null;
-      const escapedRef = reference ? escapeHtml(reference) : null;
-
       const lineData = [];
       let total = 0;
-      for (let line of lines) {
+
+      for (const line of lines) {
         const l = await buildLineData(line);
+        if (l.quantity <= 0 || l.unit_price < 0)
+          return res.status(400).json({ error: 'بيانات الصنف غير صحيحة' });
         lineData.push(l);
         total += l.total;
       }
 
-      // Validate cash payment
-      const entityIdForCash = type === 'sale' ? cust : supp;
-      validateCashPayment(type, entityIdForCash, parseFloat(paid_amount) || 0, total);
-
-      const { data: invoice, error: invError } = await supabase
-        .from('invoices')
-        .insert({
-          user_id: userId,
-          type,
-          customer_id: cust,
-          supplier_id: supp,
-          date: date || new Date().toISOString().split('T')[0],
-          reference: escapedRef,
-          notes: escapedNotes,
-          total,
-          status: 'posted',
-        })
-        .select()
-        .single();
-      if (invError) throw invError;
-
-      lineData.forEach(l => (l.invoice_id = invoice.id));
-      const { data: insertedLines, error: linesError } = await supabase
-        .from('invoice_lines')
-        .insert(lineData)
-        .select();
-      if (linesError) throw linesError;
-
-      for (const line of insertedLines) {
-        if (line.item_id) {
-          const baseQty = line.quantity_in_base || line.quantity;
-if (type === 'purchase') {
-  const unitCostPerBase = baseQty !== 0 ? line.total / baseQty : 0;
-  const { error: rpcError } = await rpc.applyPurchase(line.item_id, userId, baseQty, unitCostPerBase);
-  if (rpcError) {
-    throw new Error(`فشل تحديث المخزون للمادة ${line.item_id}: ${rpcError.message}`);
-  }
-  await supabase.from('invoice_lines').update({ unit_cost: unitCostPerBase }).eq('id', line.id);
-}
- else {
-            const { data: costAmount } = await rpc.applySale(line.item_id, userId, baseQty);
-            await supabase.from('invoice_lines').update({ cost_amount: costAmount }).eq('id', line.id);
-          }
-        }
-      }
-
       const paid = parseFloat(paid_amount) || 0;
-      if (paid > 0) {
-        await supabase.from('payments').insert({
-          user_id: userId,
-          invoice_id: invoice.id,
-          customer_id: cust,
-          supplier_id: supp,
-          amount: paid,
-          payment_date: invoice.date,
-          notes: 'دفعة تلقائية من الفاتورة',
-        });
-      }
+      validateCashPayment(type, type === 'sale' ? cust : supp, paid, total);
 
-      if (type === 'sale' && cust) {
-        await rpc.updateCustomerBalance(cust, userId, total - paid);
-      } else if (type === 'purchase' && supp) {
-        await rpc.updateSupplierBalance(supp, userId, total - paid);
-      }
+      const { data, error } = await rpc.createInvoiceFull({
+        user_id: userId,
+        type,
+        customer_id: cust,
+        supplier_id: supp,
+        date: date || new Date().toISOString().split('T')[0],
+        reference: reference ? escapeHtml(reference) : null,
+        notes: notes ? escapeHtml(notes) : null,
+        total,
+        paid_amount: paid,
+        lines: lineData
+      });
 
-      return res.json({ ...invoice, invoice_lines: insertedLines, paid, balance: total - paid });
+      if (error) throw error;
+      return res.json(data);
     }
 
     if (req.method === 'PUT') {

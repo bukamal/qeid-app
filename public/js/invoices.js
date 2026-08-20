@@ -4,6 +4,7 @@ import { get as storeGet } from './store.js';
 import { showToast, openModal, confirmDialog, closeActiveModal } from './modal.js';
 import { currentTab, navigateTo } from './navigation.js';
 import { subscribe } from './store.js';
+import { enhanceSearchSelects } from './search-select.js';
 
 export async function editInvoice(invoiceId) {
   const invoices = storeGet('invoices') || [];
@@ -82,6 +83,7 @@ export async function showInvoiceModal(type, options = {}) {
     });
 
     const container = modal.element;
+    enhanceSearchSelects(container);
     const paidInput = container.querySelector('#inv-paid');
     let paidManuallyEdited = false;
 

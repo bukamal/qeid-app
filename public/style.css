@@ -1629,3 +1629,13 @@ body {
   .sheet-grid { grid-template-columns: repeat(2, 1fr); }
   .modal-footer .btn { min-width: 70px; padding: 10px 14px; font-size: 13px; }
 }
+
+.search-select-wrap { position:relative; }
+.search-select-input { width:100%; }
+.search-select-results {
+ position:absolute; z-index:9999; width:100%; background:var(--card);
+ border:1px solid var(--border); border-radius:12px; max-height:220px;
+ overflow:auto;
+}
+.search-select-option { padding:10px; cursor:pointer; }
+.search-select-option:hover { background:var(--bg); }

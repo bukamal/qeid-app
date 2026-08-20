@@ -14,11 +14,13 @@ module.exports = async (req, res) => {
     const userId = await getUserId(initData);
 
     if (req.method === 'GET') {
-      const { data: items, error: itemsError } = await supabase
+      const q = (req.query.q || '').trim();
+      let itemsQuery = supabase
         .from('items')
         .select(`*, category:categories(name), base_unit:units!items_base_unit_id_fkey(name, abbreviation), item_units(id, unit_id, conversion_factor, unit:units(name, abbreviation))`)
-        .eq('user_id', userId)
-        .order('name');
+        .eq('user_id', userId);
+      if (q) itemsQuery = itemsQuery.or(`name.ilike.%${q}%,barcode.ilike.%${q}%`);
+      const { data: items, error: itemsError } = await itemsQuery.order('name').limit(30);
       if (itemsError) throw itemsError;
 
       const { data: invoiceLines, error: linesError } = await supabase
